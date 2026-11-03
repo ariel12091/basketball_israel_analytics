@@ -4,12 +4,15 @@
 # local archive does not hold is not patched (and-one: 82 of 87 targets were in it).
 # --rule special-foul: the technical/unsportsmanlike/disqualifying free-throw rule (D29).
 # --rule and-one: a made and-one the team rebounds itself keeps the possession open (D30).
+# --rule phantom-ends: the rebound of a put-back and foul turnovers the fouling team did not have the
+#   ball for (D30, plan docs/superpowers/plans/2026-11-03-phantom-possession-ends.md).
 # Used for 2026-27 too: etl_full(game_ids = <42 games>) failed the 2-minute Phase 4 limit and
 # today's lineup gate rejected games 401 and 649 on re-fetch. Its cold rows did pin this SQL: the
 # real rule removed the same 90 ends in the 40 games it re-ran, and added none.
 #
 #   Rscript scripts/apply_possession_end_backfill.R --rule and-one --seasons 2025,2026,2027       dry run
 #   CONFIRM_POSSESSION_BACKFILL=1 Rscript scripts/apply_possession_end_backfill.R --rule and-one --seasons 2025,2026,2027
+#   Rscript scripts/apply_possession_end_backfill.R --rule phantom-ends --seasons 2025,2026,2027   dry run
 #   ... --resume-at sub-lineups    skip steps 1-2 up to the sub-lineup refresh after a failure there
 #
 # Each step commits on its own, so no long transaction holds a view lock; the cache marker
@@ -20,12 +23,14 @@ RULES <- list(
   `special-foul` = list(sql = "sql/migrations/2026-11-02_special_foul_possession_targets.sql",
                         backup = "exports/cold/backup-2026-11-02-special-foul"),
   `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql",
-                        backup = "exports/cold/backup-2026-11-03-and-one")
+                        backup = "exports/cold/backup-2026-11-03-and-one"),
+  `phantom-ends` = list(sql = "sql/migrations/2026-11-03_phantom_possession_end_targets.sql",
+                        backup = "exports/cold/backup-2026-11-03-phantom-ends")
 )
 
 args <- commandArgs(trailingOnly = TRUE)
 j <- match("--rule", args)
-stopifnot("--rule special-foul|and-one is required" = !is.na(j), j < length(args), args[[j + 1L]] %in% names(RULES))
+stopifnot("--rule special-foul|and-one|phantom-ends is required" = !is.na(j), j < length(args), args[[j + 1L]] %in% names(RULES))
 rule <- RULES[[args[[j + 1L]]]]
 i <- match("--seasons", args)
 stopifnot(!is.na(i), i < length(args))

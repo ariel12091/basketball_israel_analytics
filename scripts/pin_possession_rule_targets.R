@@ -1,11 +1,11 @@
-# Pins sql/migrations/2026-11-03_and_one_possession_targets.sql against the and-one rule in
-# compute_possessions() (etl/possession_rules.R). Read-only: duckdb in memory plus SELECTs on
-# PostgreSQL (port 5432); no table, no temp table, no write.
+# Pins a possession-end rule's targets SQL against compute_possessions() (etl/possession_rules.R).
+# Read-only: duckdb in memory plus SELECTs on PostgreSQL (port 5432); no table, no temp table, no write.
 #
-#   Rscript scripts/pin_and_one_targets.R
+#   Rscript scripts/pin_possession_rule_targets.R --rule and-one|phantom-ends
 #
-# The previous rule is read from the fixed commit below (the special-foul rule, before the and-one
-# change), so "the ends the new rule removed" has a fixed reference. Three passes:
+# The previous rule is read from the fixed commit in PIN_RULES (and-one: the special-foul rule, before
+# the and-one change; phantom-ends: the rule with the and-one step, before the phantom-end step), so
+# "the ends the new rule removed" has a fixed reference. Three passes:
 #   1. fixtures: previous rule on duckdb -> rows the SQL reads (its rows CTE swapped for VALUES) ->
 #      its targets must equal old ends minus new ends, and the new rule must add none.
 #   2. archive: the same comparison on exports/cold/actions_clean.parquet, 2026 and 2027 games, with the
@@ -15,11 +15,26 @@
 #      60 seconds is a stop (the ETL role's statement limit is 2 minutes).
 # Exits 1 on any difference.
 #
-# ONE-SHOT, PRE-BACKFILL: passes 2 and 3 pick their targets from the stored view, and the backfill of
-# 2026-11-03 emptied that selection, so they now fail by design and the failure says nothing. Stored
-# rows are watched by app/tests/testthat/test-and-one-targets-db.R, which expects no target nightly.
+# ONE-SHOT, PRE-BACKFILL: passes 2 and 3 pick their targets from the stored view, and the and-one
+# backfill of 2026-11-03 emptied that selection, so for --rule and-one only pass 1 runs (passes 2 and
+# 3 would fail by design and the failure would say nothing). The same holds for --rule phantom-ends
+# once its backfill has run: its passes 2 and 3 are valid only before it. Stored rows are watched
+# nightly by app/tests/testthat/test-and-one-targets-db.R and test-phantom-end-targets-db.R.
 
-OLD_RULE_SHA <- "dfd4667"
+# One table per rule: the targets SQL, the commit of the previous rule, the fixture list (a name in
+# etl/tests/helper-possession-fixtures.R) and whether passes 2 and 3 can still run.
+PIN_RULES <- list(
+  `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql",
+                        old_sha = "dfd4667", fixtures = "POSSESSION_FIXTURES", archive_passes = FALSE),
+  `phantom-ends` = list(sql = "sql/migrations/2026-11-03_phantom_possession_end_targets.sql",
+                        old_sha = "413fd0f", fixtures = "PHANTOM_END_FIXTURES", archive_passes = TRUE)
+)
+args <- commandArgs(trailingOnly = TRUE)
+j <- match("--rule", args)
+if (is.na(j) || j == length(args) || !args[[j + 1L]] %in% names(PIN_RULES))
+  stop("usage: Rscript scripts/pin_possession_rule_targets.R --rule ", paste(names(PIN_RULES), collapse = "|"), call. = FALSE)
+PIN <- PIN_RULES[[args[[j + 1L]]]]
+OLD_RULE_SHA <- PIN$old_sha
 
 suppressPackageStartupMessages({ library(dplyr); library(dbplyr); library(DBI); library(RPostgres) })
 say <- function(...) cat(sprintf(...), "\n", sep = "")
@@ -36,6 +51,7 @@ sys.source(old_file, envir = old_env)
 old_rule <- old_env$compute_possessions
 say("Previous rule: %s (%s)", OLD_RULE_SHA, system2("git", c("rev-parse", OLD_RULE_SHA), stdout = TRUE))
 source("etl/tests/helper-possession-fixtures.R")
+FIXTURES <- get(PIN$fixtures)
 
 readRenviron("etl/.Renviron")
 pg <- dbConnect(Postgres(), host = Sys.getenv("PG_HOST"), port = 5432L, dbname = Sys.getenv("PG_DB"),
@@ -81,9 +97,10 @@ pg_rule <- function(rule, rows) {
 }
 
 # The targets SQL with its rows CTE replaced by the given rows (as the view would hold them).
-TARGETS_SQL <- paste(readLines("sql/migrations/2026-11-03_and_one_possession_targets.sql"), collapse = "\n")
+TARGETS_SQL <- paste(readLines(PIN$sql), collapse = "\n")
 VIEW_COLS <- c(game_id = "int4", id = "int4", parent_action_id = "int4", quarter = "int4", type = "text",
-  parameters_type = "text", parameters_made = "text", team_id = "int4", final_end_poss = "bool")
+  parameters_type = "text", parameters_made = "text", team_id = "int4",
+  end_game_seconds_remaining = "float8", final_end_poss = "bool")
 targets_on_rows <- function(view_rows) {
   swapped <- sub("-- rows:begin.*-- rows:end",
     sprintf("WITH rows AS (%s),", values_sql(view_rows[names(VIEW_COLS)], VIEW_COLS)), TARGETS_SQL)
@@ -107,12 +124,19 @@ compare <- function(label, old_ids, new_ids, target_ids) {
 
 say("Pass 1: fixtures (duckdb; SQL on PostgreSQL VALUES)")
 dev_ends <- list()
-for (nm in names(POSSESSION_FIXTURES)) {
-  fx <- POSSESSION_FIXTURES[[nm]]
+for (nm in names(FIXTURES)) {
+  fx <- FIXTURES[[nm]]
   old_out <- duck_rule(old_rule, fx$rows); new_out <- duck_rule(new_rule, fx$rows)
   dev_ends[[nm]] <- end_ids(new_out)
   compare(nm, end_ids(old_out), end_ids(new_out), targets_on_rows(view_rows_from(fx$rows, old_out))$id)
   if (!identical(end_ids(new_out), fx$ends)) fail("%s: new rule ends differ from the fixture's expectation", nm)
+}
+
+if (!PIN$archive_passes) {
+  say("Passes 2 and 3 are one-shot and already spent for this rule; fixtures only.")
+  if (length(failures)) { say("PIN FAILED (%d)", length(failures)); quit(status = 1L) }
+  say("PIN OK")
+  quit(status = 0L)
 }
 
 say("Pass 2: archive (duckdb, 2026 and 2027 games)")
@@ -141,12 +165,12 @@ if (setequal(removed, tkeys) && !length(added)) say("  archive pass: removed set
 
 say("Pass 3: the new rule on PostgreSQL")
 t0 <- proc.time()[["elapsed"]]
-for (nm in names(POSSESSION_FIXTURES)) {
-  fx <- POSSESSION_FIXTURES[[nm]]
+for (nm in names(FIXTURES)) {
+  fx <- FIXTURES[[nm]]
   got <- end_ids(pg_rule(new_rule, fx$rows))
   if (!identical(got, fx$ends) || !identical(got, dev_ends[[nm]])) fail("PostgreSQL fixture %s: ends {%s}, expected {%s}", nm, paste(got, collapse = ","), paste(fx$ends, collapse = ","))
 }
-say("  %d fixtures on PostgreSQL: %s (%.1fs)", length(POSSESSION_FIXTURES),
+say("  %d fixtures on PostgreSQL: %s (%.1fs)", length(FIXTURES),
     if (!length(failures)) "all match" else "see FAIL lines", secs(t0))
 g <- tg$game_id[tg$game_id %in% games$game_id[games$game_year == 2027]][1]
 rows_g <- arch[arch$game_id == g, ]
@@ -158,6 +182,10 @@ say("  full 2027 game %d (%d rows, holds %d targets): %d ends on PostgreSQL, %d 
     sum(tg$game_id == g), length(end_ids(pg_g)), length(duck_ids), took)
 if (!identical(end_ids(pg_g), duck_ids)) fail("PostgreSQL ends differ from duckdb in game %d", g)
 if (took > 60) fail("game %d took %.1fs on PostgreSQL (over 60s; the ETL limit is 120s)", g, took)
+t0 <- proc.time()[["elapsed"]]
+pg_old <- pg_rule(old_rule, rows_g)
+took_old <- secs(t0)
+say("  same game, previous rule (%s) on PostgreSQL: %d ends, %.1fs; new rule %.1fs", OLD_RULE_SHA, length(end_ids(pg_old)), took_old, took)
 
 if (length(failures)) { say("PIN FAILED (%d)", length(failures)); quit(status = 1L) }
 say("PIN OK")

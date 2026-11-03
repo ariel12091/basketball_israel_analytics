@@ -7,7 +7,7 @@
 -- A shot that is not an end now (the old rule moved the end to a made last free throw) is not selected.
 -- Window functions only: a correlated subquery over a CTE ran over 2 minutes on this view.
 -- Read-only. scripts/apply_possession_end_backfill.R --rule and-one applies the result.
--- $1 is the int4[] of seasons; scripts/pin_and_one_targets.R swaps the text between the
+-- $1 is the int4[] of seasons; scripts/pin_possession_rule_targets.R swaps the text between the
 -- rows markers for fixture rows (one row per action, offense perspective) and runs it without $1.
 -- rows:begin
 WITH games AS (

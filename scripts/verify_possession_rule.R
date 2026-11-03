@@ -1,8 +1,9 @@
 # Possession-end checks for a possession-end rule (--rule special-foul: D29, plan
 # docs/superpowers/plans/2026-11-02-special-foul-possession-ends.md; --rule and-one: D30, plan
-# docs/superpowers/plans/2026-11-03-and-one-own-rebound-possession.md). Read-only.
+# docs/superpowers/plans/2026-11-03-and-one-own-rebound-possession.md; --rule phantom-ends: D30, plan
+# docs/superpowers/plans/2026-11-03-phantom-possession-ends.md). Read-only.
 #
-#   Rscript scripts/verify_possession_rule.R --rule and-one --season 2027
+#   Rscript scripts/verify_possession_rule.R --rule and-one|phantom-ends --season 2027
 #       report: same-team repeats, off - def histogram, mirror check, affected games
 #   Rscript scripts/verify_possession_rule.R --rule and-one --season 2027 --baseline <file.csv>
 #       also write the per team-game table
@@ -17,7 +18,8 @@
 # One table per rule: its targets SQL, as in scripts/apply_possession_end_backfill.R.
 RULES <- list(
   `special-foul` = list(sql = "sql/migrations/2026-11-02_special_foul_possession_targets.sql"),
-  `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql")
+  `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql"),
+  `phantom-ends` = list(sql = "sql/migrations/2026-11-03_phantom_possession_end_targets.sql")
 )
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -26,7 +28,7 @@ arg_value <- function(flag) {
   if (is.na(i) || i == length(args)) NULL else args[[i + 1L]]
 }
 rule_name <- arg_value("--rule")
-stopifnot("--rule special-foul|and-one is required" = !is.null(rule_name), rule_name %in% names(RULES))
+stopifnot("--rule special-foul|and-one|phantom-ends is required" = !is.null(rule_name), rule_name %in% names(RULES))
 season <- as.integer(arg_value("--season"))
 stopifnot(length(season) == 1L, !is.na(season))
 baseline <- arg_value("--baseline")
