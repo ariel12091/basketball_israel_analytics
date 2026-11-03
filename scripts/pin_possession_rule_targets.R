@@ -25,9 +25,9 @@
 # etl/tests/helper-possession-fixtures.R) and whether passes 2 and 3 can still run.
 PIN_RULES <- list(
   `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql",
-                        old_sha = "dfd4667", fixtures = "POSSESSION_FIXTURES", archive_passes = FALSE),
+                        old_sha = "dfd4667", fixtures = "POSSESSION_FIXTURES", archive_passes = FALSE, view_perspective = FALSE),
   `phantom-ends` = list(sql = "sql/migrations/2026-11-03_phantom_possession_end_targets.sql",
-                        old_sha = "413fd0f", fixtures = "PHANTOM_END_FIXTURES", archive_passes = TRUE)
+                        old_sha = "413fd0f", fixtures = "PHANTOM_END_FIXTURES", archive_passes = TRUE, view_perspective = TRUE)
 )
 args <- commandArgs(trailingOnly = TRUE)
 j <- match("--rule", args)
@@ -109,6 +109,14 @@ targets_on_rows <- function(view_rows) {
 }
 view_rows_from <- function(rows, old_out) {
   r <- as.data.frame(rows)
+  # In the view's offense rows a foul, steal, block, deflection or defensive rebound sits under the
+  # other team (the perspective); fixtures hold the actor. Teams are 1 and 2. Only turnovers, shots
+  # and offensive rebounds name the team itself.
+  if (PIN$view_perspective) {
+    other <- r$type %in% c("foul", "steal", "block", "deflection") |
+      (r$type %in% "rebound" & r$parameters_type %in% "defensive")
+    r$team_id[other] <- 3L - r$team_id[other]
+  }
   r$final_end_poss <- key(r$game_id, r$id) %in% key(old_out$game_id, old_out$id[old_out$final_end_poss %in% TRUE])
   r
 }
