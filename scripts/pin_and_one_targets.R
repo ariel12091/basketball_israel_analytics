@@ -14,6 +14,10 @@
 #      full archived 2027 game, as dplyr::tbl(con, sql("... VALUES ...")): equal to duckdb. A game over
 #      60 seconds is a stop (the ETL role's statement limit is 2 minutes).
 # Exits 1 on any difference.
+#
+# ONE-SHOT, PRE-BACKFILL: passes 2 and 3 pick their targets from the stored view, and the backfill of
+# 2026-11-03 emptied that selection, so they now fail by design and the failure says nothing. Stored
+# rows are watched by app/tests/testthat/test-and-one-targets-db.R, which expects no target nightly.
 
 OLD_RULE_SHA <- "dfd4667"
 

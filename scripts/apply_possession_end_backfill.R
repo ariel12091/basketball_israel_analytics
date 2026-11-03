@@ -1,6 +1,7 @@
 # Applies a possession-end rule to stored rows, without re-fetching play-by-play: flips
 # final_end_poss on the rows that the rule's targets SQL selects (the table RULES below), then refreshes what reads them in the ETL's Phase 4 order, and carries the same flip
-# into the cold Parquet archive so a restore cannot bring the old ends back.
+# into the cold Parquet archive so a restore from it cannot bring the old ends back. A game the
+# local archive does not hold is not patched (and-one: 82 of 87 targets were in it).
 # --rule special-foul: the technical/unsportsmanlike/disqualifying free-throw rule (D29).
 # --rule and-one: a made and-one the team rebounds itself keeps the possession open (D30).
 # Used for 2026-27 too: etl_full(game_ids = <42 games>) failed the 2-minute Phase 4 limit and
@@ -32,6 +33,18 @@ seasons <- as.integer(strsplit(args[[i + 1L]], ",")[[1]])
 stopifnot(length(seasons) > 0L, !anyNA(seasons), all(seasons %in% c(2025L, 2026L, 2027L)))
 apply <- identical(Sys.getenv("CONFIRM_POSSESSION_BACKFILL"), "1")
 
+# The backup folder stays as the rollback copy, so targets.csv alone cannot tell a failed run from a
+# finished one: Step 4 writes done.txt, and a rule that has finished is not run or reported again.
+backup <- rule$backup
+targets_file <- file.path(backup, "targets.csv")
+done_file <- file.path(backup, "done.txt")
+if (file.exists(done_file))
+  stop(sprintf("This rule's backfill already finished (%s). Check it with scripts/verify_possession_rule.R; to apply it again, first move %s aside.",
+               paste(readLines(done_file), collapse = " "), backup), call. = FALSE)
+resume_sub <- identical(args[match("--resume-at", args) + 1L], "sub-lineups")
+if (resume_sub && !file.exists(targets_file))
+  stop(sprintf("--resume-at needs %s from the failed run; without it Steps 1-2 would be skipped on rows they never changed.", targets_file), call. = FALSE)
+
 readRenviron("etl/.Renviron")
 suppressPackageStartupMessages({ library(DBI); library(RPostgres) })
 con <- dbConnect(Postgres(), host = Sys.getenv("PG_HOST"), port = 5432L, dbname = Sys.getenv("PG_DB"),
@@ -43,8 +56,6 @@ x <- function(sql) { t0 <- proc.time()[["elapsed"]]; dbExecute(con, sql); say(" 
 
 # Step 1 removes the rows the query selects, so a rerun could not find them again: the targets are
 # saved before the first write and a rerun after a failure resumes from that file.
-backup <- rule$backup
-targets_file <- file.path(backup, "targets.csv")
 SQL <- paste(readLines(rule$sql), collapse = "\n")
 resuming <- file.exists(targets_file)
 targets <- if (resuming) utils::read.csv(targets_file) else
@@ -60,7 +71,6 @@ if (!resuming) {
   dir.create(backup, recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(targets, targets_file, row.names = FALSE)
 }
-resume_sub <- identical(args[match("--resume-at", args) + 1L], "sub-lineups")
 arr <- function(v) sprintf("{%s}", paste(as.integer(v), collapse = ","))
 batches <- split(games, ceiling(seq_along(games) / 25L))
 each_batch <- function(fn) {
@@ -101,11 +111,15 @@ x("SELECT basketball_test.refresh_sub_lineups_stats()")
 say("Step 3: cold archive")
 for (t in c("possessions", "pws")) {
   f <- sprintf("exports/cold/%s.parquet", t)
-  file.copy(f, file.path(backup, basename(f)), overwrite = FALSE)
+  saved <- file.path(backup, basename(f))
+  # This is the only full archive: no patched file replaces it until its copy and the new file exist.
+  if (!file.exists(saved) && !file.copy(f, saved)) stop("Could not back up ", f)
   d <- as.data.frame(arrow::read_parquet(f, mmap = FALSE))
   hit <- paste(d$game_id, d$id) %in% paste(targets$game_id, targets$id) & d$final_end_poss %in% TRUE
   d$final_end_poss[hit] <- FALSE
-  arrow::write_parquet(d, f)
+  tmp <- paste0(f, ".tmp")
+  arrow::write_parquet(d, tmp)
+  if (!file.rename(tmp, f)) stop("Could not replace ", f, "; the patched copy is ", tmp)
   say("  %s: %d rows flipped, %d rows kept", t, sum(hit), nrow(arrow::read_parquet(f, col_select = "id", mmap = FALSE)))
 }
 
@@ -113,5 +127,6 @@ say("Step 4: cache marker")
 stamp <- dbGetQuery(con, "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS s")$s
 dbExecute(con, "UPDATE basketball_test.app_meta SET value = $1 WHERE key = 'etl_full_last_success'", params = list(stamp))
 say("  advanced to %s", stamp)
+writeLines(paste("finished", stamp, "UTC"), done_file)
 dbDisconnect(con)
-say("Done. Run scripts/verify_possession_rule.R --rule <rule> --season <year> --compare <baseline> for each season.")
+say("Done. Run scripts/verify_possession_rule.R --rule <rule> --season <year> --compare <baseline> for each season, then the scripts/repair_onoff_d23.R trial for each season.")
