@@ -61,8 +61,23 @@ compute_possessions <- function(actions_tbl) {
         TRUE ~ end_poss
       )
     ) |>
+    # And-one candidate: a made shot whose group's last free throw was missed and then
+    # rebounded by the offense. The rebound test reads the last free-throw id, so it
+    # needs its own mutate().
+    mutate(.last_ft_id = max(if_else(type == "freeThrow", id, NA_integer_), na.rm = TRUE)) |>
+    mutate(
+      .own_rebound_after = max(if_else(type == "rebound" & parameters_type == "offensive" &
+                                         id > .last_ft_id, 1L, 0L), na.rm = TRUE),
+      .last_ft_missed    = max(if_else(type == "freeThrow" & id == .last_ft_id &
+                                         parameters_made == "missed", 1L, 0L), na.rm = TRUE)
+    ) |>
     ungroup() |>
-    select(-next_type, -next_paramtype)
+    mutate(.own_rebound_candidate = case_when(
+      id == parent_action_id & type == "shot" & parameters_made == "made" &
+        .last_ft_missed == 1L & .own_rebound_after == 1L ~ TRUE,
+      TRUE ~ FALSE
+    )) |>
+    select(-next_type, -next_paramtype, -.last_ft_id, -.own_rebound_after, -.last_ft_missed)
   
   eoq_targets <- poss0 |>
     group_by(game_id, quarter) |>
@@ -94,13 +109,35 @@ compute_possessions <- function(actions_tbl) {
     ungroup() |>
     distinct(game_id, id) |>
     mutate(eoq_special_ft = TRUE)
-  base |>
+  with_ends <- base |>
     left_join(eoq_targets, by = c("game_id", "id")) |>
     left_join(eoq_ft, by = c("game_id", "id")) |>
     mutate(final_end_poss = case_when(
       eoq_override                     ~ TRUE,
       eoq_special_ft & sum_tech >= 1L  ~ TRUE,
       TRUE                             ~ final_end_poss_base
+    ))
+  # The next end after each end, by game and quarter in id order; only candidates are
+  # kept. (eoq_targets also carries a quarter column, so the join renames it quarter.x.)
+  next_end <- with_ends |>
+    filter(final_end_poss == TRUE) |>
+    group_by(game_id, quarter.x) |>
+    dbplyr::window_order(id) |>
+    mutate(.next_end_team = lead(team_id)) |>
+    ungroup() |>
+    filter(.own_rebound_candidate) |>
+    select(game_id, id, .next_end_team)
+
+  with_ends |>
+    # This runs last, on the finished ends: the end-of-quarter overrides above decide
+    # which ends exist, and the made shot gives its end up only when the next end after
+    # it (same game and quarter) is the same team's. A rebound that closes the period
+    # is itself an end, so it keeps the made shot's end off.
+    left_join(next_end, by = c("game_id", "id")) |>
+    mutate(final_end_poss = case_when(
+      .own_rebound_candidate & .next_end_team == team_id ~ FALSE,
+      TRUE                                              ~ final_end_poss
     )) |>
-    select(-eoq_override, -eoq_special_ft, -final_end_poss_base, -.effective_ft_awarded)
+    select(-eoq_override, -eoq_special_ft, -final_end_poss_base, -.effective_ft_awarded,
+           -.own_rebound_candidate, -.next_end_team)
 }

@@ -1,41 +1,10 @@
 # compute_possessions(): a free throw awarded for a technical, unsportsmanlike or
 # disqualifying foul does not end the possession; the shooting team keeps the ball
 # (docs/shared_definitions.md, Possession).
-# Run: Rscript -e "testthat::test_file('etl/tests/test_special_foul_possession.R')"
+# Run: Rscript -e "testthat::test_file('etl/tests/test_possession_rules.R')"
 library(testthat)
 suppressPackageStartupMessages({ library(dplyr); library(dbplyr) })
 source("../possession_rules.R")
-
-con <- DBI::dbConnect(duckdb::duckdb())
-withr::defer(DBI::dbDisconnect(con, shutdown = TRUE), teardown_env())
-
-# One row per action, in the actions_clean columns compute_possessions() reads.
-act <- function(id, type, parent = id, ptype = NA_character_, made = NA_character_,
-                pts = NA_real_, ft_no = NA_integer_, ft_of = NA_integer_, team = 1L, q = 1L) {
-  tibble::tibble(game_id = 1L, id = as.integer(id), parent_action_id = as.integer(parent),
-                 quarter = as.integer(q), end_game_seconds_remaining = 2400 - as.numeric(id),
-                 user_time = sprintf("20:%02d:00", as.integer(id)), team_id = as.integer(team),
-                 type = type, parameters_type = ptype, parameters_made = made,
-                 parameters_points = pts, parameters_free_throw_number = as.integer(ft_no),
-                 parameters_free_throws_awarded = as.integer(ft_of))
-}
-ft <- function(id, parent, no, of, made = "made", team = 1L)
-  act(id, "freeThrow", parent, made = made, pts = if (made == "made") 1 else NA_real_,
-      ft_no = no, ft_of = of, team = team)
-shot <- function(id, parent = id, made = "made", ptype = "lay-up", team = 1L)
-  act(id, "shot", parent, ptype = ptype, made = made, pts = 2, team = team)
-foul <- function(id, kind, parent = id, team = 2L) act(id, "foul", parent, ptype = kind, team = team)
-
-# Ids whose final_end_poss is TRUE (NA and FALSE are both "not an end").
-ends <- function(rows) {
-  name <- paste0("a", sample.int(1e9, 1))
-  dplyr::copy_to(con, rows, name, overwrite = TRUE)
-  out <- compute_possessions(dplyr::tbl(con, name)) |> dplyr::collect()
-  sort(out$id[out$final_end_poss %in% TRUE])
-}
-
-# Team 2 fouls team 1, two made free throws, then team 1 scores.
-trip <- function(kind) dplyr::bind_rows(foul(1, kind), ft(2, 1, 1, 2), ft(3, 1, 2, 2), shot(4))
 
 test_that("every special-foul label keeps the possession, in every season's spelling", {
   for (kind in c("technical", "technical-behavioral", "technical-administrative",
@@ -82,4 +51,12 @@ test_that("a technical free throw shot by the team without the ball is not an en
   rows <- dplyr::bind_rows(foul(1, "technical-behavioral", team = 1L),
                            ft(2, 1, 1, 1, team = 2L), shot(3, team = 1L))
   expect_equal(ends(rows), 3L)
+})
+
+# Fixtures live in helper-possession-fixtures.R so other scripts can reuse the rows.
+test_that("a made and-one the team rebounds keeps the possession open", {
+  for (nm in names(POSSESSION_FIXTURES)) {
+    fx <- POSSESSION_FIXTURES[[nm]]
+    expect_equal(ends(fx$rows), fx$ends, info = nm)
+  }
 })
