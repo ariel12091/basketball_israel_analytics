@@ -45,14 +45,16 @@ export default function GameflowClient({
       sidebar={null}
       mainOnly
       main={
-        <>
-          <Link href={back}>Back to Game Logs</Link>
-          <GameflowSurface
-            {...state}
-            standalone
-            onClose={() => router.push(back)}
-          />
-        </>
+        <GameflowSurface
+          {...state}
+          standalone
+          backLink={
+            <Link href={back} className="ibpl-gameflow-back">
+              <span aria-hidden="true">←</span> Back to Game Logs
+            </Link>
+          }
+          onClose={() => router.push(back)}
+        />
       }
     />
   );

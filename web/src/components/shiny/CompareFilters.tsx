@@ -7,6 +7,7 @@ import Selectize, { type Choice } from "./Selectize";
 import DateRangeInput from "./DateRangeInput";
 import { StarterRows } from "./TabKit";
 import catalogues from "@/data/catalogues.json";
+import { choiceValues } from "@/lib/choices";
 export function CompareSelect({
   id,
   label,
@@ -28,7 +29,7 @@ export function CompareSelect({
     <Selectize
       id={id}
       label={label}
-      value={value.split(",").filter(Boolean)}
+      value={choiceValues(value, choices)}
       choices={choices}
       multiple={multiple}
       placeholder={placeholder}

@@ -6,13 +6,16 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type { League } from "@/rules/gameLogs";
 import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
   aggregateSegments,
   clock,
+  fitGameflowLayout,
   laneKey,
+  lineupsRoom,
   marginPath,
   pmLabel,
   scoreAt,
@@ -42,6 +45,44 @@ export function useNarrow() {
 export function gameflowPath(league: League, game: number, team: number) {
   return `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`;
 }
+/** Room left under the chart: the panel's padding and a little air. */
+const BELOW_CHART = 21;
+/** .gf-details' margins, top and bottom. */
+const DETAILS_MARGINS = 12;
+/**
+ * The space the wide chart may fill in this window, measured once and on
+ * resize. What it is then drawn to depends on whether the lineups are open.
+ */
+function useChartSpace(
+  compact: boolean,
+  box: RefObject<HTMLDivElement | null>,
+) {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    if (compact) return;
+    const measure = () => {
+      const el = box.current;
+      if (!el) return;
+      // Position in the page, not the window: where the chart sits unscrolled.
+      const top = el.getBoundingClientRect().top + scrollY,
+        next = {
+          width: el.clientWidth,
+          height: Math.max(0, innerHeight - top - BELOW_CHART),
+        };
+      setSize((s) =>
+        s?.width === next.width && s.height === next.height ? s : next,
+      );
+    };
+    measure();
+    // A web font arriving late can rewrap the navbar and move the chart.
+    void document.fonts?.ready.then(measure);
+    addEventListener("resize", measure);
+    return () => removeEventListener("resize", measure);
+  }, [compact, box]);
+  return compact ? null : size;
+}
 export function GameflowView({
   data,
   compact,
@@ -52,31 +93,37 @@ export function GameflowView({
   const [selected, setSelected] = useState<string[]>([]),
     [active, setActive] = useState<BarWindow | null>(null),
     [hover, setHover] = useState<BarWindow | null>(null),
+    [hoverBox, setHoverBox] = useState<DOMRect | null>(null),
+    [lineupsUsed, setLineupsUsed] = useState<number | null>(null),
     [focus, setFocus] = useState<string | null>(null),
     [preview, setPreview] = useState<Window[] | null>(null),
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState("");
   const cards = useRef(new Map<number, HTMLElement>()),
-    detail = useRef<HTMLElement>(null);
+    detail = useRef<HTMLElement>(null),
+    chartBox = useRef<HTMLDivElement>(null),
+    lineupsBox = useRef<HTMLDivElement>(null),
+    space =useChartSpace(compact, chartBox),
+    // The click that opened the chart leaves the pointer resting on a bar. That
+    // is not a hover: acting on it would cover the first look with a tooltip.
+    pointerMoved = useRef(false),
+    restingOn = useRef<{ window: BarWindow; box: DOMRect } | null>(null);
   const windows = sharedWindows(data.bars, selected),
     total = windows.reduce((sum, w) => sum + w.end - w.start, 0);
   const groups =
     selected.length > 1
       ? sharedLineups(data, selected, windows)
       : active
-        ? aggregateSegments(
-            windowSegments(
-              data.lanes,
-              data.steps,
-              data.dict,
-              active.bar.side,
-              active.bar.player_key,
-              active.start,
-              active.end,
-            ),
-          )
+        ? stintLineups(data, active)
         : [];
+  // A click on a bar is about that stint, a click on a name the whole game.
+  const stint =
+    selected.length === 1 &&
+    active &&
+    !(active.start === 0 && active.end === data.bounds[data.bounds.length - 1])
+      ? active
+      : null;
   const groupKey = (g: (typeof groups)[number]) => `${g.side}:${g.dictIndex}`;
   const focused = groups.find((g) => groupKey(g) === focus);
   const echo = focused
@@ -94,20 +141,32 @@ export function GameflowView({
       ? selected.length > 1
         ? focused.windows
         : echo!
-      : selected.length
-        ? windows
-        : hover
-          ? [{ start: hover.start, end: hover.end }]
-          : []);
+      : stint
+        ? [{ start: stint.start, end: stint.end }]
+        : selected.length
+          ? windows
+          : hover
+            ? [{ start: hover.start, end: hover.end }]
+            : []);
   const toggle = (b: Bar, window?: BarWindow) => {
     const key = laneKey(b),
       next = selected.includes(key)
         ? selected.filter((p) => p !== key)
         : [...selected, key];
-    setSelected(next);
     setFocus(null);
     setPreview(null);
     setHover(null);
+    // Another stint of the player on show moves to it, rather than deselecting.
+    if (
+      window &&
+      stint &&
+      laneKey(stint.bar) === key &&
+      stint.start !== window.start
+    ) {
+      setActive(window);
+      return;
+    }
+    setSelected(next);
     if (next.length === 1) {
       const bar =
         next[0] === key ? b : data.bars.find((b) => laneKey(b) === next[0])!;
@@ -127,6 +186,36 @@ export function GameflowView({
     setFocus(null);
     setPreview(null);
   };
+  // Wide: hovering moves nothing (it made bars slide out from under the pointer
+  // on the way to a click, user 2026-11-04), so it shows a tooltip, and only a
+  // click opens the details and shrinks the chart. Narrow keeps its inline card.
+  const activeWindow = compact ? (hover ?? active) : active;
+  const showStint =
+    !!activeWindow &&
+    selected.length < 2 &&
+    !(
+      activeWindow.start === 0 &&
+      activeWindow.end === data.bounds[data.bounds.length - 1]
+    );
+  const lanes = new Set(data.bars.map(laneKey)).size,
+    lineupsOpen = showStint || groups.length > 0,
+    room = space && lineupsRoom(lanes, space),
+    // The lineups take only what they fill, up to the room; the chart the rest.
+    taken = room != null && lineupsUsed != null ? Math.min(room, lineupsUsed) : room,
+    layout = space
+      ? fitGameflowLayout(
+          lanes,
+          lineupsOpen && taken != null
+            ? { ...space, height: space.height - taken }
+            : space,
+          lineupsOpen,
+        )
+      : undefined;
+  // Before paint, whenever what is listed can change.
+  useLayoutEffect(() => {
+    const el = lineupsBox.current;
+    if (el) setLineupsUsed(el.offsetHeight + DETAILS_MARGINS);
+  }, [active, selected, room]);
   const common = {
     data,
     compact,
@@ -134,24 +223,32 @@ export function GameflowView({
     highlight,
     onPlayer: (bar: Bar) => toggle(bar),
     onBar: (window: BarWindow) => toggle(window.bar, window),
-    onHover: setHover,
+    onHover: (window: BarWindow | null, box: DOMRect | null) => {
+      restingOn.current = window && box && { window, box };
+      if (window && !pointerMoved.current) return;
+      setHover(window);
+      setHoverBox(box);
+    },
     active: hover ?? active,
+    stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
+    layout,
   };
-  const prompt = selected.length
-    ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
-    : labels.prompt;
-  const activeWindow = hover ?? active;
+  const prompt = stint
+    ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
+    : selected.length
+      ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
+      : labels.prompt;
   // Which team the selection belongs to: details sit next to its lanes.
   const sideOf = (key: string) =>
     data.bars.find((b) => laneKey(b) === key)?.side;
-  const upper = selected.length
-    ? selected.every((k) => sideOf(k) === "own")
-    : activeWindow?.bar.side === "own";
-  const details = (
+  const upper =
+    selected.length > 0 && selected.every((k) => sideOf(k) === "own");
+  const list = (
     <GameflowDetails
       data={data}
       activeWindow={activeWindow}
+      showStint={showStint}
       selected={selected}
       groups={groups}
       groupKey={groupKey}
@@ -161,8 +258,39 @@ export function GameflowView({
       detail={detail}
     />
   );
+  // The margins are part of the room the chart gave up.
+  const details =
+    room != null && lineupsOpen ? (
+      <div
+        className="gf-details"
+        ref={lineupsBox}
+        style={{ maxHeight: room - DETAILS_MARGINS }}
+      >
+        {list}
+      </div>
+    ) : (
+      list
+    );
   return (
-    <div className="ibpl-ribbon-game ibpl-react-gameflow">
+    <div
+      className="ibpl-ribbon-game ibpl-react-gameflow"
+      onPointerMove={(e) => {
+        if (pointerMoved.current || !(e.movementX || e.movementY)) return;
+        pointerMoved.current = true;
+        // It really is hovering the bar it was resting on, now.
+        if (restingOn.current) {
+          setHover(restingOn.current.window);
+          setHoverBox(restingOn.current.box);
+        }
+      }}
+      onKeyDown={() => {
+        // Keyboard users never move the pointer: their focus is a real hover.
+        pointerMoved.current = true;
+      }}
+    >
+      {!compact && hover && hoverBox && (
+        <GameflowHoverTip data={data} window={hover} box={hoverBox} />
+      )}
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
           {data.health}
@@ -283,7 +411,10 @@ export function GameflowView({
           // Top team selected: its lanes, then the lineups, then the margin
           // chart and the other team.
           <>
-            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+            <div
+              className="ibpl-ribbon-inline-scroll ibpl-gameflow-full"
+              ref={chartBox}
+            >
               <GameflowChart {...common} crop="top" />
             </div>
             {details}
@@ -293,7 +424,10 @@ export function GameflowView({
           </>
         ) : (
           <>
-            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+            <div
+              className="ibpl-ribbon-inline-scroll ibpl-gameflow-full"
+              ref={chartBox}
+            >
               <GameflowChart {...common} />
             </div>
             {details}
@@ -331,6 +465,85 @@ export function GameflowView({
     </div>
   );
 }
+const stintLineups = (data: GameflowPayload, w: BarWindow) =>
+  aggregateSegments(
+    windowSegments(
+      data.lanes,
+      data.steps,
+      data.dict,
+      w.bar.side,
+      w.bar.player_key,
+      w.start,
+      w.end,
+    ),
+  );
+const TIP_WIDTH = 400,
+  TIP_ROWS = 6;
+/** What a hovered stint holds, floating clear of its bar: nothing moves. */
+function GameflowHoverTip({
+  data,
+  window,
+  box,
+}: {
+  data: GameflowPayload;
+  window: BarWindow;
+  box: DOMRect;
+}) {
+  const d = windowDetail(
+      data.lanes,
+      data.steps,
+      data.dict,
+      window.bar,
+      window.start,
+      window.end,
+    ),
+    lineups = stintLineups(data, window),
+    above = box.top > innerHeight / 2;
+  return (
+    <div
+      className="gf-hover-tip"
+      role="tooltip"
+      style={{
+        left: Math.max(
+          8,
+          Math.min(
+            innerWidth - TIP_WIDTH - 8,
+            box.left + box.width / 2 - TIP_WIDTH / 2,
+          ),
+        ),
+        width: TIP_WIDTH,
+        ...(above
+          ? { bottom: innerHeight - box.top + 6 }
+          : { top: box.bottom + 6 }),
+      }}
+    >
+      <div className="ibpl-ribbon-detail-head">
+        {window.bar.player_label} · {clock(window.start)}–{clock(window.end)}
+      </div>
+      <div className="gf-hover-tip-stats">
+        {clock(d.end - d.start)} on the floor · +/- {d.pm}
+        {d.pf !== "" && ` · ${d.pf} for, ${d.pa} against`}
+      </div>
+      {lineups.slice(0, TIP_ROWS).map((g) => (
+        <div className="gf-hover-tip-row" key={g.dictIndex}>
+          <div>
+            {data.dict[g.dictIndex]?.members.split(" | ").join(" · ") ??
+              "Lineup unavailable"}
+          </div>
+          <div className="ibpl-ribbon-detail-meta">
+            {clock(g.duration)}
+            {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+          </div>
+        </div>
+      ))}
+      {lineups.length > TIP_ROWS && (
+        <div className="ibpl-ribbon-detail-meta">
+          +{lineups.length - TIP_ROWS} more. Click the bar to see them all.
+        </div>
+      )}
+    </div>
+  );
+}
 function StintStats({ d }: { d: ReturnType<typeof windowDetail> }) {
   return (
     <dl className="gf-stint-stats">
@@ -357,6 +570,7 @@ function StintStats({ d }: { d: ReturnType<typeof windowDetail> }) {
 function GameflowDetails({
   data,
   activeWindow,
+  showStint,
   selected,
   groups,
   groupKey,
@@ -367,6 +581,7 @@ function GameflowDetails({
 }: {
   data: GameflowPayload;
   activeWindow: BarWindow | null;
+  showStint: boolean;
   selected: string[];
   groups: ReturnType<typeof aggregateSegments>;
   groupKey: (g: ReturnType<typeof aggregateSegments>[number]) => string;
@@ -375,13 +590,9 @@ function GameflowDetails({
   setPreview: (w: Window[] | null) => void;
   detail: React.RefObject<HTMLElement | null>;
 }) {
-  const whole =
-    !!activeWindow &&
-    activeWindow.start === 0 &&
-    activeWindow.end === data.bounds[data.bounds.length - 1];
   return (
     <>
-      {activeWindow && selected.length < 2 && !whole && (
+      {activeWindow && showStint && (
         <section
           className="ibpl-ribbon-detail is-card"
           aria-label="Stint detail"
@@ -495,12 +706,15 @@ export function GameflowSurface({
   onClose,
   standalone = false,
   backLabel = "Back",
+  backLink,
   data,
   loading,
   error,
   retry,
-}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> &
-  Pick<
+}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> & {
+  /** The direct page's way back, on the title's row. */
+  backLink?: ReactNode;
+} & Pick<
     ReturnType<typeof useTabData<GameflowPayload>>,
     "data" | "loading" | "error" | "retry"
   >) {
@@ -557,6 +771,7 @@ export function GameflowSurface({
             <span aria-hidden="true">←</span> {backLabel}
           </button>
         )}
+        {backLink}
         <strong>{title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>

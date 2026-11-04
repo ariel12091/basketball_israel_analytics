@@ -1,6 +1,7 @@
 // app/R/helpers.R ribbon_* / merge_adjacent_stints and app.js overlap rules.
 // Raw scoring events drive as-of values; completed margin is drawing-only.
 import { rRound } from "./round";
+import geometry from "../data/gameflowLayout.json";
 export type Side = "own" | "opp";
 export type Window = { start: number; end: number };
 export type Lane = {
@@ -47,6 +48,78 @@ const finite = (v: number) => (Number.isFinite(v) ? v : null);
 const cmp = (a: string, b: string) => a.localeCompare(b);
 export const laneKey = (r: Pick<Lane, "side" | "player_key">) =>
   `${r.side}:${r.player_key}`;
+export type GameflowLayout = {
+  width: number;
+  gutter: number;
+  name_x: number;
+  min_x: number;
+  pm_x: number;
+  lane_height: number;
+  lane_gap: number;
+  margin_height: number;
+};
+/** Height of the whole chart in drawing units, both teams in the picture. */
+export const chartHeight =(L: GameflowLayout, lanes: number) =>
+  geometry.padTop +
+  geometry.header +
+  2 * geometry.bandGap +
+  L.margin_height +
+  lanes * (L.lane_height + L.lane_gap) -
+  2 * L.lane_gap +
+  12 + // the period labels under the last lane
+  geometry.padBottom;
+/**
+ * Fits the wide chart to the space under its header so the first look needs no
+ * scrolling (user 2026-11-04). Text and bars grow with the drawing scale, so
+ * the chart is drawn wider rather than squeezed: time takes the spare width and
+ * nothing distorts. Tighter rows are used only when the plain ones would shrink
+ * text below its natural size, and `minScale` keeps names legible: below it the
+ * page scrolls. A narrower column (Home's) is already short: it is left alone.
+ * With the lineups open the chart may also take the squeezed rows.
+ */
+export function fitGameflowLayout(
+  lanes: number,
+  box: { width: number; height: number },
+  lineupsOpen = false,
+): GameflowLayout {
+  const plain = geometry.desktop,
+    natural = box.width / plain.width;
+  if (natural <= geometry.minScale) return plain;
+  const tiers: GameflowLayout[] = [
+      plain,
+      { ...plain, ...geometry.tight },
+      ...(lineupsOpen ? [{ ...plain, ...geometry.squeezed }] : []),
+    ],
+    wanted = Math.min(1, natural),
+    L =
+      tiers.find((t) => box.height / chartHeight(t, lanes) >= wanted) ??
+      tiers[tiers.length - 1],
+    fitted = box.height / chartHeight(L, lanes),
+    scale = Math.min(natural, Math.max(geometry.minScale, fitted));
+  return { ...L, width: box.width / scale };
+}
+/**
+ * Height given to the lineups under a fitted chart, or null where the chart is
+ * not fitted. One fixed height, whatever is listed: the chart changes size once
+ * when the lineups open, not again for every bar the pointer crosses, and a long
+ * list scrolls inside this space (user 2026-11-04).
+ */
+export function lineupsRoom(
+  lanes: number,
+  box: { width: number; height: number },
+) {
+  if (box.width / geometry.desktop.width <= geometry.minScale) return null;
+  const smallestChart =
+    chartHeight({ ...geometry.desktop, ...geometry.squeezed }, lanes) *
+    geometry.minScale;
+  return Math.max(
+    geometry.lineupsMinRoom,
+    Math.min(
+      box.height * geometry.lineupsShare,
+      box.height - smallestChart,
+    ),
+  );
+}
 export const periodBounds = (periods: number | null) =>
   Array.from({ length: Math.max(4, Math.trunc(periods || 4)) }, (_, i) =>
     i < 4 ? (i + 1) * 600 : 2400 + (i - 3) * 300,
@@ -405,7 +478,9 @@ export function aggregateSegments(segments: Segment[]) {
   return [...groups.values()]
     .map((g) => ({
       ...g,
-      windows: g.windows.sort((a, b) => a.start - b.start),
+      // Back-to-back pieces of the same lineup read as one stretch: the lineup
+      // is cut wherever the other team substitutes (user 2026-11-04).
+      windows: mergeWindows(g.windows),
     }))
     .sort(
       (a, b) =>
