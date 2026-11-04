@@ -45,3 +45,13 @@ test_that("cold_coverage_gaps flags hot ids not in parquet", {
   expect_equal(cold_coverage_gaps(hot_ids = integer(0), parquet_ids = integer(0)),
                integer(0))
 })
+
+test_that("cold_seed_problem lets only a complete seed or a truly empty release through", {
+  files <- c("pws.parquet", "stints.parquet")
+  expect_null(cold_seed_problem(0L, files, 0L, files))
+  # A release that was listed and holds nothing is a real first export.
+  expect_null(cold_seed_problem(0L, character(0), 0L, character(0)))
+  expect_match(cold_seed_problem(1L, character(0), 0L, character(0)), "could not list")
+  expect_match(cold_seed_problem(0L, files, 1L, character(0)), "could not download")
+  expect_match(cold_seed_problem(0L, files, 0L, "pws.parquet"), "missing stints.parquet")
+})

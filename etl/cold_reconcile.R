@@ -24,3 +24,21 @@ cold_coverage_gaps <- function(hot_ids, parquet_ids) {
   hot_ids <- as.integer(hot_ids); hot_ids <- hot_ids[!is.na(hot_ids)]
   sort(unique(setdiff(hot_ids, as.integer(parquet_ids))))
 }
+
+#' Why seeding cold_dir from the release cannot be trusted, or NULL when it can.
+#' Only a release that was listed successfully and holds no Parquet file may
+#' start empty; any other shortfall would make the upload replace the archive
+#' with this run's games alone.
+cold_seed_problem <- function(list_exit, assets, download_exit, present) {
+  if (list_exit != 0) {
+    return(sprintf("could not list the cold-storage release (exit %s)", list_exit))
+  }
+  if (download_exit != 0) {
+    return(sprintf("could not download the cold-storage release (exit %s)", download_exit))
+  }
+  missing <- setdiff(assets, present)
+  if (length(missing)) {
+    return(sprintf("the cold-storage download is missing %s", paste(missing, collapse = ", ")))
+  }
+  NULL
+}

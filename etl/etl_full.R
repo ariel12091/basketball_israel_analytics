@@ -1909,15 +1909,31 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             length(already)))
         } else {
           log_msg("  Seeding cold_dir from cold-storage/latest before export ...")
-          seed_exit <- system(sprintf(
-            "gh release download cold-storage/latest --dir %s",
-            shQuote(cold_dir)
+          # A failed seed must stop here, ahead of the export: the TRUNCATE below
+          # would empty the hot tables, and the upload would replace the release
+          # with this run's games alone. The hot rows stay, and the next run's
+          # export rescues them (cold_export_scope).
+          seed_listing <- suppressWarnings(system2(
+            "gh",
+            c("release", "view", "cold-storage/latest", "--json", "assets", "--jq", ".assets[].name"),
+            stdout = TRUE, stderr = FALSE
           ))
-          if (seed_exit == 0) {
-            seeded <- list.files(cold_dir, pattern = "[.]parquet$")
+          seed_list_exit <- attr(seed_listing, "status")
+          if (is.null(seed_list_exit)) seed_list_exit <- 0L
+          seed_assets <- grep("[.]parquet$", seed_listing, value = TRUE)
+          seed_exit <- if (seed_list_exit == 0 && length(seed_assets)) {
+            system(sprintf(
+              "gh release download cold-storage/latest --dir %s",
+              shQuote(cold_dir)
+            ))
+          } else 0L
+          seeded <- list.files(cold_dir, pattern = "[.]parquet$")
+          seed_problem <- cold_seed_problem(seed_list_exit, seed_assets, seed_exit, seeded)
+          if (!is.null(seed_problem)) stop(seed_problem, call. = FALSE)
+          if (length(seeded)) {
             log_msg(sprintf("  Seeded %d Parquet file(s) from the release", length(seeded)))
           } else {
-            log_msg("  No release assets to seed from; this export starts empty", "WARN")
+            log_msg("  The release has no Parquet files; this export starts empty", "WARN")
           }
         }
       }
