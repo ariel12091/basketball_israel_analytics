@@ -470,6 +470,22 @@ a.ibpl-gameflow-back { text-decoration: none; }
   .ibpl-react-gameflow .ibpl-ribbon-pair-controls button { min-height: 30px; padding: 3px 10px; flex-shrink: 0; font-size: .8rem; }
   .ibpl-react-gameflow .ibpl-ribbon-pair-status { flex: 1 1 0; min-width: 0; }
 }
+/* A hovered stint: floats clear of its bar and takes no clicks, so nothing moves
+   on the way to a click. */
+.gf-hover-tip { position: fixed; z-index: 1050; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--ibpl-border); border-radius: 6px; background: var(--ibpl-bg-sunken); box-shadow: 0 4px 16px rgba(0,0,0,.5); color: var(--ibpl-text-body); font-family: var(--ibpl-font-mono); font-size: 11px; line-height: 1.35; pointer-events: none; }
+.gf-hover-tip-stats { margin-bottom: 6px; color: var(--ibpl-text-muted); }
+.gf-hover-tip-row { padding: 3px 0; border-top: 1px solid var(--ibpl-border); }
+/* The lineups under a fitted chart: as tall as they need up to the room the chart
+   can give (max-height, set inline), with the stint's numbers beside a list that
+   scrolls inside it when it is longer than that. */
+.gf-details { display: flex; align-items: stretch; gap: 8px; margin: 6px 0; min-height: 0; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail { margin: 0; overflow-y: auto; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail.is-card { flex: 0 0 310px; width: 310px; padding: 8px 12px; }
+.gf-details .gf-stint-stats { flex-wrap: nowrap; gap: 14px; }
+.gf-details .gf-stint-stats dd { font-size: 13px; white-space: nowrap; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); margin-bottom: 6px; }
+.gf-details .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 3px 6px; }
 /* Team Ratings Traditional controls in the toolbar; Player Stats bar. */
 .tr-trad-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .tr-trad-controls .form-group, .tr-trad-controls .shiny-input-container { margin: 0; min-width: 180px; }

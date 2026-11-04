@@ -75,19 +75,50 @@ export const chartHeight =(L: GameflowLayout, lanes: number) =>
  * nothing distorts. Tighter rows are used only when the plain ones would shrink
  * text below its natural size, and `minScale` keeps names legible: below it the
  * page scrolls. A narrower column (Home's) is already short: it is left alone.
+ * With the lineups open the chart may also take the squeezed rows.
  */
 export function fitGameflowLayout(
   lanes: number,
   box: { width: number; height: number },
+  lineupsOpen = false,
 ): GameflowLayout {
   const plain = geometry.desktop,
     natural = box.width / plain.width;
   if (natural <= geometry.minScale) return plain;
-  const roomy = box.height / chartHeight(plain, lanes),
-    L = roomy >= Math.min(1, natural) ? plain : { ...plain, ...geometry.tight },
+  const tiers: GameflowLayout[] = [
+      plain,
+      { ...plain, ...geometry.tight },
+      ...(lineupsOpen ? [{ ...plain, ...geometry.squeezed }] : []),
+    ],
+    wanted = Math.min(1, natural),
+    L =
+      tiers.find((t) => box.height / chartHeight(t, lanes) >= wanted) ??
+      tiers[tiers.length - 1],
     fitted = box.height / chartHeight(L, lanes),
     scale = Math.min(natural, Math.max(geometry.minScale, fitted));
   return { ...L, width: box.width / scale };
+}
+/**
+ * Height given to the lineups under a fitted chart, or null where the chart is
+ * not fitted. One fixed height, whatever is listed: the chart changes size once
+ * when the lineups open, not again for every bar the pointer crosses, and a long
+ * list scrolls inside this space (user 2026-11-04).
+ */
+export function lineupsRoom(
+  lanes: number,
+  box: { width: number; height: number },
+) {
+  if (box.width / geometry.desktop.width <= geometry.minScale) return null;
+  const smallestChart =
+    chartHeight({ ...geometry.desktop, ...geometry.squeezed }, lanes) *
+    geometry.minScale;
+  return Math.max(
+    geometry.lineupsMinRoom,
+    Math.min(
+      box.height * geometry.lineupsShare,
+      box.height - smallestChart,
+    ),
+  );
 }
 export const periodBounds = (periods: number | null) =>
   Array.from({ length: Math.max(4, Math.trunc(periods || 4)) }, (_, i) =>
@@ -447,7 +478,9 @@ export function aggregateSegments(segments: Segment[]) {
   return [...groups.values()]
     .map((g) => ({
       ...g,
-      windows: g.windows.sort((a, b) => a.start - b.start),
+      // Back-to-back pieces of the same lineup read as one stretch: the lineup
+      // is cut wherever the other team substitutes (user 2026-11-04).
+      windows: mergeWindows(g.windows),
     }))
     .sort(
       (a, b) =>

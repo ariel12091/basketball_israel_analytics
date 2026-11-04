@@ -17,6 +17,8 @@ import {
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
 export type BarWindow = { bar: Bar; start: number; end: number };
+/** Drawing units between two margin-scale labels (their font is 10 high). */
+const MIN_TICK_GAP = 11;
 export default function GameflowChart({
   data,
   compact = false,
@@ -27,6 +29,7 @@ export default function GameflowChart({
   onBar,
   onHover,
   active,
+  stintBar,
   lineupIndex,
   crop,
   layout,
@@ -43,8 +46,10 @@ export default function GameflowChart({
   highlight: Window[];
   onPlayer: (bar: Bar) => void;
   onBar: (window: BarWindow) => void;
-  onHover: (window: BarWindow | null) => void;
+  onHover: (window: BarWindow | null, box: DOMRect | null) => void;
   active: BarWindow | null;
+  /** Set when one stint was clicked: only that bar reads as selected. */
+  stintBar?: Bar;
   lineupIndex?: number;
 }) {
   const id = useId().replace(/:/g, ""),
@@ -90,6 +95,14 @@ export default function GameflowChart({
       marginTop +
       L.margin_height / 2 -
       ((v / scaleInfo.maxAbs) * L.margin_height) / 2;
+  // A shrunken margin chart has room to label only its outermost lines.
+  const tickGap =
+      ((scaleInfo.interval / scaleInfo.maxAbs) * L.margin_height) / 2,
+    outerTick = Math.max(0, ...scaleInfo.ticks.map(Math.abs)),
+    labelledTicks =
+      tickGap >= MIN_TICK_GAP
+        ? scaleInfo.ticks
+        : scaleInfo.ticks.filter((v) => Math.abs(v) === outerTick);
   let margin = data.margin.filter(
     (r) => r.elapsed >= start && r.elapsed <= end,
   );
@@ -235,7 +248,7 @@ export default function GameflowChart({
       >
         tied
       </text>
-      {scaleInfo.ticks.map((v) => (
+      {labelledTicks.map((v) => (
         <Fragment key={v}>
           {" "}
           <text
@@ -343,7 +356,7 @@ export default function GameflowChart({
             ),
             w = Math.max(0.75, (to - from) * scale),
             key = laneKey(b),
-            chosen = selected.includes(key),
+            chosen = stintBar ? stintBar === b : selected.includes(key),
             window = { bar: b, start: from, end: to };
           const segments =
             chosen || active?.bar === b || lineupIndex != null
@@ -375,10 +388,14 @@ export default function GameflowChart({
                   onBar(window);
                 }
               }}
-              onPointerEnter={() => onHover(window)}
-              onPointerLeave={() => onHover(null)}
-              onFocus={() => onHover(window)}
-              onBlur={() => onHover(null)}
+              onPointerEnter={(e) =>
+                onHover(window, e.currentTarget.getBoundingClientRect())
+              }
+              onPointerLeave={() => onHover(null, null)}
+              onFocus={(e) =>
+                onHover(window, e.currentTarget.getBoundingClientRect())
+              }
+              onBlur={() => onHover(null, null)}
             >
               <rect
                 x={x(from)}

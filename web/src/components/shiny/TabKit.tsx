@@ -36,6 +36,7 @@ export { contextParams, parseStats, seasonBounds };
 export type { Patch, Query, StatFilter };
 import type { League } from "@/rules/gameLogs";
 import catalogues from "@/data/catalogues.json";
+import { choiceValues } from "@/lib/choices";
 import ui from "@/data/shinyUi.json";
 import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
@@ -720,7 +721,7 @@ export function GameFiltersAccordion({
               multiple
               placeholder={euro ? "All phases" : "All game types"}
               choices={typeChoices}
-              value={list(query[typeKey] ?? "")}
+              value={choiceValues(query[typeKey] ?? "", typeChoices)}
               onChange={(v) => set({ [typeKey]: v.join(",") })}
             />
             <Selectize
@@ -938,7 +939,9 @@ export function contextChips({
       />,
     );
   const typeKey = euro ? "phase" : "game_type";
-  const types = list(query[typeKey] ?? "");
+  const types = euro
+    ? list(query[typeKey] ?? "")
+    : choiceValues(query[typeKey] ?? "", catalogues.gameTypeChoices);
   if (types.length)
     chips.push(
       <Chip

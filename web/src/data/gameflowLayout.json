@@ -1,6 +1,9 @@
 {
   "tight": { "lane_height": 12, "lane_gap": 2, "margin_height": 60 },
+  "squeezed": { "lane_height": 11, "lane_gap": 1, "margin_height": 44 },
   "minScale": 0.8,
+  "lineupsShare": 0.45,
+  "lineupsMinRoom": 140,
   "desktop": {
     "compact": false,
     "width": 1070,

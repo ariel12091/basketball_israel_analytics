@@ -337,7 +337,8 @@ export function fullSideLabel(
   const gameTypes = ids("game_type")
     .map((id) => (data.gt_labels as Record<string, string>)[id])
     .filter(Boolean);
-  if (gameTypes.length) parts.push(gameTypes.join("+"));
+  // Winner Cup is two codes with one label.
+  if (gameTypes.length) parts.push([...new Set(gameTypes)].join("+"));
   if (q.view !== "Players") {
     if (q.preset === "date_split" && q.split_date)
       parts.push(`${side === "a" ? "Before" : "After"} ${q.split_date}`);
