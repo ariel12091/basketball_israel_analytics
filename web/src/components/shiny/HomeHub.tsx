@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import {
   homeDashboard,
@@ -9,7 +8,6 @@ import {
 } from "@/rules/home";
 import { homeTabHref, homeStoryHref } from "@/lib/homeQuery";
 import ui from "@/data/homeUi.json";
-import GameflowPanel from "./GameflowPanel";
 type Dashboard = ReturnType<typeof homeDashboard>;
 
 /** The always-visible part of the hub: load errors and the team ratings card. */
@@ -72,9 +70,8 @@ export default function HomeHub({
   loading: boolean;
   error: string;
 }) {
-  const [gameflow, openGameflow] = useState(false),
-    t = ui.text;
-  const g = dashboard?.lastGame;
+  const t = ui.text,
+    g = dashboard?.lastGame;
   return (
     <div id="team_hub_section" aria-busy={loading}>
       <div id="hub_last_game">
@@ -87,26 +84,16 @@ export default function HomeHub({
               </span>
               <span className="hub-last-game-context">{g.context}</span>
               {g.row.has_gameflow === true && (
-                <button
+                <Link
+                  prefetch={false}
                   className="btn btn-link ibpl-home-gameflow"
-                  type="button"
-                  onClick={() => openGameflow(true)}
+                  href={`/il/gameflow?game_id=${g.row.game_id}&team_id=${g.row.team_id}`}
                 >
                   {t.gameflow}
-                </button>
+                </Link>
               )}
             </div>
           </div>
-        )}
-      </div>
-      <div id="hub_ribbon_inline_panel">
-        {gameflow && g?.row.has_gameflow === true && (
-          <GameflowPanel
-            league="il"
-            game={Number(g.row.game_id)}
-            team={Number(g.row.team_id)}
-            onClose={() => openGameflow(false)}
-          />
         )}
       </div>
       <div className="row" style={{ alignItems: "stretch" }}>

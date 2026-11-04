@@ -372,27 +372,21 @@ test("Home retries a failed request without losing navigation", async ({
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
   await expect(page.locator('.home-identity [role="alert"]')).toHaveCount(0);
 });
-test("Home opens and closes the existing Gameflow surface", async ({
-  page,
-}, info) => {
+// Home goes to the Gameflow page under Game Logs, not a copy in Home's narrow
+// column (user 2026-11-04).
+test("Home's last game goes to the Gameflow page", async ({ page }) => {
   await routes(page);
   await page.goto("/il/home?season=2026&team_id=2");
   await openMore(page);
-  await page
-    .getByRole("button", { name: "View Gameflow", exact: true })
-    .click();
+  await page.getByRole("link", { name: "View Gameflow", exact: true }).click();
+  await expect(page).toHaveURL(/\/il\/gameflow\?game_id=\d+&team_id=\d+$/);
   await expect(
     page.locator("svg.ibpl-ribbon:not(.ibpl-gameflow-gutter)").first(),
   ).toBeVisible();
-  // In the page at every width, never a dialog (user 2026-10-28).
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Close gameflow", exact: true })
-    .click();
-  await expect(page.locator("svg.ibpl-ribbon")).toHaveCount(0);
+  await expect(page.locator(".ibpl-home")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "View Gameflow", exact: true }),
-  ).toBeFocused();
+    page.getByRole("link", { name: /Back to Game Logs/ }),
+  ).toBeVisible();
 });
 test("Home season changes preserve a valid selected team", async ({ page }) => {
   await routes(page);
