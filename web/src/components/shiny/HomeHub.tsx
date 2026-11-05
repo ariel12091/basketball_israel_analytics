@@ -193,7 +193,7 @@ export default function HomeHub({
                     prefetch={false}
                     className="hub-story-line"
                     key={line.id}
-                    href={homeStoryHref(season, line.preset, team)}
+                    href={homeStoryHref(season, line.preset, team, line.id)}
                   >
                     {line.text}
                   </Link>

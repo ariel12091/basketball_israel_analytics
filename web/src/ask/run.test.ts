@@ -211,6 +211,16 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(r).toMatchObject({ error: expect.stringMatching(/time/) });
   });
 
+  it("an unknown game type lists the codes instead of returning nothing", async () => {
+    for (const r of [
+      await runTool("r1", { tool: "team_ratings", league: "il", query: { game_type: "1" }, sort: byNet }, later),
+      await runTool("r1", { tool: "compare", league: "il", query: { a_game_type: "5", b_game_type: "cup" } }, later),
+    ])
+      expect(r).toMatchObject({ error: expect.stringMatching(/Regular season/) });
+    expect(teamRatings).not.toHaveBeenCalled();
+    expect(compare).not.toHaveBeenCalled();
+  });
+
   it("compare on euroleague returns tool error naming the league", async () => {
     const r = await runTool("r1", { tool: "compare", league: "euroleague", query: {} }, later);
     expect(compare).not.toHaveBeenCalled();

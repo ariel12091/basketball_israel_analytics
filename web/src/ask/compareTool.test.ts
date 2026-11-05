@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ParamError } from "@/server/api";
-import { compareTable } from "./compareTool";
+import { compareLink, compareTable } from "./compareTool";
 
 const rowsA = [
   { team_id: 2, team_name: "A", net_rtg: 8, off_poss: 300 },
@@ -44,6 +44,96 @@ describe("compareTable: the Compare page's paired table", () => {
     expect(answer.mock.calls.map(([s]) => s.get("teams"))).toEqual(["2", "2"]);
   });
 
+  describe("filters combine with presets instead of being dropped", () => {
+    const sidesOf = async (q: string) => {
+      const answer = side();
+      const t = await compareTable(answer, new URLSearchParams(q));
+      return { a: answer.mock.calls[0][0], b: answer.mock.calls[1][0], t };
+    };
+
+    it("game types on their own sides, named in the labels", async () => {
+      const { a, b, t } = await sidesOf("a_game_type=5&b_game_type=10,34");
+      expect([a.get("game_type"), b.get("game_type")]).toEqual(["5", "10,34"]);
+      expect(t.meta.sides).toEqual({ a: "Regular", b: "W.Cup" });
+    });
+
+    it("a filter without a side reaches both, on top of the preset", async () => {
+      const { a, b, t } = await sidesOf("preset=home_away&game_type=10,34");
+      expect([a.get("home_away"), b.get("home_away")]).toEqual(["home", "away"]);
+      expect([a.get("game_type"), b.get("game_type")]).toEqual(["10,34", "10,34"]);
+      expect(t.meta.sides).toEqual({ a: "Home | W.Cup", b: "Away | W.Cup" });
+    });
+
+    it("a one-sided filter mirrors under a preset, as the page's edit does", async () => {
+      const { a, b } = await sidesOf("preset=home_away&a_game_type=5");
+      expect([a.get("game_type"), b.get("game_type")]).toEqual(["5", "5"]);
+    });
+
+    it("stays one-sided with no preset", async () => {
+      const { a, b } = await sidesOf("a_game_type=10,34");
+      expect([a.get("game_type"), b.get("game_type")]).toEqual(["10,34", null]);
+    });
+
+    it("the top/bottom preset takes another N", async () => {
+      const { a, b } = await sidesOf("preset=top_bottom_rank&opp_rank_n=6");
+      expect([a.get("opp_rank_n"), b.get("opp_rank_n")]).toEqual(["6", "6"]);
+      expect(a.get("opp_rank_side")).toBe("top");
+    });
+
+    it("team_id pins the team with no preset", async () => {
+      const { a, b } = await sidesOf("a_game_type=5&b_game_type=10,34&team_id=2");
+      expect([a.get("teams"), b.get("teams")]).toEqual(["2", "2"]);
+    });
+
+    it("open_detail opens one team's Detail with no preset", async () => {
+      const { t } = await sidesOf("a_game_type=5&b_game_type=10,34&team_id=2&open_detail=true");
+      expect(t.meta.view).toBe("detail");
+    });
+
+    it("last N vs season: the preset's N, last_n meaning side A", async () => {
+      for (const q of ["preset=last_n_season&a_last_n=5", "preset=last_n_season&last_n=5"]) {
+        const { a, b, t } = await sidesOf(q);
+        expect([a.get("last_n"), b.get("last_n")]).toEqual(["5", null]);
+        expect(t.meta.sides.b).toBe("Season");
+      }
+    });
+
+    it("refuses only what cannot exist", async () => {
+      for (const q of [
+        "preset=home_away&home_away=home",
+        "preset=win_loss&a_outcome=loss",
+        "preset=last_n_season&b_last_n=5",
+        "a_last_n=5&min_gn=3",
+        "preset=gn_split&a_last_n=5",
+        "phase=x",
+        "team_id=abc",
+      ])
+        await expect(compareTable(side(), new URLSearchParams(q)), q).rejects.toBeInstanceOf(ParamError);
+      await expect(
+        compareTable(side(), new URLSearchParams("preset=home_away&a_home_away=home")),
+      ).resolves.toBeTruthy();
+    });
+
+    it("the link is the query the numbers were read with", () => {
+      const params = (q: string) =>
+        Object.fromEntries(new URL(compareLink(Object.fromEntries(new URLSearchParams(q)))!, "http://x").searchParams);
+      expect(params("preset=home_away&season=2027&game_type=10,34")).toEqual({
+        preset: "home_away",
+        preset_applied: "true",
+        season: "2027",
+        a_home_away: "home",
+        b_home_away: "away",
+        a_game_type: "10,34",
+        b_game_type: "10,34",
+      });
+      expect(params("a_game_type=5&b_game_type=10,34&team_id=2")).toMatchObject({
+        a_teams: "2",
+        b_teams: "2",
+      });
+      expect(compareLink({ preset: "home_away", home_away: "home" })).toBeNull();
+    });
+  });
+
   it("rejects unknown parameters and the Players mode", async () => {
     await expect(compareTable(side(), new URLSearchParams("bogus=1"))).rejects.toMatchObject({
       param: "bogus",
@@ -58,7 +148,7 @@ describe("compareTable: the Compare page's paired table", () => {
       "cmp_view=detail", // no entity
       "cmp_view=players",
       "view=Lineups&cmp_view=players&entity=abc",
-      "open_detail=true", // needs a preset and team_id, as Home's links send
+      "open_detail=true", // no team to open
       "cmp_view=bogus&entity=2",
       "toString=1",
       "drill_player=5",

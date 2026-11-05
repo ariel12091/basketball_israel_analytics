@@ -9,12 +9,16 @@ import {
   compareDefaults,
   compareSideParams,
   applyPreset,
+  presetChoices,
+  LAST_N_PRESET,
   resetCompare,
   resolveCompareQuery,
   shortSideLabel,
   fullSideLabel,
   comparePlayerTeams,
   withCompareSelection,
+  editCompareSide,
+  LAST_N_DEFAULT,
   type CompareSelection,
 } from "@/lib/compareQuery";
 import {
@@ -36,6 +40,7 @@ import {
 import CompareSideFilters, {
   CompareSelect,
   CompareDates,
+  lastNChoices,
 } from "./shiny/CompareFilters";
 import {
   EntityDetails,
@@ -512,11 +517,22 @@ function CompareTab({
               id="cmp_preset"
               label="Quick preset"
               value={q.preset}
-              choices={data.presetChoices}
+              choices={presetChoices}
               placeholder="-- Custom --"
               onChange={(v) => set(applyPreset(q, v))}
             />
           </div>
+          {q.preset === LAST_N_PRESET ? (
+            <CompareSelect
+              id="cmp_preset_last_n"
+              label="Last N Team Games"
+              value={q.a_last_n}
+              choices={lastNChoices(rounds)}
+              onChange={(v) =>
+                set(editCompareSide(q, "a", "last_n", v || LAST_N_DEFAULT))
+              }
+            />
+          ) : null}
           {q.preset === "date_split" ? (
             <label>
               Split date
@@ -548,7 +564,9 @@ function CompareTab({
             set={set}
             rounds={rounds}
             showDates={q.preset !== "date_split"}
-            showGN={q.preset !== "gn_split"}
+            showGN={
+              q.preset !== "gn_split" && !q.a_last_n && !q.b_last_n
+            }
           />
         </>
       ) : (

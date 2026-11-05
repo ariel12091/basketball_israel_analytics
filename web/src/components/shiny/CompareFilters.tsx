@@ -1,13 +1,25 @@
 "use client";
 import type { Query, Patch } from "@/lib/tabQuery";
 import { seasonBounds } from "@/lib/tabQuery";
-import { editCompareSide, type CompareSide } from "@/lib/compareQuery";
+import {
+  editCompareSide,
+  LAST_N_DEFAULT,
+  LAST_N_PRESET,
+  type CompareSide,
+} from "@/lib/compareQuery";
 import type { Row } from "@/rules/gameLogs";
 import Selectize, { type Choice } from "./Selectize";
 import DateRangeInput from "./DateRangeInput";
 import { StarterRows } from "./TabKit";
 import catalogues from "@/data/catalogues.json";
 import { choiceValues } from "@/lib/choices";
+/** As every tab's Last N control: up to the season's game numbers. Never below
+ * the preset's default, which must show even early in a season. */
+export const lastNChoices = (rounds: number[]): Choice[] =>
+  Array.from(
+    { length: Math.max(Number(LAST_N_DEFAULT), ...rounds) },
+    (_, i) => ({ value: String(i + 1), label: String(i + 1) }),
+  );
 export function CompareSelect({
   id,
   label,
@@ -281,6 +293,9 @@ export default function CompareSideFilters({
         catalogues.gameTypeChoices.filter((c) => c.value !== ""),
         true,
       )}
+      {!playerMode &&
+        q.preset !== LAST_N_PRESET &&
+        select("last_n", "Last N Team Games", lastNChoices(rounds), false, "Any")}
       <div className="row">
         <div className="col-4">
           {select(

@@ -77,7 +77,7 @@ export function compareDynamicArgs(p: Params) {
     false,
     a.minGn,
     a.maxGn,
-    null,
+    a.lastN,
     null,
     null,
     a.offMin,
@@ -217,7 +217,7 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       false,
       a.minGn,
       a.maxGn,
-      null,
+      a.lastN,
     ];
     // Starters bounds (the team -> players view under Starters vs Bench) are
     // answered only by the action-row reader, as in fetch_player_traditional_filtered().
@@ -257,7 +257,7 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       a.rankMetric,
       a.minGn,
       a.maxGn,
-      null,
+      a.lastN,
       null,
       null,
       a.offMin,
@@ -283,7 +283,7 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       a.rankMetric,
       a.minGn,
       a.maxGn,
-      null,
+      a.lastN,
       null,
       null,
       a.offMin,
