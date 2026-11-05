@@ -376,6 +376,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
           ["poss_a", "Total Poss A", text],
           ["poss_b", "Total Poss B", text],
           ["gap", "Gap", (v, r) => formatCompare(v, fmt(r), true)],
+          ["gap_size", "Gap size", (v, r) => formatCompare(v, fmt(r)), "chat"],
         ]);
       }
       return spec([
@@ -385,6 +386,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["metric_a", "Side A", (v) => formatCompare(v, "num", false)],
         ["metric_b", "Side B", (v) => formatCompare(v, "num", false)],
         ["gap", "Gap", (v) => formatCompare(v, "num", true)],
+        ["gap_size", "Gap size", (v) => formatCompare(v), "chat"],
         ["poss_a", "Total Poss A", (v) => String(Math.trunc(Number(num(v))))],
         ["poss_b", "Total Poss B", (v) => String(Math.trunc(Number(num(v))))],
       ]);

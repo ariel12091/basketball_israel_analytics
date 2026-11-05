@@ -179,8 +179,13 @@ export async function compareTable(side: Side, s: URLSearchParams): Promise<Comp
     parseStats(q.stats),
   );
   // The page's own side headings (Home / Away, vs Top 4 ...), for the wording.
-  return { rows, meta: { version: read.version(), view: q.view, sides } };
+  return { rows: withGapSize(rows), meta: { version: read.version(), view: q.view, sides } };
 }
+
+/** The gap without its direction, so "differs the most" is a sort: left to the
+ * model, comparing +16.9 with -26.2 sometimes named the smaller one. */
+const withGapSize = (rows: Row[]): Row[] =>
+  rows.map((r) => ({ ...r, gap_size: r.gap == null ? null : Math.abs(Number(r.gap)) }));
 
 /** Reads one kind for side A then side B (as the route's per-process limits
  * expect), and refuses to mix data versions across every read of the view. */
@@ -270,5 +275,5 @@ async function players(
     minimum(q),
     reverseGap(q.preset),
   ).map((r) => ({ ...r, pct }));
-  return { rows, meta: { version: read.version(), view: "players", sides } };
+  return { rows: withGapSize(rows), meta: { version: read.version(), view: "players", sides } };
 }
