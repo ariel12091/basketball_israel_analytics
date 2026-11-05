@@ -1,4 +1,33 @@
 {
+  "compareFilters": {
+    "dates": "Games between these dates",
+    "min_gn": "From the team's Nth game",
+    "max_gn": "To the team's Nth game",
+    "list": "Shortens the Player list",
+    "player": "The player on this side",
+    "player_team": "For players on two teams",
+    "own_starters": "Team's starters on the floor",
+    "opp_starters": "Their starters on the floor",
+    "teams": "Show only these teams",
+    "home_away": "Home games or away games",
+    "outcome": "Games won or games lost",
+    "clutch": "Close, late in the game",
+    "clutch_margin": "Score within this many",
+    "clutch_minutes": "This many left, or fewer",
+    "opponents": "Games against these teams",
+    "game_type": "Season, playoffs or cups",
+    "last_n": "Each team's latest N games",
+    "opp_rank_side": "Top or bottom of the league",
+    "opp_rank_n": "How many teams, e.g. 4",
+    "opp_rank_metric": "Net rating if left blank"
+  },
+  "compareGrid": {
+    "showFilters": "Show filters",
+    "hideFilters": "Hide filters",
+    "rankName": "Opponent Strength",
+    "rankHint": "Set together, e.g. Top 4 by Net rating",
+    "rankNotApplied": "Not applied: pick"
+  },
   "drawer": {
     "title": "Filters",
     "clearAll": "Clear all filters",

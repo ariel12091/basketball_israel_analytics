@@ -3,6 +3,9 @@ import type { Query, Patch } from "@/lib/tabQuery";
 import { seasonBounds } from "@/lib/tabQuery";
 import {
   editCompareSide,
+  fullSideLabel,
+  oppRankMissing,
+  shortSideLabel,
   LAST_N_DEFAULT,
   LAST_N_PRESET,
   type CompareSide,
@@ -10,7 +13,9 @@ import {
 import type { Row } from "@/rules/gameLogs";
 import Selectize, { type Choice } from "./Selectize";
 import DateRangeInput from "./DateRangeInput";
-import { StarterRows } from "./TabKit";
+import { StarterSelects } from "./TabKit";
+import layout from "@/data/layoutUi.json";
+import { useState, type ReactNode } from "react";
 import catalogues from "@/data/catalogues.json";
 import { choiceValues } from "@/lib/choices";
 /** As every tab's Last N control: up to the season's game numbers. Never below
@@ -50,6 +55,35 @@ export function CompareSelect({
     />
   );
 }
+export function CompareGn({
+  q,
+  set,
+  rounds,
+  edge,
+  prefix = "",
+}: {
+  q: Query;
+  set: (p: Patch) => void;
+  rounds: number[];
+  edge: "min" | "max";
+  prefix?: string;
+}) {
+  const key = `${prefix}${edge}_gn`;
+  return (
+    <CompareSelect
+      id={`cmp_${prefix}gn_${edge}`}
+      label={edge === "min" ? GN_LABELS.min : GN_LABELS.max}
+      placeholder="Any"
+      value={q[key]}
+      choices={rounds.map((n) => ({ value: String(n), label: String(n) }))}
+      onChange={(v) => set({ [key]: v, auto_min: "true" })}
+    />
+  );
+}
+const GN_LABELS = {
+  min: "From Game Number (GN)",
+  max: "To Game Number (GN)",
+};
 export function CompareDates({
   q,
   set,
@@ -85,29 +119,21 @@ export function CompareDates({
       {showGN && (
         <div className="row">
           <div className="col-6">
-            <CompareSelect
-              id={`cmp_${prefix}gn_min`}
-              label="From Game Number (GN)"
-              placeholder="Any"
-              value={q[key("min_gn")]}
-              choices={rounds.map((n) => ({
-                value: String(n),
-                label: String(n),
-              }))}
-              onChange={(v) => set({ [key("min_gn")]: v, auto_min: "true" })}
+            <CompareGn
+              q={q}
+              set={set}
+              rounds={rounds}
+              edge="min"
+              prefix={prefix}
             />
           </div>
           <div className="col-6">
-            <CompareSelect
-              id={`cmp_${prefix}gn_max`}
-              label="To Game Number (GN)"
-              placeholder="Any"
-              value={q[key("max_gn")]}
-              choices={rounds.map((n) => ({
-                value: String(n),
-                label: String(n),
-              }))}
-              onChange={(v) => set({ [key("max_gn")]: v, auto_min: "true" })}
+            <CompareGn
+              q={q}
+              set={set}
+              rounds={rounds}
+              edge="max"
+              prefix={prefix}
             />
           </div>
         </div>
@@ -115,226 +141,433 @@ export function CompareDates({
     </>
   );
 }
-export default function CompareSideFilters({
+/** What a side is, in words, so nobody has to read its fields to find out. */
+function sideHeading(
+  q: Query,
+  side: CompareSide,
+  teams: Choice[],
+  players: Row[],
+) {
+  const letter = side.toUpperCase(),
+    short = shortSideLabel(q, side),
+    full = fullSideLabel(q, side, teams),
+    named = short !== letter,
+    // "vs Top 4" and "vs Top 4 (Net)" say one thing: keep the longer.
+    extended = named && full.startsWith(short),
+    detail = extended || full === `Side ${letter}` ? "" : full;
+  if (q.view === "Players") {
+    const id = q[`player_${q.player_compare === "self" ? "a" : side}`],
+      name = players.find((r) => String(r.player_id) === id)?.name;
+    return { heading: name ? String(name) : "", detail };
+  }
+  return { heading: extended ? full : named ? short : "", detail };
+}
+const SIDES = ["a", "b"] as const;
+const HINTS: Record<string, string> = layout.compareFilters;
+const TEXT = layout.compareGrid;
+type Field = {
+  key: string;
+  label: string;
+  /** The side fields whose values say whether A and B differ on this row. */
+  diff: string[];
+  control: (side: CompareSide) => ReactNode;
+};
+/** One row per filter, with A and B next to each other. */
+export default function CompareSidesGrid({
   q,
   set,
-  side,
   teams,
   players,
   rounds,
 }: {
   q: Query;
   set: (p: Patch) => void;
-  side: CompareSide;
   teams: Choice[];
   players: Row[];
   rounds: number[];
 }) {
-  const update = (k: string, v: string) => set(editCompareSide(q, side, k, v)),
+  const [open, setOpen] = useState(false);
+  const update = (side: CompareSide, k: string, v: string) =>
+      set(editCompareSide(q, side, k, v)),
     playerMode = q.view === "Players",
-    self = q.player_compare === "self",
-    p = `cmp_${side}`;
+    self = q.player_compare === "self";
+  // A filter the two sides set differently is what this comparison is about.
+  const differs = (keys: string[]) =>
+    keys.some((k) => {
+      const value = (s: CompareSide) =>
+        (q[`${s}_${k}`] ?? "").split(",").sort().join(",");
+      return value("a") !== value("b");
+    });
   const select = (
     key: string,
     label: string,
     choices: Choice[],
     multiple = false,
     placeholder = "All",
-  ) => (
-    <CompareSelect
-      key={key}
-      id={`${p}_${key}`}
-      label={label}
-      value={q[`${side}_${key}`]}
-      choices={choices}
-      onChange={(v) => update(key, v)}
-      multiple={multiple}
-      placeholder={placeholder}
-    />
-  );
-  const playerId = q[`player_${side}`],
-    teamIds = [
-      ...new Set(
-        players
-          .filter((r) => String(r.player_id) === playerId)
-          .map((r) => String(r.team_id)),
-      ),
-    ];
-  const listTeams = q[`list_${side}`].split(",").filter(Boolean),
-    pool = players.filter(
-      (r) => !listTeams.length || listTeams.includes(String(r.team_id)),
+  ): Field => ({
+    key,
+    label,
+    diff: [key],
+    control: (side) => (
+      <CompareSelect
+        id={`cmp_${side}_${key}`}
+        label={label}
+        value={q[`${side}_${key}`]}
+        choices={choices}
+        onChange={(v) => update(side, key, v)}
+        multiple={multiple}
+        placeholder={placeholder}
+      />
     ),
-    map = new Map(pool.map((r) => [String(r.player_id), String(r.name)]));
-  return (
-    <fieldset className="ibpl-compare-side">
-      <legend>
-        <span className={`cmp-context-badge ${side}`}>
-          {side.toUpperCase()}
-        </span>
-      </legend>
-      {playerMode && self && (
-        <CompareDates
-          q={q}
-          set={(patch) =>
-            set({
-              ...patch,
-              ...(q.auto_players === "true"
-                ? { player_a: null, player_b: null, auto_players: "false" }
-                : {}),
-            })
-          }
-          rounds={rounds}
-          prefix={`${side}_`}
-        />
-      )}
-      {playerMode && (!self || side === "a") && (
-        <>
-          <CompareSelect
-            id={`cmp_player_${side}_list_team_filter`}
-            label="Player List Team Filter"
-            value={q[`list_${side}`]}
-            choices={teams}
-            multiple
-            onChange={(v) =>
-              set({
-                [`list_${side}`]: v,
-                ...(v &&
-                !players.some(
-                  (r) =>
-                    String(r.player_id) === playerId &&
-                    v.split(",").includes(String(r.team_id)),
-                )
-                  ? { [`player_${side}`]: null }
-                  : {}),
-              })
-            }
+  });
+  const starters = (
+    key: "own_starters" | "opp_starters",
+    label: string,
+  ): Field => ({
+    key,
+    label,
+    diff: [key],
+    control: (side) => (
+      <StarterSelects
+        p={`cmp_${side}`}
+        query={{ ...q, [key]: q[`${side}_${key}`] }}
+        set={(patch) => {
+          for (const [k, v] of Object.entries(patch)) update(side, k, v ?? "");
+        }}
+        starterKey={key}
+        wrap={(mode, value) => (
+          <div className="cmp-grid-pair">
+            {mode}
+            {value}
+          </div>
+        )}
+      />
+    ),
+  });
+  const playerTeams = (side: CompareSide) => [
+    ...new Set(
+      players
+        .filter((r) => String(r.player_id) === q[`player_${side}`])
+        .map((r) => String(r.team_id)),
+    ),
+  ];
+  // "Against himself" has one player, chosen on side A.
+  const hasPicker = (side: CompareSide) => !self || side === "a";
+  const selfSet = (patch: Patch) =>
+    set({
+      ...patch,
+      ...(q.auto_players === "true"
+        ? { player_a: null, player_b: null, auto_players: "false" }
+        : {}),
+    });
+  const selfDates: Field[] =
+    playerMode && self
+      ? [
+          {
+            key: "dates",
+            label: "Date range",
+            diff: ["start", "end"],
+            control: (side) => (
+              <CompareDates
+                q={q}
+                set={selfSet}
+                rounds={rounds}
+                prefix={`${side}_`}
+                showGN={false}
+              />
+            ),
+          },
+          ...(["min", "max"] as const).map((edge): Field => ({
+            key: `${edge}_gn`,
+            label: GN_LABELS[edge],
+            diff: [`${edge}_gn`],
+            control: (side) => (
+              <CompareGn
+                q={q}
+                set={selfSet}
+                rounds={rounds}
+                edge={edge}
+                prefix={`${side}_`}
+              />
+            ),
+          })),
+        ]
+      : [];
+  const playerFields: Field[] = playerMode
+    ? [
+        {
+          key: "list",
+          label: "Player List Team Filter",
+          diff: [],
+          control: (side) =>
+            hasPicker(side) && (
+              <CompareSelect
+                id={`cmp_player_${side}_list_team_filter`}
+                label="Player List Team Filter"
+                value={q[`list_${side}`]}
+                choices={teams}
+                multiple
+                onChange={(v) =>
+                  set({
+                    [`list_${side}`]: v,
+                    ...(v &&
+                    !players.some(
+                      (r) =>
+                        String(r.player_id) === q[`player_${side}`] &&
+                        v.split(",").includes(String(r.team_id)),
+                    )
+                      ? { [`player_${side}`]: null }
+                      : {}),
+                  })
+                }
+              />
+            ),
+        },
+        {
+          key: "player",
+          label: "Player",
+          diff: [],
+          control: (side) => {
+            if (!hasPicker(side)) return null;
+            const listTeams = q[`list_${side}`].split(",").filter(Boolean),
+              names = new Map(
+                players
+                  .filter(
+                    (r) =>
+                      !listTeams.length ||
+                      listTeams.includes(String(r.team_id)),
+                  )
+                  .map((r) => [String(r.player_id), String(r.name)]),
+              );
+            return (
+              <CompareSelect
+                id={`cmp_player_${side}`}
+                label="Player"
+                placeholder="Search player..."
+                value={q[`player_${side}`]}
+                choices={[...names].map(([value, label]) => ({ value, label }))}
+                onChange={(v) =>
+                  set({
+                    [`player_${side}`]: v,
+                    [`player_team_${side}`]: null,
+                    auto_players: "false",
+                  })
+                }
+              />
+            );
+          },
+        },
+        ...(SIDES.some((s) => hasPicker(s) && playerTeams(s).length > 1)
+          ? [
+              {
+                key: "player_team",
+                label: "Team (optional)",
+                diff: [],
+                control: (side: CompareSide) =>
+                  hasPicker(side) &&
+                  playerTeams(side).length > 1 && (
+                    <CompareSelect
+                      id={`cmp_player_${side}_team`}
+                      label="Team (optional)"
+                      value={q[`player_team_${side}`]}
+                      choices={teams.filter((t) =>
+                        playerTeams(side).includes(t.value),
+                      )}
+                      onChange={(v) => set({ [`player_team_${side}`]: v })}
+                    />
+                  ),
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const clutchOn = (side: CompareSide) => q[`${side}_clutch`] === "true";
+  const slider = (
+    key: string,
+    label: string,
+    min: number,
+    max: number,
+  ): Field => ({
+    key,
+    label,
+    diff: [key],
+    control: (side) =>
+      clutchOn(side) && (
+        <div className="cmp-grid-range">
+          <input
+            id={`cmp_${side}_${key}`}
+            type="range"
+            aria-label={`${label}, side ${side.toUpperCase()}`}
+            min={min}
+            max={max}
+            step={1}
+            value={q[`${side}_${key}`]}
+            onChange={(e) => update(side, key, e.target.value)}
           />
-          <CompareSelect
-            id={`cmp_player_${side}`}
-            label="Player"
-            placeholder="Search player..."
-            value={playerId}
-            choices={[...map].map(([value, label]) => ({ value, label }))}
-            onChange={(v) =>
-              set({
-                [`player_${side}`]: v,
-                [`player_team_${side}`]: null,
-                auto_players: "false",
-              })
-            }
-          />
-          {teamIds.length > 1 && (
-            <CompareSelect
-              id={`cmp_player_${side}_team`}
-              label="Team (optional)"
-              value={q[`player_team_${side}`]}
-              choices={teams.filter((t) => teamIds.includes(t.value))}
-              onChange={(v) => set({ [`player_team_${side}`]: v })}
-            />
-          )}
-        </>
-      )}
-      {!playerMode && (
-        <>
-          <StarterRows
-            p={p}
-            query={{
-              ...q,
-              own_starters: q[`${side}_own_starters`],
-              opp_starters: q[`${side}_opp_starters`],
-            }}
-            set={(patch) => {
-              for (const [key, v] of Object.entries(patch))
-                update(key, v ?? "");
-            }}
-          />
-          {select("teams", "Teams", teams, true)}
-        </>
-      )}
-      {select("home_away", "Home/Away", [
-        { value: "home", label: "Home" },
-        { value: "away", label: "Away" },
-      ])}
-      {select("outcome", "Win/Loss", [
-        { value: "win", label: "Win" },
-        { value: "loss", label: "Loss" },
-      ])}
-      <label className="checkbox">
+          <output>{q[`${side}_${key}`]}</output>
+        </div>
+      ),
+  });
+  const fields: Field[] = [
+    ...selfDates,
+    ...playerFields,
+    ...(playerMode
+      ? []
+      : [
+          starters("own_starters", "Own lineup starters"),
+          starters("opp_starters", "Opponent lineup starters"),
+          select("teams", "Teams", teams, true),
+        ]),
+    select("home_away", "Home/Away", [
+      { value: "home", label: "Home" },
+      { value: "away", label: "Away" },
+    ]),
+    select("outcome", "Win/Loss", [
+      { value: "win", label: "Win" },
+      { value: "loss", label: "Loss" },
+    ]),
+    {
+      key: "clutch",
+      label: "Clutch",
+      diff: ["clutch"],
+      control: (side) => (
         <input
           type="checkbox"
-          id={`${p}_clutch`}
-          checked={q[`${side}_clutch`] === "true"}
-          onChange={(e) => update("clutch", String(e.target.checked))}
-        />{" "}
-        Clutch
-      </label>
-      {q[`${side}_clutch`] === "true" &&
-        ["clutch_margin", "clutch_minutes"].map((k) => (
-          <label key={k} className="form-group">
-            {k === "clutch_margin"
-              ? "Max point margin"
-              : "Max minutes remaining"}
-            : {q[`${side}_${k}`]}
-            <input
-              id={`${p}_${k}`}
-              type="range"
-              min={k === "clutch_margin" ? 0 : 1}
-              max={k === "clutch_margin" ? 10 : 5}
-              step={1}
-              value={q[`${side}_${k}`]}
-              onChange={(e) => update(k, e.target.value)}
-            />
-          </label>
-        ))}
-      {select("opponents", "Opponents", teams, true)}
-      {select(
-        "game_type",
-        "Game type",
-        catalogues.gameTypeChoices.filter((c) => c.value !== ""),
-        true,
-      )}
-      {!playerMode &&
-        q.preset !== LAST_N_PRESET &&
-        select("last_n", "Last N Team Games", lastNChoices(rounds), false, "Any")}
-      <div className="row">
-        <div className="col-4">
-          {select(
-            "opp_rank_side",
-            "Top / Bottom",
-            [
-              { value: "top", label: "Top" },
-              { value: "bottom", label: "Bottom" },
-            ],
+          className="cmp-grid-check"
+          id={`cmp_${side}_clutch`}
+          aria-label={`Clutch, side ${side.toUpperCase()}`}
+          checked={clutchOn(side)}
+          onChange={(e) => update(side, "clutch", String(e.target.checked))}
+        />
+      ),
+    },
+    ...(SIDES.some(clutchOn)
+      ? [
+          slider("clutch_margin", "Max point margin", 0, 10),
+          slider("clutch_minutes", "Max minutes remaining", 1, 5),
+        ]
+      : []),
+    select("opponents", "Opponents", teams, true),
+    select(
+      "game_type",
+      "Game type",
+      catalogues.gameTypeChoices.filter((c) => c.value !== ""),
+      true,
+    ),
+    ...(!playerMode && q.preset !== LAST_N_PRESET
+      ? [
+          select(
+            "last_n",
+            "Last N Team Games",
+            lastNChoices(rounds),
             false,
-            "Off",
-          )}
-        </div>
-        <div className="col-4">
-          {select(
-            "opp_rank_n",
-            "Rank N",
-            Array.from({ length: 12 }, (_, i) => ({
-              value: String(i + 1),
-              label: String(i + 1),
-            })),
-            false,
-            "--",
-          )}
-        </div>
-        <div className="col-4">
-          {select(
-            "opp_rank_metric",
-            "Metric",
-            [
-              { value: "off", label: "Offense" },
-              { value: "def", label: "Defense" },
-              { value: "net", label: "Net rating" },
-            ],
-            false,
-            "--",
-          )}
-        </div>
+            "Any",
+          ),
+        ]
+      : []),
+  ];
+  // One filter in three fields, so they sit in one box under one name.
+  const rankFields: Field[] = [
+    select(
+      "opp_rank_side",
+      "Top / Bottom",
+      [
+        { value: "top", label: "Top" },
+        { value: "bottom", label: "Bottom" },
+      ],
+      false,
+      "Off",
+    ),
+    select(
+      "opp_rank_n",
+      "Rank N",
+      Array.from({ length: 12 }, (_, i) => ({
+        value: String(i + 1),
+        label: String(i + 1),
+      })),
+      false,
+      "--",
+    ),
+    select(
+      "opp_rank_metric",
+      "Metric",
+      [
+        { value: "off", label: "Offense" },
+        { value: "def", label: "Defense" },
+        { value: "net", label: "Net rating" },
+      ],
+      false,
+      "--",
+    ),
+  ];
+  const row = (f: Field) => (
+    <div
+      key={f.key}
+      role="group"
+      aria-label={f.label}
+      className={`cmp-grid-row${differs(f.diff) ? " is-diff" : ""}`}
+    >
+      <div className="cmp-grid-label">
+        <span className="cmp-grid-name">{f.label}</span>
+        <small className="cmp-grid-hint">{HINTS[f.key]}</small>
       </div>
-    </fieldset>
+      {SIDES.map((side) => (
+        <div key={side} className={`cmp-grid-cell is-${side}`}>
+          {f.control(side)}
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className={`cmp-grid${open ? " is-open" : ""}`}>
+      <div className="cmp-grid-corner" aria-hidden="true" />
+      {SIDES.map((side) => {
+        const { heading, detail } = sideHeading(q, side, teams, players);
+        return (
+          <div key={side} className={`cmp-grid-head is-${side}`}>
+            <div className="cmp-grid-title">
+              <span className="cmp-grid-letter">{side.toUpperCase()}</span>
+              {heading || `Side ${side.toUpperCase()}`}
+            </div>
+            <small className="cmp-grid-detail">
+              {detail || (heading ? "" : "No filters on this side")}
+            </small>
+          </div>
+        );
+      })}
+      {/* Phones only: the headers above already say what is compared. */}
+      <button
+        type="button"
+        className="cmp-grid-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? TEXT.hideFilters : TEXT.showFilters}
+      </button>
+      {fields.map(row)}
+      <div role="group" aria-label={TEXT.rankName} className="cmp-grid-group">
+        <div className="cmp-grid-group-head">
+          <span className="cmp-grid-name">{TEXT.rankName}</span>
+          <small className="cmp-grid-hint">{TEXT.rankHint}</small>
+        </div>
+        {rankFields.map(row)}
+        {/* The readers ignore a half-set rank, so say so instead of showing
+            numbers that look filtered. */}
+        {SIDES.some((s) => oppRankMissing(q, s).length > 0) && (
+          <>
+            <div className="cmp-grid-corner" aria-hidden="true" />
+            {SIDES.map((s) => {
+              const missing = oppRankMissing(q, s);
+              return (
+                <div key={s} className="cmp-grid-warning" role="status">
+                  {missing.length > 0 &&
+                    `${TEXT.rankNotApplied} ${missing.join(" and ")}`}
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

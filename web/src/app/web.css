@@ -67,7 +67,6 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-ribbon-quarter-card:focus-within { outline: 1px solid var(--ibpl-accent); }
 .ibpl-react-gameflow .ibpl-ribbon-lane[role="button"]:focus rect { stroke: var(--ibpl-accent); stroke-width: 2; }
 
-.ibpl-compare-side { min-width: 0; border: 0; }
 /* Open cue on Compare rows (Shiny's "amber text + chevron", made stronger,
    user 2026-10-29): the name is amber and underlined with a chevron, and the
    whole row lights up under the pointer or keyboard focus. */
@@ -140,8 +139,7 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 @media (max-width: 575.98px) {
   .cmp-players-cta { width: 100%; }
 }
-.ibpl-compare-side legend { float: none; font-size: 1rem; }
-.ibpl-compare-side input[type="range"], #cmp_min_poss { display: block; width: 100%; }
+#cmp_min_poss { display: block; width: 100%; }
 .ibpl-compare-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 16px; }
 .ibpl-compare-metrics .btn { border-radius: 20px; }
 .ibpl-compare-lineup-controls { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -505,32 +503,95 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
 .gf-stint-stats dt { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ibpl-text-muted, #9a9389); }
 .gf-stint-stats dd { margin: 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Compare: the A and B sides stay on the page (user 2026-10-28), beside the
-   results from 992px and above them on narrower screens. */
+/* Compare: one grid, a row per filter with A and B next to each other (user
+   2026-11-05). Beside the results from 1200px, so the table starts at the top.
+   Phones put each filter's name on its own line above its two controls. */
 .cmp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-.cmp-sides {
+.cmp-results { min-width: 0; }
+.cmp-grid {
+  display: grid; gap: 8px; align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 10px 12px 12px;
   background: var(--ibpl-surface, #1c1814);
   border: 1px solid var(--ibpl-border);
   border-radius: 8px;
-  padding: 12px 14px;
 }
-.cmp-results { min-width: 0; }
-@media (min-width: 992px) {
-  .cmp-layout { grid-template-columns: 300px minmax(0, 1fr); }
+.cmp-grid-corner { display: none; }
+.cmp-grid-row { display: contents; }
+.cmp-grid-head, .cmp-grid-cell { --cmp-side: var(--ibpl-side-a); min-width: 0; }
+.cmp-grid-head.is-b, .cmp-grid-cell.is-b { --cmp-side: var(--ibpl-accent); }
+.cmp-grid-head {
+  align-self: stretch; padding: 7px 9px; border-radius: 6px;
+  border-top: 3px solid var(--cmp-side); background: rgba(255, 255, 255, 0.03);
 }
-/* Below 992px one side at a time, chosen with the A | B switch. */
-.cmp-side-switch { display: flex; gap: 6px; margin-bottom: 10px; }
-.cmp-side-switch button {
-  flex: 1; padding: 6px 10px; border-radius: 6px; font-weight: 600;
-  background: transparent; color: var(--ibpl-text-muted); border: 1px solid var(--ibpl-border);
+.cmp-grid-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: var(--cmp-side); overflow-wrap: anywhere; }
+.cmp-grid-letter {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; font-size: 12px;
+  line-height: 20px; text-align: center; background: var(--cmp-side); color: #1a1409;
 }
-.cmp-side-switch button.is-active { background: var(--ibpl-accent); color: #1a1409; border-color: var(--ibpl-accent); }
-@media (max-width: 991.98px) {
-  .cmp-side:not(.is-shown) { display: none; }
-  .cmp-vs { display: none; }
+.cmp-grid-detail { display: block; margin-top: 2px; font-size: 12px; color: var(--ibpl-text-muted); overflow-wrap: anywhere; }
+.cmp-grid-label { grid-column: 1 / -1; margin-top: 4px; line-height: 1.2; }
+.cmp-grid-name { display: block; font-size: 13px; font-weight: 600; color: var(--ibpl-text); }
+.cmp-grid-hint { display: block; margin-top: 1px; font-size: 11px; color: var(--ibpl-text-muted); }
+/* The name column labels each control, so the controls' own labels stay for
+   screen readers only. */
+.cmp-grid-cell label, .cmp-grid-cell .control-label {
+  position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
 }
-@media (min-width: 992px) {
-  .cmp-side-switch { display: none; }
+.cmp-grid-cell .form-group, .cmp-grid-cell .shiny-input-container { width: 100%; margin: 0; }
+.cmp-grid-cell .selectize-input { min-height: 32px; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+.cmp-grid-pair { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 4px; }
+.cmp-grid-pair .selectize-control.single .selectize-input::after { right: 4px !important; }
+.cmp-grid-pair .selectize-input { padding-left: 6px; padding-right: 16px; font-size: 12px; white-space: nowrap; }
+.cmp-grid-pair .selectize-input > .item { padding: 0; margin: 0; background: transparent; border: 0; }
+/* The smallest phones: "At most (<=)" and its value do not fit on one line. */
+@media (max-width: 359.98px) {
+  .cmp-grid-pair { grid-template-columns: minmax(0, 1fr); }
+}
+.cmp-grid-cell .input-daterange { flex-direction: column; }
+.cmp-grid-cell .input-daterange .form-control { width: 100%; border-radius: 4px; font-size: 13px; }
+.cmp-grid-cell .input-daterange .input-group-addon { display: none; }
+.cmp-grid-range { display: flex; align-items: center; gap: 8px; }
+.cmp-grid-range input { flex: 1; min-width: 0; }
+.cmp-grid-range output { flex: none; min-width: 16px; font-weight: 700; text-align: right; }
+/* Opponent Strength: three fields, one filter, so one box. The negative margin
+   cancels the padding and the controls stay in line with the other rows. */
+.cmp-grid-group {
+  grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 8px; align-items: center;
+  margin: 2px -6px 0; padding: 8px 5px 8px 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--ibpl-text-muted);
+  border-radius: 6px;
+}
+.cmp-grid-group-head { grid-column: 1 / -1; }
+.cmp-grid-warning { min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.25; color: var(--ibpl-neg); }
+/* Phones: the filters fold away under the A and B headers (user 2026-11-05). */
+.cmp-grid-toggle {
+  grid-column: 1 / -1; padding: 8px 12px; border-radius: 6px; font-weight: 700;
+  color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1);
+  border: 1px solid var(--ibpl-accent);
+}
+@media (max-width: 575.98px) {
+  .cmp-grid:not(.is-open) > .cmp-grid-row, .cmp-grid:not(.is-open) > .cmp-grid-group { display: none; }
+}
+@media (min-width: 576px) {
+  .cmp-grid-toggle { display: none; }
+}
+.cmp-grid-check { display: block; width: 18px; height: 18px; margin: 0; }
+/* What the two sides set differently carries the side's colour. */
+.cmp-grid-row.is-diff .cmp-grid-name { color: var(--ibpl-accent); font-weight: 700; }
+.cmp-grid-row.is-diff .selectize-input, .cmp-grid-row.is-diff input.form-control {
+  border-color: var(--cmp-side) !important;
+}
+@media (min-width: 576px) {
+  .cmp-grid { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
+  .cmp-grid-corner { display: block; }
+  .cmp-grid-label { grid-column: auto; margin-top: 0; }
+}
+@media (min-width: 1200px) {
+  .cmp-layout { grid-template-columns: 520px minmax(0, 1fr); }
 }
 
 /* Compare settings bar, under the view tabs: the quick preset first and

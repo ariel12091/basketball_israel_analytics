@@ -547,6 +547,59 @@ export function ViewContent({ blocks }: { blocks: Block[] }) {
 
 // ---- Sidebar controls ------------------------------------------------------
 /** starter_context_filters_ui(): mode + value per side, stored as "mode:value". */
+export function StarterSelects({
+  p,
+  query,
+  set,
+  starterKey,
+  wrap,
+}: {
+  p: string;
+  query: Query;
+  set: (patch: Patch) => void;
+  starterKey: "own_starters" | "opp_starters";
+  /** Lays out the mode select and the value select. */
+  wrap: (mode: ReactNode, value: ReactNode) => ReactNode;
+}) {
+  const [mode = "", value = ""] = (query[starterKey] ?? "").split(":");
+  const own = starterKey === "own_starters",
+    side = own ? "off" : "def";
+  return wrap(
+    <Selectize
+      id={`${p}_num_starters_${side}_mode`}
+      formControl={false}
+      label={tt(
+        own ? "Own lineup starters" : "Opponent lineup starters",
+        starterKey,
+      )}
+      placeholder="ALL"
+      emptyLabel="ALL"
+      choices={[
+        { value: "gte", label: "At least (>=)" },
+        { value: "lte", label: "At most (<=)" },
+      ]}
+      value={[mode]}
+      onChange={(v) =>
+        set({ [starterKey]: v[0] || value ? `${v[0] ?? ""}:${value}` : null })
+      }
+    />,
+    <Selectize
+      id={`${p}_num_starters_${side}`}
+      formControl={false}
+      label={own ? "Own value" : "Opp value"}
+      placeholder="--"
+      emptyLabel="--"
+      choices={["0", "1", "2", "3", "4", "5"].map((n) => ({
+        value: n,
+        label: n,
+      }))}
+      value={[value]}
+      onChange={(v) =>
+        set({ [starterKey]: mode || v[0] ? `${mode}:${v[0] ?? ""}` : null })
+      }
+    />,
+  );
+}
 export function StarterRows({
   p,
   query,
@@ -556,55 +609,28 @@ export function StarterRows({
   query: Query;
   set: (patch: Patch) => void;
 }) {
-  const row = (key: "own_starters" | "opp_starters", side: "off" | "def") => {
-    const [mode = "", value = ""] = (query[key] ?? "").split(":");
-    const own = side === "off";
-    return (
-      <div className="row">
-        <div className="col-sm-6">
-          <Selectize
-            id={`${p}_num_starters_${side}_mode`}
-            formControl={false}
-            label={tt(
-              own ? "Own lineup starters" : "Opponent lineup starters",
-              own ? "own_starters" : "opp_starters",
-            )}
-            placeholder="ALL"
-            emptyLabel="ALL"
-            choices={[
-              { value: "gte", label: "At least (>=)" },
-              { value: "lte", label: "At most (<=)" },
-            ]}
-            value={[mode]}
-            onChange={(v) =>
-              set({ [key]: v[0] || value ? `${v[0] ?? ""}:${value}` : null })
-            }
-          />
-        </div>
-        <div className="col-sm-6">
-          <Selectize
-            id={`${p}_num_starters_${side}`}
-            formControl={false}
-            label={own ? "Own value" : "Opp value"}
-            placeholder="--"
-            emptyLabel="--"
-            choices={["0", "1", "2", "3", "4", "5"].map((n) => ({
-              value: n,
-              label: n,
-            }))}
-            value={[value]}
-            onChange={(v) =>
-              set({ [key]: mode || v[0] ? `${mode}:${v[0] ?? ""}` : null })
-            }
-          />
-        </div>
-      </div>
-    );
-  };
+  const row = (mode: ReactNode, value: ReactNode) => (
+    <div className="row">
+      <div className="col-sm-6">{mode}</div>
+      <div className="col-sm-6">{value}</div>
+    </div>
+  );
   return (
     <>
-      {row("own_starters", "off")}
-      {row("opp_starters", "def")}
+      <StarterSelects
+        p={p}
+        query={query}
+        set={set}
+        starterKey="own_starters"
+        wrap={row}
+      />
+      <StarterSelects
+        p={p}
+        query={query}
+        set={set}
+        starterKey="opp_starters"
+        wrap={row}
+      />
     </>
   );
 }

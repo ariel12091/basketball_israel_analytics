@@ -5,6 +5,7 @@ import {
   compareSideParams,
   editCompareSide,
   fullSideLabel,
+  oppRankMissing,
   resolveCompareQuery,
   shortSideLabel,
 } from "./compareQuery";
@@ -64,4 +65,24 @@ it("Home's last-10 storyline opens the preset on that team's Detail", () => {
     entity: "2",
     cmp_view: "detail",
   });
+});
+
+it("names what a partly set opponent rank still needs", () => {
+  const q = resolveCompareQuery(defaults());
+  const rank = (side: string, n: string, metric: string) => ({
+    ...q,
+    a_opp_rank_side: side,
+    a_opp_rank_n: n,
+    a_opp_rank_metric: metric,
+  });
+  expect(oppRankMissing(rank("", "", ""), "a")).toEqual([]);
+  expect(oppRankMissing(rank("top", "4", ""), "a")).toEqual([]);
+  expect(oppRankMissing(rank("top", "4", "net"), "a")).toEqual([]);
+  expect(oppRankMissing(rank("top", "", ""), "a")).toEqual(["Rank N"]);
+  expect(oppRankMissing(rank("", "4", "net"), "a")).toEqual(["Top / Bottom"]);
+  expect(oppRankMissing(rank("", "", "off"), "a")).toEqual([
+    "Top / Bottom",
+    "Rank N",
+  ]);
+  expect(oppRankMissing(rank("top", "", ""), "b")).toEqual([]);
 });
