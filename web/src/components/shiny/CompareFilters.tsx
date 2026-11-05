@@ -15,7 +15,7 @@ import Selectize, { type Choice } from "./Selectize";
 import DateRangeInput from "./DateRangeInput";
 import { StarterSelects } from "./TabKit";
 import layout from "@/data/layoutUi.json";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import catalogues from "@/data/catalogues.json";
 import { choiceValues } from "@/lib/choices";
 /** As every tab's Last N control: up to the season's game numbers. Never below
@@ -179,14 +179,15 @@ export default function CompareSidesGrid({
   teams,
   players,
   rounds,
+  onToggle,
 }: {
   q: Query;
   set: (p: Patch) => void;
   teams: Choice[];
   players: Row[];
   rounds: number[];
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const update = (side: CompareSide, k: string, v: string) =>
       set(editCompareSide(q, side, k, v)),
     playerMode = q.view === "Players",
@@ -519,8 +520,7 @@ export default function CompareSidesGrid({
     </div>
   );
   return (
-    <div className={`cmp-grid${open ? " is-open" : ""}`}>
-      <div className="cmp-grid-corner" aria-hidden="true" />
+    <div className="cmp-grid">
       {SIDES.map((side) => {
         const { heading, detail } = sideHeading(q, side, teams, players);
         return (
@@ -535,14 +535,11 @@ export default function CompareSidesGrid({
           </div>
         );
       })}
-      {/* Phones only: the headers above already say what is compared. */}
-      <button
-        type="button"
-        className="cmp-grid-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {open ? TEXT.hideFilters : TEXT.showFilters}
+      {/* The headers say what is compared, so the rows can fold away. Which
+          label shows is width-dependent, so web.css picks it (see cmp-layout). */}
+      <button type="button" className="cmp-grid-toggle" onClick={onToggle}>
+        <span className="cmp-toggle-show">{TEXT.showFilters}</span>
+        <span className="cmp-toggle-hide">{TEXT.hideFilters}</span>
       </button>
       {fields.map(row)}
       <div role="group" aria-label={TEXT.rankName} className="cmp-grid-group">
