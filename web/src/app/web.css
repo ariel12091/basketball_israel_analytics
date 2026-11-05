@@ -605,6 +605,29 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); }
 }
 
+/* Burger menu: every tab's views, not only the current tab's as mobile.css has
+   it (user 2026-11-05). There is no hover here, so they are pills under each
+   tab's name, compact enough that the whole menu fits a phone screen. */
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown .tab-hover-menu,
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu {
+  display: flex !important; flex-wrap: wrap; gap: 6px;
+  position: static; transform: none; width: 100%; min-width: 0;
+  margin: 4px 0 0; padding: 0 0 10px 24px;
+  background: transparent; border: 0; box-shadow: none;
+}
+/* Clear of the active tab's underline. */
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu { margin-top: 10px; }
+/* The caret means "opens a menu", and here the views are already open. */
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown > .nav-link::after { display: none; }
+body.ibpl-collapsed-nav .tab-hover-menu .thm-item,
+body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
+  display: inline-flex; align-items: center; width: auto; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--ibpl-border); border-radius: 18px;
+  font-size: 0.85rem; white-space: nowrap;
+}
+body.ibpl-collapsed-nav .tab-hover-menu .thm-item.active { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+body.ibpl-collapsed-nav .tab-hover-menu .thm-check { display: none; }
+
 /* Compare settings bar, under the view tabs: the quick preset first and
    largest (the page's most used control), then dates and game numbers. */
 .cmp-settings {
