@@ -211,6 +211,33 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(r).toMatchObject({ error: expect.stringMatching(/time/) });
   });
 
+  it("sorting Compare by gap_size puts the largest gap first in either direction", async () => {
+    compare.mockImplementation(async (s: URLSearchParams) => ({
+      rows:
+        s.get("game_type") === "5"
+          ? [
+              { team_id: 2, team_name: "Tel Aviv", net_rtg: 11.7, off_poss: 300 },
+              { team_id: 3, team_name: "Ramat Gan", net_rtg: 6.1, off_poss: 300 },
+            ]
+          : [
+              { team_id: 2, team_name: "Tel Aviv", net_rtg: 37.9, off_poss: 300 },
+              { team_id: 3, team_name: "Ramat Gan", net_rtg: -10.8, off_poss: 300 },
+            ],
+      meta: { version: "v1" },
+    }));
+    const r = await runTool(
+      "r1",
+      { tool: "compare", league: "il", query: { a_game_type: "5", b_game_type: "10,34" }, sort: { key: "gap_size", desc: true }, limit: 1 },
+      later,
+    );
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].cells).toMatchObject({ team_name: "Tel Aviv" });
+    expect(r.rows[0].cells.gap).toBeCloseTo(-26.2);
+    const { fillAndVerify } = await import("./markers");
+    expect(fillAndVerify("{{r1.row1.team_name}} {{r1.row1.gap}}", [r], "who differs most", "2026-27")).toMatchObject({ ok: true });
+  });
+
   it("an unknown game type lists the codes instead of returning nothing", async () => {
     for (const r of [
       await runTool("r1", { tool: "team_ratings", league: "il", query: { game_type: "1" }, sort: byNet }, later),

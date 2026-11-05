@@ -31,8 +31,34 @@ describe("compareTable: the Compare page's paired table", () => {
       { team_id: 2, metric_a: 8, metric_b: -2, gap: 10, rank: 1 },
     ]);
     expect(t.meta).toMatchObject({ version: "v1", view: "Teams" });
+    expect(t.rows[0].gap_size).toBe(10);
     // The page's own side headings, for the answer's wording.
     expect(t.meta.sides).toEqual({ a: "vs Top 4", b: "vs Bottom 4" });
+  });
+
+  it("gap_size is the gap without its direction, and keeps a missing gap missing", async () => {
+    const answer = vi.fn(async (s: URLSearchParams) => ({
+      rows:
+        s.get("game_type") === "5"
+          ? [
+              { team_id: 2, team_name: "A", net_rtg: 11.7, off_poss: 300 },
+              { team_id: 3, team_name: "B", net_rtg: 6.1, off_poss: 300 },
+              { team_id: 4, team_name: "C", net_rtg: null, off_poss: 300 },
+            ]
+          : [
+              { team_id: 2, team_name: "A", net_rtg: 37.9, off_poss: 300 },
+              { team_id: 3, team_name: "B", net_rtg: -10.8, off_poss: 300 },
+              { team_id: 4, team_name: "C", net_rtg: 1, off_poss: 300 },
+            ],
+      meta: { version: "v1" },
+    }));
+    const t = await compareTable(answer, new URLSearchParams("a_game_type=5&b_game_type=10,34"));
+    const size = Object.fromEntries(t.rows.map((r) => [r.team_id, r.gap_size]));
+    expect(size[2]).toBeCloseTo(26.2);
+    expect(size[3]).toBeCloseTo(16.9);
+    expect(size[4]).toBeNull();
+    // The signed order is the page's: the larger gap is last, not first.
+    expect(t.rows[0].team_id).toBe(3);
   });
 
   it("team_id pins the team on both sides", async () => {
