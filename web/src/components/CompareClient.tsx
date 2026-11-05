@@ -37,7 +37,7 @@ import {
   CompareStatus,
   type CompareSeed,
 } from "./shiny/CompareData";
-import CompareSideFilters, {
+import CompareSidesGrid, {
   CompareSelect,
   CompareDates,
   lastNChoices,
@@ -87,9 +87,6 @@ function CompareTab({
 }) {
   const { query: raw, set: patch } = useTabQuery("il", compareDefaults),
     q = withCompareSelection(resolveCompareQuery(raw), selection);
-  // Narrow screens show one side at a time (the A | B switch); wide screens
-  // show both. Page-local state: it is not a filter.
-  const [side, setSide] = useState<"a" | "b">("a");
   const set = (p: Patch) => {
     const changedContext = Object.keys(p).some(
       (k) =>
@@ -564,9 +561,7 @@ function CompareTab({
             set={set}
             rounds={rounds}
             showDates={q.preset !== "date_split"}
-            showGN={
-              q.preset !== "gn_split" && !q.a_last_n && !q.b_last_n
-            }
+            showGN={q.preset !== "gn_split" && !q.a_last_n && !q.b_last_n}
           />
         </>
       ) : (
@@ -600,38 +595,13 @@ function CompareTab({
     </>
   );
   const sides = (
-    <>
-      <div className="cmp-side-switch" role="group" aria-label="Show side">
-        {(["a", "b"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            aria-pressed={side === s}
-            className={side === s ? "is-active" : ""}
-            onClick={() => setSide(s)}
-          >
-            Side {s.toUpperCase()}
-          </button>
-        ))}
-      </div>
-      {(["a", "b"] as const).map((s) => (
-        <div key={s} className={`cmp-side${side === s ? " is-shown" : ""}`}>
-          {s === "b" && (
-            <div className="cmp-vs text-center text-muted fw-bold my-2">
-              -- vs --
-            </div>
-          )}
-          <CompareSideFilters
-            q={q}
-            set={set}
-            side={s}
-            teams={teams}
-            players={players}
-            rounds={rounds}
-          />
-        </div>
-      ))}
-    </>
+    <CompareSidesGrid
+      q={q}
+      set={set}
+      teams={teams}
+      players={players}
+      rounds={rounds}
+    />
   );
   const main = (
     <>

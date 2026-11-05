@@ -62,7 +62,10 @@ export const presetChoices = [
 /** A side filter the preset itself defines, so editing one side leaves the other. */
 export function presetBlocksMirror(preset: string, key: string) {
   if (preset === LAST_N_PRESET) return key === "last_n";
-  const blockers = data.PRESET_MIRROR_BLOCKS as Record<string, string | string[]>;
+  const blockers = data.PRESET_MIRROR_BLOCKS as Record<
+    string,
+    string | string[]
+  >;
   const rName =
     key === "own_starters"
       ? "starters_mode"
@@ -179,7 +182,8 @@ export function editCompareSide(
   const out: Patch = { [`${s}_${key}`]: value, auto_min: "true" };
   if (q.view !== "Players" && q.preset && !presetBlocksMirror(q.preset, key))
     out[`${s === "a" ? "b" : "a"}_${key}`] = value;
-  if (key === "last_n" && value) Object.assign(out, { min_gn: null, max_gn: null });
+  if (key === "last_n" && value)
+    Object.assign(out, { min_gn: null, max_gn: null });
   if (
     q.view === "Players" &&
     q.auto_players === "true" &&
@@ -293,6 +297,17 @@ export function resolveCompareQuery(q: Query): Query {
   }
   return q;
 }
+/** The opponent rank is one filter in three fields. The readers apply it only
+ * with both a side and a count (get_team_ratings_dynamic: a blank metric is
+ * net), so a partly set rank does nothing. Names what it still needs. */
+export function oppRankMissing(q: Query, s: CompareSide): string[] {
+  const side = q[`${s}_opp_rank_side`],
+    n = q[`${s}_opp_rank_n`],
+    metric = q[`${s}_opp_rank_metric`];
+  if (!side && !n && !metric) return [];
+  return [...(side ? [] : ["Top / Bottom"]), ...(n ? [] : ["Rank N"])];
+}
+
 export function shortSideLabel(q: Query, s: CompareSide) {
   const pair: Record<string, [string, string]> = {
     starters_bench: ["Starters", "Bench"],
