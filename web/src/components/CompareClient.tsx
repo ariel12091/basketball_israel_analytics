@@ -87,6 +87,9 @@ function CompareTab({
 }) {
   const { query: raw, set: patch } = useTabQuery("il", compareDefaults),
     q = withCompareSelection(resolveCompareQuery(raw), selection);
+  // The filters start folded on phones and open on wider screens (web.css), so
+  // this says only whether the user flipped that. Page-local: not a filter.
+  const [filtersFlipped, setFiltersFlipped] = useState(false);
   const set = (p: Patch) => {
     const changedContext = Object.keys(p).some(
       (k) =>
@@ -601,6 +604,7 @@ function CompareTab({
       teams={teams}
       players={players}
       rounds={rounds}
+      onToggle={() => setFiltersFlipped(!filtersFlipped)}
     />
   );
   const main = (
@@ -671,7 +675,7 @@ function CompareTab({
           summary={layout.intro.compare}
         />
       </div>
-      <div className="cmp-layout">
+      <div className={`cmp-layout${filtersFlipped ? " is-flipped" : ""}`}>
         <section className="cmp-sides" aria-label="Sides A and B">
           {sides}
         </section>

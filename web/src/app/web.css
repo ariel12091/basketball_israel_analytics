@@ -567,17 +567,28 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
 }
 .cmp-grid-group-head { grid-column: 1 / -1; }
 .cmp-grid-warning { min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.25; color: var(--ibpl-neg); }
-/* Phones: the filters fold away under the A and B headers (user 2026-11-05). */
+/* The filters fold away under the A and B headers (user 2026-11-05): folded by
+   default on phones, open by default on wider screens. .is-flipped means the
+   user changed that default, so the same click works at every width. */
 .cmp-grid-toggle {
-  grid-column: 1 / -1; padding: 8px 12px; border-radius: 6px; font-weight: 700;
-  color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1);
-  border: 1px solid var(--ibpl-accent);
+  grid-column: 1 / -1; padding: 8px 12px; border-radius: 8px; font-size: .85rem; font-weight: 700;
+  color: var(--ibpl-accent); background: transparent;
+  border: 2px solid var(--ibpl-accent);
 }
+.cmp-grid-toggle:hover, .cmp-grid-toggle:focus-visible { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 @media (max-width: 575.98px) {
-  .cmp-grid:not(.is-open) > .cmp-grid-row, .cmp-grid:not(.is-open) > .cmp-grid-group { display: none; }
+  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-row,
+  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-group,
+  .cmp-layout:not(.is-flipped) .cmp-toggle-hide,
+  .cmp-layout.is-flipped .cmp-toggle-show { display: none; }
 }
 @media (min-width: 576px) {
-  .cmp-grid-toggle { display: none; }
+  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-row,
+  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-group,
+  .cmp-layout.is-flipped .cmp-toggle-hide,
+  .cmp-layout:not(.is-flipped) .cmp-toggle-show { display: none; }
+  /* In the empty cell left of the two headers: it adds no height. */
+  .cmp-grid-toggle { grid-row: 1; grid-column: 1; align-self: center; }
 }
 .cmp-grid-check { display: block; width: 18px; height: 18px; margin: 0; }
 /* What the two sides set differently carries the side's colour. */
@@ -591,7 +602,7 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   .cmp-grid-label { grid-column: auto; margin-top: 0; }
 }
 @media (min-width: 1200px) {
-  .cmp-layout { grid-template-columns: 520px minmax(0, 1fr); }
+  .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); }
 }
 
 /* Compare settings bar, under the view tabs: the quick preset first and

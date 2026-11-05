@@ -236,3 +236,26 @@ test("[CMP-02][league:il] opponent rank reads as one filter and says when it is 
   expect(Math.abs(inside!.x - outside!.x)).toBeLessThan(1);
   expect(Math.abs(inside!.width - outside!.width)).toBeLessThan(1);
 });
+
+test("[CMP-02][league:il] desktop can hide the filters and give the table the width", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "desktop");
+  await stub(page);
+  await page.goto("/il/compare?season=2026&preset=starters_bench");
+  const firstRow = page.locator(".cmp-grid-row").first(),
+    results = page.locator(".cmp-results"),
+    grid = page.locator(".cmp-grid");
+  await expect(firstRow).toBeVisible();
+  const opened = (await results.boundingBox())!;
+  expect(opened.x).toBeGreaterThan((await grid.boundingBox())!.x + 500);
+  await page.getByRole("button", { name: "Hide filters" }).click();
+  await expect(firstRow).toBeHidden();
+  await expect(page.locator(".cmp-grid-group")).toBeHidden();
+  await expect(page.locator(".cmp-grid-head.is-b")).toContainText("Bench");
+  const closed = (await results.boundingBox())!;
+  expect(closed.width).toBeGreaterThan(opened.width + 400);
+  expect((await grid.boundingBox())!.height).toBeLessThan(110);
+  await page.getByRole("button", { name: "Show filters" }).click();
+  await expect(firstRow).toBeVisible();
+});
