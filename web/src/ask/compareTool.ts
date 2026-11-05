@@ -8,8 +8,12 @@ import data from "@/data/compareUi.json";
 import {
   compareDefaults,
   compareSideParams,
+  fullSideLabel,
+  LAST_N_PRESET,
+  presetBlocksMirror,
   resolveCompareQuery,
   shortSideLabel,
+  SIDE_FIELDS,
 } from "@/lib/compareQuery";
 import { parseStats, type Query } from "@/lib/tabQuery";
 import type { Row } from "@/rules/gameLogs";
@@ -41,21 +45,97 @@ export type CompareTable = {
   };
 };
 
-export async function compareTable(side: Side, s: URLSearchParams): Promise<CompareTable> {
-  for (const k of s.keys())
-    if (!Object.hasOwn(compareDefaults, k) && !SHARED.includes(k))
-      throw new ParamError(k, `Unknown parameter ${k}`);
-  if (s.get("drill_player"))
+/** The side filter each preset defines: a different value there asks for a
+ * table that cannot exist, so it is the one combination refused. */
+const DEFINED: Record<string, string> = {
+  home_away: "home_away",
+  win_loss: "outcome",
+  starters_bench: "own_starters",
+  opp_starters_bench: "opp_starters",
+  clutch: "clutch",
+  top_bottom_rank: "opp_rank_side",
+};
+
+/**
+ * What the chat asked for, as the query the page shows it with. A preset and
+ * filters combine: the preset is applied first, then the filters on top, and
+ * preset_applied keeps the page from applying it again over them. A filter
+ * without a side means both sides; with a preset, a filter on one side reaches
+ * the other as it does when edited on the page.
+ */
+function pageQuery(s: URLSearchParams): { q: Query; filtered: boolean } {
+  const given: Record<string, string> = {},
+    both: Record<string, string> = {},
+    sided: Record<string, string> = {};
+  for (const [k, v] of s) {
+    if (SIDE_FIELDS.includes(k)) both[k] = v;
+    else if (/^[ab]_/.test(k) && SIDE_FIELDS.includes(k.slice(2))) sided[k] = v;
+    else if (Object.hasOwn(compareDefaults, k) || SHARED.includes(k)) given[k] = v;
+    else throw new ParamError(k, `Unknown parameter ${k}`);
+  }
+  if (given.drill_player)
     throw new ParamError("drill_player", "Player drill-down is not available in the chat");
-  const q = resolveCompareQuery({
+  delete given.preset_applied;
+  const team = given.team_id ?? "";
+  if (team && !/^[1-9]\d*$/.test(team))
+    throw new ParamError("team_id", "team_id is a team id");
+  const base = resolveCompareQuery({
     ...compareDefaults,
     season: ui.defaultGameYear,
-    ...Object.fromEntries(s),
+    ...given,
   } as Query);
-  // open_detail is how Home's storylines open a team's Detail: it needs a
-  // preset and team_id, or the page ignores it and the link would disagree.
+  const preset = base.preset;
+  // "Last 5 vs the season": last_n can only mean the preset's side A.
+  if (preset === LAST_N_PRESET && both.last_n) {
+    sided.a_last_n ??= both.last_n;
+    delete both.last_n;
+  }
+  const filters: Record<string, string> = {};
+  for (const [k, v] of Object.entries(both))
+    for (const side of ["a", "b"]) filters[`${side}_${k}`] = v;
+  Object.assign(filters, sided);
+  if (preset)
+    for (const [k, v] of Object.entries(sided)) {
+      const other = `${k[0] === "a" ? "b" : "a"}_${k.slice(2)}`;
+      if (!presetBlocksMirror(preset, k.slice(2)) && !(other in sided)) filters[other] = v;
+    }
+  for (const [k, v] of Object.entries(filters))
+    if (DEFINED[preset] === k.slice(2) && v !== base[k])
+      throw new ParamError(k, `The ${preset} preset already sets ${k.slice(2)} on both sides`);
+  if (preset === LAST_N_PRESET && filters.b_last_n)
+    throw new ParamError("b_last_n", "Side B of this preset is the whole season");
+  const q: Query = { ...base, ...filters, preset_applied: "true" };
+  if (team && !preset) {
+    q.a_teams ||= team;
+    q.b_teams ||= team;
+    if (given.open_detail === "true")
+      Object.assign(q, { view: "Teams", entity: team, cmp_view: "detail" });
+  }
+  if ((q.a_last_n || q.b_last_n) && (q.min_gn || q.max_gn || preset === "gn_split"))
+    throw new ParamError("last_n", "Last N and a game-number range are mutually exclusive");
+  return { q, filtered: Object.keys(filters).length > 0 };
+}
+
+/** The page link for a Compare call: the query the numbers were read with. */
+export function compareLink(query: Record<string, string>): string | null {
+  try {
+    const { q } = pageQuery(new URLSearchParams(query));
+    const out = new URLSearchParams();
+    for (const [k, v] of Object.entries(q))
+      if (v && v !== compareDefaults[k] && !["team_id", "open_detail"].includes(k)) out.set(k, v);
+    if (!q.preset) out.delete("preset_applied");
+    return `/il/compare?${out}`;
+  } catch (e) {
+    if (e instanceof ParamError) return null;
+    throw e;
+  }
+}
+
+export async function compareTable(side: Side, s: URLSearchParams): Promise<CompareTable> {
+  const { q, filtered } = pageQuery(s);
+  // Opening one team's Detail needs to know which team.
   if (s.get("open_detail") === "true" && q.cmp_view !== "detail")
-    throw new ParamError("open_detail", "open_detail=true needs preset and team_id");
+    throw new ParamError("open_detail", "open_detail=true needs team_id");
   if (!VIEWS.includes(q.cmp_view))
     throw new ParamError("cmp_view", "cmp_view is league, detail or players");
   if (q.view === "Players")
@@ -65,7 +145,15 @@ export async function compareTable(side: Side, s: URLSearchParams): Promise<Comp
     throw new ParamError("entity", `cmp_view=${q.cmp_view} needs entity (the team id)`);
   if (q.cmp_view === "players" && q.view !== "Teams")
     throw new ParamError("cmp_view", "The players view is for one team (view Teams)");
-  const sides = { a: shortSideLabel(q, "a"), b: shortSideLabel(q, "b") };
+  // The page's heading names a plain preset; anything else needs the filters
+  // spelled out, or the answer could only call its sides "A" and "B".
+  const label = (s: "a" | "b") => {
+    const full = fullSideLabel(q, s, teamChoices(q.season));
+    return (!q.preset || filtered) && full !== `Side ${s.toUpperCase()}`
+      ? full
+      : shortSideLabel(q, s);
+  };
+  const sides = { a: label("a"), b: label("b") };
   const read = pairReader(side, q);
   if (q.cmp_view === "detail") return detail(q, read, sides);
   if (q.cmp_view === "players") return players(q, read, sides);

@@ -1,7 +1,7 @@
 import ui from "../data/shinyUi.json";
 import type { League } from "../rules/gameLogs";
 import { defaultSeason } from "./tabQuery";
-import { comparePresetHref } from "./compareQuery";
+import { comparePresetHref, LAST_N_PRESET } from "./compareQuery";
 export const homeTeams = (season: string) =>
   (ui.ilTeams as Record<string, { id: number; name: string }[]>)[season] ?? [];
 export function homePath(season: string, team: string) {
@@ -38,9 +38,17 @@ export function homeTabHref(
   if (path === "compare") q.set("preset", "starters_bench");
   return `/${league}/${path}?${q}`;
 }
-export function homeStoryHref(season: string, preset: string, team: string) {
-  return preset
-    ? comparePresetHref(season, preset, team)
+export function homeStoryHref(
+  season: string,
+  preset: string,
+  team: string,
+  id = "",
+) {
+  // Shiny's last-10 storyline has no preset (it opens Team Ratings); the web's
+  // Compare has one, whose default is that same ten games (D32).
+  const target = preset || (id === "last10" ? LAST_N_PRESET : "");
+  return target
+    ? comparePresetHref(season, target, team)
     : homeTabHref("il", season, "go_team", "");
 }
 export function homeLeagueHref(

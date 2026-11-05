@@ -9,6 +9,7 @@ import { ParamError, rawQueryGuard } from "@/server/api";
 import { BusyError, DeadlineError } from "@/server/deadline";
 import { displaySpec } from "./display";
 import { flatten } from "./flatten";
+import { gameTypeList, unknownGameType } from "./gameTypes";
 import { rateBasis } from "./semantics";
 import { TOOLS, type ToolName } from "./registry";
 
@@ -83,6 +84,9 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
     if (Array.isArray(v) && v.length !== 1)
       return { error: `Give ${k} once, comma separated if it takes several values`, param: k };
     values[k] = String(Array.isArray(v) ? v[0] : v);
+    // A wrong code would quietly return nothing and read as "no such games".
+    const code = call.league === "il" && /^([ab]_)?game_type$/.test(k) && unknownGameType(values[k]);
+    if (code) return { error: `Unknown game type ${code}. Codes: ${gameTypeList}`, param: k };
   }
   if (!entry.request) {
     const unknown = Object.keys(values).find((k) => !entry.keys?.includes(k));

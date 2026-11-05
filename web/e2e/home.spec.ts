@@ -160,9 +160,8 @@ for (const name of [
           .filter({ hasText: line.text }),
       ).toHaveAttribute(
         "href",
-        line.preset
-          ? `/il/compare?season=${g.season}&preset=${line.preset}&team_id=${g.team}&open_detail=true`
-          : `/il/team-ratings?season=${g.season}`,
+        // Shiny's last-10 line has no preset; the web's Compare has one (D32).
+        `/il/compare?season=${g.season}&preset=${line.preset || "last_n_season"}&team_id=${g.team}&open_detail=true`,
       );
     }
     await expect(page.locator(".home-nav-card")).toHaveCount(6);

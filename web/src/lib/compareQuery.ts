@@ -49,7 +49,28 @@ export const SIDE_FIELDS = [
   "opp_rank_side",
   "opp_rank_n",
   "opp_rank_metric",
+  "last_n",
 ];
+/** Web-only preset (D32): the Home storyline's "last N vs the season". Shiny's
+ * Compare has no such preset, so it is not in the generated compareUi.json. */
+export const LAST_N_PRESET = "last_n_season";
+export const LAST_N_DEFAULT = "10";
+export const presetChoices = [
+  ...data.presetChoices,
+  { value: LAST_N_PRESET, label: "Last N vs Season" },
+];
+/** A side filter the preset itself defines, so editing one side leaves the other. */
+export function presetBlocksMirror(preset: string, key: string) {
+  if (preset === LAST_N_PRESET) return key === "last_n";
+  const blockers = data.PRESET_MIRROR_BLOCKS as Record<string, string | string[]>;
+  const rName =
+    key === "own_starters"
+      ? "starters_mode"
+      : key === "opp_starters"
+        ? "opp_starters_mode"
+        : key;
+  return [blockers[preset] ?? []].flat().includes(rName);
+}
 export const compareDefaults: Query = {
   view: "Teams",
   preset: "",
@@ -140,6 +161,13 @@ export function applyPreset(q: Query, preset: string): Patch {
       split_date: q.split_date || seasonBounds("il", q.season).end,
     });
   if (preset === "gn_split") Object.assign(out, { min_gn: null, max_gn: null });
+  // Last N and a game-number range exclude each other (setup_gn_last_n_sync).
+  if (preset === LAST_N_PRESET)
+    Object.assign(out, {
+      a_last_n: q.a_last_n || LAST_N_DEFAULT,
+      min_gn: null,
+      max_gn: null,
+    });
   return out;
 }
 export function editCompareSide(
@@ -149,19 +177,9 @@ export function editCompareSide(
   value: string,
 ): Patch {
   const out: Patch = { [`${s}_${key}`]: value, auto_min: "true" };
-  const blockers = data.PRESET_MIRROR_BLOCKS as Record<
-    string,
-    string | string[]
-  >;
-  const blocked = [blockers[q.preset] ?? []].flat();
-  const rName =
-    key === "own_starters"
-      ? "starters_mode"
-      : key === "opp_starters"
-        ? "opp_starters_mode"
-        : key;
-  if (q.view !== "Players" && q.preset && !blocked.includes(rName))
+  if (q.view !== "Players" && q.preset && !presetBlocksMirror(q.preset, key))
     out[`${s === "a" ? "b" : "a"}_${key}`] = value;
+  if (key === "last_n" && value) Object.assign(out, { min_gn: null, max_gn: null });
   if (
     q.view === "Players" &&
     q.auto_players === "true" &&
@@ -224,9 +242,14 @@ export function compareSideParams(
       (!["own_starters", "opp_starters"].includes(k) ||
         /^(gte|lte):[0-5]$/.test(v)) &&
       (q.view !== "Players" ||
-        !["own_starters", "opp_starters", "teams"].includes(k))
+        !["own_starters", "opp_starters", "teams", "last_n"].includes(k))
     )
       s.set(k, v);
+  }
+  // The readers refuse last_n with a game-number range; last_n is this side's.
+  if (s.has("last_n")) {
+    s.delete("min_gn");
+    s.delete("max_gn");
   }
   if (q.view === "Lineups") {
     s.set("size", q.size);
@@ -280,6 +303,8 @@ export function shortSideLabel(q: Query, s: CompareSide) {
   };
   if (q.view === "Players") return s.toUpperCase();
   if (pair[q.preset]) return pair[q.preset][s === "a" ? 0 : 1];
+  if (q.preset === LAST_N_PRESET)
+    return s === "a" ? `Last ${q.a_last_n || LAST_N_DEFAULT}` : "Season";
   if (q.preset === "top_bottom_rank" && q[`${s}_opp_rank_n`])
     return `vs ${s === "a" ? "Top" : "Bottom"} ${q[`${s}_opp_rank_n`]}`;
   if (q.preset === "gn_split" && q.split_gn)
@@ -314,6 +339,7 @@ export function fullSideLabel(
   for (const key of ["home_away", "outcome"])
     if (get(key)) parts.push(title(get(key)));
   if (get("clutch") === "true") parts.push("Clutch");
+  if (get("last_n")) parts.push(`Last ${get("last_n")}`);
   if (get("opp_rank_side") && get("opp_rank_n")) {
     const metric = (
       { off: "Off", def: "Def", net: "Net" } as Record<string, string>
@@ -345,5 +371,6 @@ export function fullSideLabel(
     if (q.preset === "gn_split" && q.split_gn)
       parts.push(`${side === "a" ? "Before" : "After"} GN ${q.split_gn}`);
   }
+  if (q.preset === LAST_N_PRESET && side === "b") parts.unshift("Season");
   return parts.join(" | ") || `Side ${side.toUpperCase()}`;
 }

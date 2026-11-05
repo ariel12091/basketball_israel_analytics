@@ -27,7 +27,7 @@ import { parseContext } from "@/server/contextParams";
 import { playerStatFrame } from "@/server/playerStatFilterRepo";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
-import { compareTable } from "./compareTool";
+import { compareLink, compareTable } from "./compareTool";
 
 export type ToolName =
   | "onoff"
@@ -207,7 +207,7 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     async (_l, s) => compareTable((side) => compareAnswer(side), s),
     "compare",
     ids("CMP", 1, 17),
-    { leagues: ["il"] },
+    { leagues: ["il"], link: (_l, query) => compareLink(query) },
   ),
   team_overview: tool(
     "team_overview",
