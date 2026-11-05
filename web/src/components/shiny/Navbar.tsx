@@ -98,6 +98,8 @@ const VIEW_PARAM: Record<string, string> = {
   Summary: "summary",
   "Four Factors": "four_factors",
   "Shot Profile": "shot_profile",
+  Lineups: "Lineups",
+  Players: "Players",
 };
 
 const LEAGUE_VALUE: Record<League, string> = {
