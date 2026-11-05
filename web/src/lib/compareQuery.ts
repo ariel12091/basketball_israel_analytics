@@ -371,7 +371,6 @@ export function fullSideLabel(
     if (q.preset === "gn_split" && q.split_gn)
       parts.push(`${side === "a" ? "Before" : "After"} GN ${q.split_gn}`);
   }
-  if (q.preset === LAST_N_PRESET && side === "b" && !parts.length)
-    return "Season";
+  if (q.preset === LAST_N_PRESET && side === "b") parts.unshift("Season");
   return parts.join(" | ") || `Side ${side.toUpperCase()}`;
 }

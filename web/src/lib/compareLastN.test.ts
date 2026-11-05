@@ -4,6 +4,7 @@ import {
   compareDefaults,
   compareSideParams,
   editCompareSide,
+  fullSideLabel,
   resolveCompareQuery,
   shortSideLabel,
 } from "./compareQuery";
@@ -29,6 +30,10 @@ it("last N vs season reads side A's last N games and side B's whole season", () 
   // Only this preset's side carries the window.
   expect(editCompareSide(q, "a", "last_n", "5")).not.toHaveProperty("b_last_n");
   expect(shortSideLabel({ ...q, a_last_n: "5" }, "a")).toBe("Last 5");
+  const team = [{ value: "2", label: "T" }];
+  const pinned = { ...q, a_teams: "2", b_teams: "2" };
+  expect(fullSideLabel(pinned, "a", team)).toBe("Last 10 | T");
+  expect(fullSideLabel(pinned, "b", team)).toBe("Season | T");
 });
 
 it("a side's last N replaces the game-number range the readers refuse with it", () => {
