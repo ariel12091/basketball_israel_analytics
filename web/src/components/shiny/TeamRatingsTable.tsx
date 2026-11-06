@@ -8,7 +8,7 @@ import DataTable, {
   type Group,
 } from "./DataTable";
 import type { Row, League } from "@/rules/gameLogs";
-import { type TeamView } from "@/rules/teamRatings";
+import { rankRamp, type TeamView } from "@/rules/teamRatings";
 import { SP_SUFFIX, SP_LABELS } from "@/rules/onoff";
 import { rRound } from "@/rules/round";
 import ui from "@/data/shinyUi.json";
@@ -134,6 +134,7 @@ export default function TeamRatingsTable({
           ),
         ),
       );
+      const rankColors = rankRamp(maxRank);
       cols.push({
         id,
         label,
@@ -173,9 +174,7 @@ export default function TeamRatingsTable({
             view === "summary"
               ? rk == null
                 ? undefined
-                : (ui.teamRankColors as Record<string, string[]>)[
-                    String(maxRank)
-                  ]?.[Number(rk) - 1]
+                : rankColors[Number(rk) - 1]
               : heat(r[`pr_${id === "net_rtg" ? "net" : id}`], false);
           return {
             node:

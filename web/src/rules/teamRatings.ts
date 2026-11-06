@@ -62,6 +62,36 @@ export function teamPercentiles(
           (valid.length - 1),
   );
 }
+/** colorRampPalette(rev(RAMP_ANCHORS))(n), the rank ramp server_tab3.R and
+ * server_tab9_euro_team.R build at the table's own size (best rank first).
+ * colorRamp() interpolates each channel with approx() and scales by 255;
+ * rgb(maxColorValue = 255) then truncates to an integer, it does not round. */
+export function rankRamp(n: number): string[] {
+  const anchors = [...ui.rampAnchors].reverse().map((h) =>
+    [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255),
+  );
+  const step = 1 / (anchors.length - 1);
+  return Array.from({ length: n }, (_, k) => {
+    const x = n === 1 ? 0 : k === n - 1 ? 1 : k * (1 / (n - 1));
+    const i = Math.min(Math.floor(x / step), anchors.length - 2),
+      x0 = i * step,
+      x1 = (i + 1) * step;
+    return (
+      "#" +
+      [0, 1, 2]
+        .map((c) => {
+          const y0 = anchors[i][c],
+            y1 = anchors[i + 1][c],
+            f = x === x1 ? y1 : y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+          return Math.trunc(f * 255)
+            .toString(16)
+            .toUpperCase()
+            .padStart(2, "0");
+        })
+        .join("")
+    );
+  });
+}
 export function traditionalMode(input: Row[], mode: string): Row[] {
   return input.map((row) => {
     const r = { ...row },

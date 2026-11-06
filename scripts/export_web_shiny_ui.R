@@ -259,7 +259,10 @@ ui <- list(
   }),
   playerStatFilterCols = lapply(seq_along(env$TS_FILTERABLE_COLS), function(i) list(label=names(env$TS_FILTERABLE_COLS)[i],col=unname(env$TS_FILTERABLE_COLS[[i]]))),
   teamRatingMetrics = env$TEAM_RATING_METRICS,
-  teamRankColors = lapply(stats::setNames(2:30,2:30), function(n) grDevices::colorRampPalette(rev(env$RAMP_ANCHORS))(n)),
+  # The web builds the rank ramp at any size from these anchors (rankRamp());
+  # teamRankColors stays as R's own output, the reference its test compares to.
+  rampAnchors = env$RAMP_ANCHORS,
+  teamRankColors = lapply(stats::setNames(2:40,2:40), function(n) grDevices::colorRampPalette(rev(env$RAMP_ANCHORS))(n)),
   teamStatFilterCols = lapply(list(summary=env$TR_SUMMARY_FILTERABLE_COLS,four_factors=env$TR_FF_FILTERABLE_COLS,shot_profile=env$TR_SP_FILTERABLE_COLS,traditional=env$TR_TRAD_FILTERABLE_COLS),
     function(cols) lapply(seq_along(cols), function(i) list(label=names(cols)[i],col=unname(cols[i])))),
   lineupDefaults = list(minPoss = env$LD_DEFAULT_MIN_POSS, size = env$LD_DEFAULT_NUM),

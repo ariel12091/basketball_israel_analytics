@@ -6,13 +6,23 @@ import {
   teamPace,
   teamShotProfile,
   teamTableRows,
+  rankRamp,
 } from "./teamRatings";
+import ui from "../data/shinyUi.json";
 import {
   teamPresets,
   loadTeam,
   teamOracleChecks,
 } from "../../test/teamGoldens";
 describe("Team Ratings R helpers", () => {
+  it("rankRamp() is R's colorRampPalette at every exported size", () => {
+    // R's own output for 2..40 teams; EuroCup 2026-27 has 32, past the old
+    // 2..30 lookup table, which left its Summary cells uncoloured.
+    const reference = ui.teamRankColors as Record<string, string[]>;
+    expect(Object.keys(reference)).toContain("32");
+    for (const [n, colours] of Object.entries(reference))
+      expect(rankRamp(Number(n))).toEqual(colours);
+  });
   it("min_rank leaves gaps, pr_vec averages ties and preserves NA", () => {
     expect(minRanks([10, 10, null, 30])).toEqual([2, 2, null, 1]);
     expect(teamPercentiles([10, 10, null, 30])).toEqual([0.25, 0.25, null, 1]);
