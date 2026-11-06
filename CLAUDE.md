@@ -11,11 +11,12 @@ and rollback.
 
 - Work on `react/<name>` branches off `main`; merge only after the Preview
   live checks (`.github/workflows/web-preview-live.yml`) passed on the head.
-- `sql/web-foundation` holds the migration history, the golden harness and
-  unapplied SQL/loader edits. **Never merge it whole.**
+- `sql/web-foundation` is FROZEN (tag `backup/web-foundation-2026-11-06`); its
+  finished work is on `main` and the unapplied Phase 0 publication layer is
+  parked on `sql/publication-phase0` (read its `PARKED.md`). Do not commit to it.
 - Parity fixtures (`web/test/goldens/`, ~750 MB) are gitignored and generated
-  from the R goldens by `scripts/export_goldens_json.R` (on
-  `sql/web-foundation`); without them the parity tests fail by design.
+  from the R goldens by `scripts/export_goldens_json.R`;
+  without them the parity tests fail by design.
 - Budget: Fast Origin Transfer is 10 GB/month; tab pages are CDN-cached for
   an hour, and each Preview load test costs ~0.35 GB.
 
@@ -777,18 +778,22 @@ than adding a special case:
    missing from the Home UI test). Do not merge until the user says so.
 
 **Reliability / scaling (added 2026-10-12) -- do these in order, after the schema/code drift tasks:**
-1. **Move the app and the DB-backed tests off port 6543.** See the port-6543 pitfall above. Plan: read Pool Size in the Supabase dashboard (session mode on 5432 caps clients at Pool Size per role; default believed 15, never read; Postgres `max_connections` is 60), then switch `PG_PORT` to 5432 for the tests and a local app first, then in the Connect Cloud dashboard and the GitHub secret. Consider `POOL_MAX=1`: an R process runs one query at a time. A BEGIN/COMMIT wrapper around each query did NOT cleanly fix it in one (confounded) run -- do not assume it does. Client-side parameter interpolation is the fallback and conflicts with the parameterised-SQL rule.
+1. **Move the app and the DB-backed tests off port 6543.** **Status 2026-11-02:** tests and the ETL security audit moved (GitHub secret `PG_PORT` = 5432); ETL writes, catalogue sync and Basket refresh already write on 5432; the web app is safe on either port (one transaction per request). Moving the Shiny app itself is DROPPED (user): it retires at the Vercel cut-over. Local `app/.Renviron` and `etl/.Renviron` still say 6543. Original plan, kept for reference: See the port-6543 pitfall above. Plan: read Pool Size in the Supabase dashboard (session mode on 5432 caps clients at Pool Size per role; default believed 15, never read; Postgres `max_connections` is 60), then switch `PG_PORT` to 5432 for the tests and a local app first, then in the Connect Cloud dashboard and the GitHub secret. Consider `POOL_MAX=1`: an R process runs one query at a time. A BEGIN/COMMIT wrapper around each query did NOT cleanly fix it in one (confounded) run -- do not assume it does. Client-side parameter interpolation is the fallback and conflicts with the parameterised-SQL rule.
 2. **Re-run the 20-user stress test** (`docs/launch_stress_test_2026-09-10.md`) on the new port. It ran through 6543; whether its four stuck-busy sessions were this defect is unknown.
 3. **Extend the stress test to 50 users** and only then decide on architecture. The 20-user run showed query latency flat (median 5.4-5.6s) and startup degrading (nav p90 9-11s at 5 users, 35-42s at 20). Capacity comes from the number of R processes, which Connect Cloud does not document; the already-listed `ExtendedTask` step is the incremental answer if one slow query blocking a process is the limiter.
 
 **Free-throw credit attribution (added 2026-10-12):**
-1. **Clean up after one nightly ETL has run on it.** Run `scripts/verify_ft_credit.R --check-base` (all four G1 checks must be 0), then `scripts/apply_ft_credit_migration.R --cleanup --apply` and `scripts/verify_ft_credit.R --drop`. Until then about 400 MB of `__ftc_old` views and the `ft_credit_migration` baseline schema stay in the database as the rollback copy.
+1. ~~Clean up after one nightly ETL has run on it.~~ **DONE 2026-11-02:** G1a-d all ok, the four `__ftc_old` views and the `ft_credit_migration` schema dropped (database 4131 -> 3545 MB). Original note: Run `scripts/verify_ft_credit.R --check-base` (all four G1 checks must be 0), then `scripts/apply_ft_credit_migration.R --cleanup --apply` and `scripts/verify_ft_credit.R --drop`. Until then about 400 MB of `__ftc_old` views and the `ft_credit_migration` baseline schema stay in the database as the rollback copy.
 2. **EuroLeague still credits a trip with its last free throw.** No double count there, but not the Israeli rule (lineup that drew the foul). Aligning it is an open decision.
 3. **Gameflow disagrees with on/off on re-credited free throws by design** (about 3.5% of points): the ribbon shows who was on the floor when each point was scored.
 4. ~~Clutch lineup readers dropped events and time~~ -- fixed 2026-10-12, see the lineup-reader pitfall. Left over: `sub_lineups_stats` holds 4 five-man rows for 2026 with zero possessions and zero minutes whose lineup no longer exists in the base table (its refresh upserts and never deletes). They show only in Tab 2 Summary at a possession minimum of 0. Not deleted.
 7. **SHELVED 2026-10-12: player readers do not return their true-shooting attempt count.** The multi-team TOTAL row (Tab 5) and the usage fallback recombine rows by attempts. The app side is done: `ts_attempts()` (`helpers.R`) sums a `ts_att` column when a reader returns one and otherwise falls back to `ts_implied_attempts()`, which recovers attempts from the row's own TS% and so loses a scoreless row's missed free-throw trips (a 0-point row with ten missed trips plus a 10-point row on ten attempts shows 50%, not 25%). No reader returns `ts_att` yet, so today's behaviour is unchanged. Remaining, Israeli: append `ts_att` (= the `ts_poss_count` each already computes) to `player_traditional_stats_mv` (a staged rebuild) and to `get_player_traditional_from_games`, `_dynamic`, `_custom_clutch` (DROP + CREATE, then the security re-apply). Remaining, EuroLeague: the same column on `euroleague.player_traditional_stats_mv` and its three readers (`_pergame`, `_standard_clutch`, `_custom_clutch`), as a numbered gated migration plus `euroleague_function_contract.py`. Tests waiting in `test-ts-trips.R`.
 5. **No data-quality-report finding for NULL credit columns.** The nightly `test-ft-credit-db.R` covers it; a finding in `etl/run_data_quality_report.R` would surface it in the report as well.
 6. **The non-roster rows in `player_four_factors_by_game`** (see Pitfalls) predate this work and are a separate fix: join `lineups_lookup` on `game_id` in its refresh function, as `compute_player_traditional_by_game` already does.
+
+**Web (added 2026-10-28):**
+1. ~~Lineups "# Starters" is wrong for 2/3/4-man groups~~ **FIXED 2026-11-01:** each group's own starters per game, both leagues (Israeli `f6666d7`, EuroLeague migration 057 `59475a7`).
+2. **BACKLOG (user 2026-11-02, only if analytics show demand): per-game totals for 2-4 player groups.** Filtered 2-4 player Lineups (home/away, last N, dates, opponent, outcome) rebuild groups from every lineup-game on each call (up to 385k rows for a EuroLeague pair, 4-14 s under load); neither an index nor hash joins help (measured). A table of (game, team, group) totals for sizes 2-4 in each league would let the readers sum games. Costs: tens of MB per league-season (estimated, not measured), a per-game refresh in the Israeli ETL Phase 4 (under the 2-minute ETL timeout) and the EuroLeague load, a pin against today's readers, a grant re-apply. Clutch stays on the slow path (action-level). Until then the web gate's heavy lane (`isHeavyLineups()`, `DB_HEAVY_MAX`, main 09e2ee9) keeps these requests from taking every pool slot. Load results: memory `project-web-preview-load-results`.
 
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
 
