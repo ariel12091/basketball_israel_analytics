@@ -7,8 +7,8 @@
 # runs the same app through golden_replay_conn(), which answers from those
 # fixtures only, so the app server runs offline and deterministically.
 #
-# Strict replay covers only the queries Game Logs depends on
-# (GOLDEN_STRICT_READERS): one of those that was never recorded is an error.
+# Strict replay covers the active tab's dependencies
+# (GOLDEN_STRICT_READERS_BY_TAB): an unrecorded dependency is an error.
 # Every golden replays the whole session start-up too -- Home, Tab 3, the
 # EuroLeague section -- and those queries change with DEFAULT_GAME_YEAR, the
 # team catalogue or any unrelated SQL edit. A miss outside the strict set is
@@ -76,6 +76,52 @@ GOLDEN_STRICT_READERS <- list(
   euro_fetch_players_basic = "E | 2025",
   euro_fetch_phases = "E | 2025",
   euro_fetch_round_values = "E | 2025"
+)
+
+# Each tab owns its strict dependencies; unrelated startup queries remain notes.
+GOLDEN_STRICT_READERS_BY_TAB <- list(
+  player_stats = c(list(
+    cached_season_df = NULL, fetch_player_traditional_season = NULL,
+    fetch_player_traditional_filtered = NULL, load_ts_identity_lookup = NULL,
+    server_tab5_traditional = NULL
+  ), GOLDEN_STRICT_READERS[c('etl_last_success_db','euro_data_version',
+    'fetch_teams_distinct','fetch_gn_values','euro_fetch_seasons','euro_fetch_teams',
+    'euro_fetch_players_basic','euro_fetch_phases','euro_fetch_round_values')]),
+  team_ratings = c(list(
+    run_team_ratings_dynamic = NULL, run_team_ff_dynamic = NULL,
+    run_team_ff_dashboard_dynamic = NULL, run_team_traditional_dynamic = NULL,
+    fetch_team_game_minutes = NULL, tr_effective_anchor = NULL, tr_prev_match_end = NULL,
+    run_team_ratings = NULL, run_team_ff = NULL, run_team_dashboard = NULL,
+    run_team_minutes = NULL, et_prev_end = NULL, tr_data = NULL, tr_ff_data = NULL,
+    cached_season_df = NULL
+  ), GOLDEN_STRICT_READERS[c('etl_last_success_db','euro_data_version',
+    'fetch_teams_distinct','fetch_gn_values','euro_fetch_seasons','euro_fetch_teams',
+    'euro_fetch_phases','euro_fetch_round_values')]),
+  lineups = c(list(
+    run_fetch_lineups_20 = NULL,
+    run_fetch_lineups_ff_20 = NULL,
+    cached_season_df = NULL,
+    fetch_player_traditional_season = NULL,
+    server_tab10_euro_lineups = NULL
+  ), GOLDEN_STRICT_READERS[c(
+    "etl_last_success_db", "euro_data_version", "fetch_teams_min",
+    "fetch_teams_distinct", "fetch_gn_values", "fetch_players_basic",
+    "euro_fetch_seasons", "euro_fetch_teams", "euro_fetch_players_basic",
+    "euro_fetch_phases", "euro_fetch_round_values"
+  )]),
+  game_logs = GOLDEN_STRICT_READERS,
+  onoff = c(list(
+    cached_season_df = NULL,
+    run_onoff_compute_14 = NULL,
+    run_four_factors_compute = NULL,
+    fetch_player_traditional_season = NULL,
+    fetch_player_traditional_filtered = NULL
+  ), GOLDEN_STRICT_READERS[c(
+    "etl_last_success_db", "euro_data_version", "fetch_teams_min",
+    "fetch_teams_distinct", "fetch_gn_values", "fetch_players_basic",
+    "euro_fetch_seasons", "euro_fetch_teams", "euro_fetch_players_basic",
+    "euro_fetch_phases", "euro_fetch_round_values"
+  )])
 )
 
 # Names of the functions on the current call stack (`f(...)`, `env$f(...)`
@@ -224,12 +270,14 @@ methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
       if (!golden_query_is_strict(conn@strict, params)) {
         if (!label %in% conn@misses$notes) {
           conn@misses$notes <- c(conn@misses$notes, label)
-          message("golden replay note: unrecorded query outside the Game Logs set, ",
+          message("golden replay note: unrecorded query outside the strict set, ",
                   "answered with zero rows: ", label)
         }
         return(data.frame())
       }
-      msg <- sprintf("golden replay miss: %s key=%s (%s)", label, key, GOLDEN_RERECORD_HINT)
+      hint <- if (identical(conn@strict, GOLDEN_STRICT_READERS_BY_TAB$onoff))
+        sub("--tab game_logs", "--tab onoff", GOLDEN_RERECORD_HINT, fixed = TRUE) else GOLDEN_RERECORD_HINT
+      msg <- sprintf("golden replay miss: %s key=%s (%s)", label, key, hint)
       conn@misses$labels <- c(conn@misses$labels, msg)
       stop(msg, call. = FALSE)
     }
@@ -238,6 +286,16 @@ methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
 
 methods::setMethod("dbGetQuery", c("GoldenRecordConnection", "character"),
   function(conn, statement, params = NULL, ...) {
+    # Team Ratings recording may reuse already captured, byte-identical
+    # auxiliary startup queries (On/Off, lineups, player rosters). The team
+    # readers, measured minutes and rank-arrow schedule queries always run live.
+    key <- golden_query_key(statement, params)
+    path <- golden_fixture_path(conn@dir, key)
+    team_query <- grepl('(basketball_test|euroleague)[.](get_team_|team_|final_schedule_mv)', statement)
+    if (isTRUE(getOption('ibpl.golden.reuse_team_auxiliary')) && !team_query && file.exists(path)) {
+      cached <- tryCatch(suppressWarnings(readRDS(path)), error = function(e) NULL)
+      if (!is.null(cached)) return(cached)
+    }
     out <- tryCatch(
       if (is.null(params)) {
         DBI::dbGetQuery(conn@real, statement)
@@ -394,7 +452,8 @@ golden_stop_on_log <- function(what, adjective, entries) {
 # slug with a time, see csv_export_button()), as its data, its initial order
 # and the names of the columns columnDefs hide. With allow_none, a run that
 # rendered no such table (the app's renderer returned NULL) captures NULL.
-golden_capture_dt <- function(slug_prefix, allow_none = FALSE) {
+golden_capture_dt <- function(slug_prefix = NULL, allow_none = FALSE, has_col = NULL,
+                              render_pattern = NULL) {
   sink <- new.env(parent = emptyenv())
   sink$items <- list()
   push <- function(entry) sink$items[[length(sink$items) + 1L]] <- entry
@@ -408,12 +467,16 @@ golden_capture_dt <- function(slug_prefix, allow_none = FALSE) {
     on.exit(untrace_dt(), add = TRUE)
     session$flushReact()
     matches <- Filter(function(entry) {
+      if (!is.null(render_pattern) && !grepl(render_pattern,
+          paste(unlist(entry$options$columnDefs), collapse = " "), fixed = TRUE)) return(FALSE)
+      if (!is.null(has_col) && !has_col %in% names(entry$data)) return(FALSE)
+      if (is.null(slug_prefix)) return(TRUE)
       fn <- entry$options$buttons[[1]]$filename
       is.character(fn) && length(fn) == 1L && startsWith(fn, slug_prefix)
     }, sink$items)
     if (!length(matches)) {
       if (isTRUE(allow_none)) return(NULL)
-      stop("no datatable rendered for ", slug_prefix, call. = FALSE)
+      stop("no datatable rendered for ", if (is.null(has_col)) slug_prefix else has_col, call. = FALSE)
     }
     hit <- matches[[length(matches)]]
     data <- as.data.frame(hit$data)
