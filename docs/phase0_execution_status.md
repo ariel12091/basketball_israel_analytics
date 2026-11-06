@@ -1,0 +1,626 @@
+# React migration -- HANDOFF (updated 2026-10-22)
+
+## START HERE (current state, read this first)
+
+**Gameflow continuation (2026-10-22):** implemented for all three competitions,
+in both Game Logs views and at `/{league}/gameflow?game_id=…&team_id=…`.
+Original R SQL owners/arguments, raw-score as-of rules, mirrored opponent +/-
+and lineup membership are preserved. Desktop uses native `<dialog>` with Escape,
+focus trapping/restoration and close controls. Phone/tablet widths use quarter/OT
+cards, full-game overview, quarter jumps and an optional full timeline with pinned
+names. Selection works across quarters and sides; shared lineups, lineup focus,
+stint/quarter details, score inspection, empty/error/retry states and warnings work.
+The UI uses exported R geometry/text and the existing Shiny styles.
+
+Verification: ten committed raw Shiny queries and transform outputs, including
+per-period details, replay identically offline. All ten live API comparisons match.
+All **237 unit tests**, **92 unique browser checks** (44 Gameflow + 48 shared)
+and **six live SSR checks** pass. The full shared run initially passed 86/92;
+six old Game Logs assertions assumed View even for missing scoring feeds. They
+now compare the recorded R cell; the complete 32-case Game Logs rerun passes.
+Desktop close initially lost opener focus because restoration happened while
+the dialog still made the page inert; restoration now follows dialog removal.
+Phone/desktop IL and EuroLeague screenshots inspected, including two overtimes.
+Local and Vercel builds pass; typecheck passes; lint has two existing warnings.
+
+React Doctor full scan includes Gameflow. The new browser-global diagnostic was
+resolved with an explicit server guard. The only remaining error is the existing
+OnOff PivotMenu cleanup false positive. New warnings about component size,
+bounded lookups, SVG interaction and dialog backdrop handling were reviewed;
+the SVG lane groups have no nested focusable controls, and the native dialog
+handles Escape/focus while its backdrop handler only closes outside the bounds.
+The JSON round trip in the live checker intentionally normalizes R negative zero
+to JSON's wire representation. Remote scoring was unavailable; local scan completed.
+No suppressions or broad cleanup were added. Log: `tmp_gameflow_doctor_final.log`.
+
+Ready **Preview only**, deployment `dpl_6ffRcJ8DZuqzcVAk6KJPU7TKbvZm`:
+https://ibpl-game-logs-11drkc5az-ariel12091-8759.vercel.app/il/gameflow?game_id=390&team_id=2
+All **48 distinct protected Preview checks pass**, including eight Gameflow
+games (regulation/OT/truncated/reconstructed clock) and initial Gameflow SVG HTML
+for each competition. One existing endpoint transiently retried successfully.
+Default seasons remain 26–27; historical validation links explicitly use 25–26.
+Checkpoint belongs on `sql/web-foundation`, committed/pushed per user request.
+One production server remains on 3100, PG_PORT=5432, existing read-only settings.
+Next: **Home, then Compare**. Home was surveyed in `ui_tab0_home.R`,
+`mod_team_hub.R` and `helpers.R`; no Home React code was written. Reuse the combined
+hub SQL with its legacy fallback, remembered team, card links and this Gameflow.
+No DB/ETL/role changes or production promotion. Do not merge old publication work.
+
+Logs: `tmp_gameflow_{record,refresh,replay,rules,units_final,build,types_final,lint_final}.log`,
+`tmp_gameflow_browser_production.log`, `tmp_gameflow_gamelogs_final.log`,
+`tmp_gameflow_{focus2,ssr,live_final,visual,deploy,preview,doctor_final}.log`.
+Rebuild ignored JSON with `scripts/capture_gameflow_goldens.R` (offline).
+The Player Stats and earlier entries below are historical.
+
+**Player Stats continuation (2026-10-22):**
+`/{league}/player-stats` uses the existing Tab 5 readers for all competitions.
+All four display modes, full-context heat ranks before display narrowing,
+canonical roster choices, multi-team TOTAL rows, clutch/context controls,
+Min GP, stat filters, rate eligibility, saved column order and CSV are across.
+27 real Shiny tables and 47 read-only query fixtures are committed with this
+checkpoint; offline replay matches (54 assertions). All 222 unit tests pass
+with two workers. The rate threshold reproduces R's floating arithmetic;
+rounding an integer-boundary cutoff changed one player's eligibility. A focused
+regression and the complete recorded cell comparison cover it.
+
+All **114 browser checks** pass: 66 Player Stats checks and 48 shared Game Logs,
+selector and Lineups modal regressions, at 390/1440 px. Screenshots inspected
+for both leagues and widths. Six live production-mode SSR checks pass and
+assert that table data is in the initial HTML, all three competitions and both
+widths. Build/typecheck pass; lint has the two existing warnings.
+
+The first browser run passed its 54 numeric tables, then was stopped to target
+the visible navbar menu instead of intentionally hidden sidebar radios. A
+subsequent selector matched both the PTS popover option and the native column
+order option; it is now scoped to the popover. Final complete run: 114/114.
+An initial concurrent unit run hit one existing Lineups 5-second timeout;
+the final isolated run with two workers passes 222/222 in 21.6 seconds, with
+assertions and timeouts unchanged. R replay emits locale/package warnings.
+
+React Doctor includes the new files: 50/100, 134 warnings and the existing
+OnOff PivotMenu cleanup false positive, with no new functional error. The new
+advisories concern component size, bounded lookups and sequential snapshot
+queries; broad cleanup remains deferred. Final scan: `tmp_player_doctor_final.log`.
+
+Ready **Preview only**, deployment `dpl_8kpxTK9zf12i99LbqD66faBLUVbz`:
+https://ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app/il/player-stats?season=2026
+All **37 protected Preview checks pass**: migrated tab endpoints, Player Stats
+default/last-N-home/standard-clutch/custom-clutch for all competitions, and
+the initial Player Stats HTML for each competition. The verification helper
+now resolves the installed Vercel CLI entry point and allows 32 MiB responses
+for the existing large Lineups payloads; logs retain metadata rather than
+dumping response bodies on CLI errors. Target is confirmed Preview, status Ready.
+The checkpoint is on `sql/web-foundation`; do not merge the historical publication
+work into main. One production server is on 3100
+(the older production PID 21796 and the intervening dev server were stopped).
+No DB/ETL/role changes. Next: Gameflow + Home, then Compare.
+The Team Ratings and earlier entries below are historical.
+
+Logs: `tmp_player_record_resume.log`, `tmp_player_replay.log`,
+`tmp_player_parity.log`, `tmp_player_units_final.log`,
+`tmp_player_browser_final.log`, `tmp_player_live.log`, `tmp_player_build.log`,
+`tmp_player_lint_final2.log`, `tmp_player_doctor_final.log`,
+`tmp_player_deploy.log`, `tmp_player_preview_{final,inspect}.log`.
+Rebuild ignored JSON with `scripts/export_player_goldens_json.R`, then capture
+the independent route answers with `web/scripts/capture-player-answers.mjs`.
+
+**Team Ratings continuation (2026-10-22):** shared React page at
+`/{league}/team-ratings`, Summary/Four Factors for IL/EuroLeague/EuroCup,
+Israeli Shot Profile and Traditional. Existing read-only SQL owners unchanged:
+season MVs, filtered ratings/FF/dashboard/minutes readers, Traditional side,
+and Euro pergame/dynamic/direct routing. Pace uses measured minutes; rank
+arrows rerun the matching reader at the previous league matchday. Local stat
+filters retain R's ordering relative to percentiles/ranks. Traditional preserves
+R's three display modes (Per 40 Minutes leaves the Min column aggregate),
+side polarity, CSV names and persisted column order. Headers drag on desktop;
+the column-order control works by touch/keyboard too, using React's
+`useSyncExternalStore` for storage and the shared TanStack table.
+
+Verification: **45 Shiny tables** (IL 30, EuroLeague 13, EuroCup 2), **89 query
+fixtures**, replay identical offline (**90 assertions**); **177 unit tests**
+pass, including every recorded value/rank/delta/percentile. **98 browser checks**
+pass at 390/1440 px, covering all frames, sorting, reset, side/scaling, reorder
+persistence/dragging and CSV. **Six live server-render checks** also pass for
+all competitions and widths, verifying data is in the initial HTML. Production
+build/typecheck pass, lint has two existing warnings. All **48 shared-table
+regressions** pass (Game Logs, selectors and Lineups modal layout/focus).
+The unit suite requires all 45 oracle frames, so missing generated fixtures
+cannot silently skip the family. Screenshot review fixed
+comma formatting on Season, contrast on the column-order control and switch
+styling. An initial load now waits for data before exposing table controls,
+preventing an open reorder panel from being replaced by the first answer.
+
+Unit runs competing with R/build/browser work exceeded the old Lineups tests'
+5-second timeout (no numeric mismatches). The final isolated complete run
+passes **177/177**; assertions/timeouts were not weakened. One phone sort test
+was targeting the separate info button; it now taps the header's sorting area.
+The first browser run was stopped after diagnosing the initial-loading race;
+the complete final run is clean, **98/98**.
+
+Recording resumed with `--reuse-auxiliary`: only identical already-recorded
+startup queries for other tabs are reused; team facts/minutes/schedule anchors
+always run live. An interrupted auxiliary RDS was recovered with a fresh read;
+all 89 fixture files are readable and all 45 replays match. Locale/package
+warnings remain in the R run. Offline JSON export:
+`scripts/export_team_goldens_json.R`; separate read-only API capture:
+`web/scripts/capture-team-answers.mjs`. No expected results are synthesized.
+
+React Doctor full scan: 90 files, initially 48/100; final branch-diff scan
+49/100, 125 warnings and the existing OnOff
+PivotMenu cleanup false positive. Its timer/listeners have matching cleanup;
+new advisories concern complexity and small bounded collection lookups. No
+new functional error; no broad cleanup was attempted.
+Final scan: `tmp_team_doctor_final.log` (`--diff` compares this branch with
+origin/main, so it includes the earlier migration work too).
+
+Ready **Preview only**, deployment `dpl_3g1BP3XZfPXGm1J5bMkBGsdkxxfK`:
+https://ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app/il/team-ratings?season=2026
+The Vercel CLI works; MCP still lacks the team's grant. Protected checks use
+the CLI's Node entry point to preserve ampersands on Windows, without logging
+credentials or bypass tokens. No production promotion or DB/ETL/role changes.
+All **31 protected Preview checks pass**: all Team Ratings views, both
+Traditional sides in all three display modes, clutch/last-N, prior migrated
+tabs and initial server-rendered HTML for each competition.
+
+Logs: `tmp_team_record*.log`, `tmp_team_integrity_final.log`,
+`tmp_team_replay.log`, `tmp_team_answers.log`, `tmp_team_units_commit.log`,
+`tmp_team_browser_final.log`, `tmp_team_live.log`, `tmp_team_regressions.log`,
+`tmp_team_build_final2.log`, `tmp_team_types_last.log`, `tmp_team_lint_last.log`,
+`tmp_team_doctor.log`, `tmp_team_preview_{inspect,smoke}.log`.
+One local production server remains on 3100 (PID 21796, PG_PORT=5432).
+Next: **Player Stats**, then Gameflow + Home, Compare. User requested committing
+and pushing checkpoints on `sql/web-foundation`; do not merge the old historical
+publication work into main. The Lineups/OnOff entries below are historical.
+
+**Lineups continuation (checkpointed 2026-10-22):** new shared React Lineups
+page at `/{league}/lineups` for IL, EuroLeague and EuroCup, Summary/Four Factors,
+group sizes 2–5, roster chips (On / Any of / Off, at least/exactly k), clutch,
+game context, stat filters, auto/manual minimum possessions, pinned TOTAL and
+season game-log modals. Existing SQL readers and roles unchanged. The shared
+TanStack table now supports fixed TOTAL ordering, Summary column/global filters
+and page sizes. On/Off pivots now preserve season when navigating to Lineups
+or Game Logs. EuroLeague's modal is Summary in either parent view, matching
+the actual Shiny code (the inventory's FF-modal wording overstates that tab).
+
+Verification: 36 real Shiny presets recorded and replay identically
+offline (72 assertions); all 125 web tests pass, including every numeric cell
+and percentile/TOTAL field in those presets. Production build/typecheck pass.
+Six live server-render + modal checks pass (all competitions, both widths).
+All 92 Lineups browser checks pass (72 numeric tables, controls/pagination,
+actual On/Off pivots and eight modal viewport/focus checks). The same broad
+run passed all 142 existing On/Off/Game Logs checks; four new pivot-test
+assertions were corrected to click menu buttons, then the final 92 passed.
+The modal uses a body portal and a scoped fixed margin/scroll area, keeping
+its header and dismiss controls inside the viewport at 390/1440 px.
+Final read-only SQL audit found null-type MV rows were overwriting defensive
+modal totals. The pivot now ignores unclassified rows exactly as R does;
+the 125th unit test covers the observed game (20/33 offense, 18/17 defense).
+No database changes. Formal R goldens cover IL/EuroLeague; live checks also
+cover EuroCup. Next migration feature: **Team Ratings**.
+Temporary logs: `tmp_lineups_record.log`, `tmp_lineups_replay.log`,
+`tmp_lineups_answers.log`, `tmp_lineups_units.log`, `tmp_lineups_browser_full.log`,
+`tmp_lineups_live.log`, `tmp_lineups_build_final.log`.
+
+Oracle: `app/tests/goldens/{presets,fixtures,out}/lineups`; offline JSON export
+is `scripts/export_lineup_goldens_json.R`, read-only route capture is
+`web/scripts/capture-lineup-answers.mjs`. The capture harness now accepts a
+renderer pattern: both leagues render tables during startup, so column names
+alone picked the wrong league. The first invalid recording was stopped and
+replaced; all 36 final frames require a nonempty matching table.
+
+React Doctor full scan includes the new files: no new functional errors;
+complexity/large-component and bounded collection-lookup advisories remain.
+The existing On/Off PivotMenu subscription warning is a false positive: its
+timer and every listener have matching cleanup. Do not claim the whole app
+is clean (full scan 47/100, 121 warnings + that existing cleanup finding).
+Vercel MCP lacks the team's grant; the existing authenticated CLI deployed
+and inspected the project successfully. New deployment is **Ready, Preview**:
+https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
+ID `dpl_7rmA7oZHFWP4sLGmU2UR3MWeFcth`. No production promotion.
+All **24 protected Preview endpoint checks pass**: both Lineups views and
+their game logs, rosters, clutch, On/Off and Game Logs for IL/EuroLeague/EuroCup.
+The deployed Israeli Summary modal has positive defensive possessions.
+Vercel CLI's Node entry point was used because Windows `.cmd` forwarding
+split ampersands in query strings. No bypass tokens or credentials were logged.
+All eight final modal viewport/focus checks pass after the defensive pivot fix.
+One concurrent live rerun failed with service-busy responses and missed modal
+opens; the initial six live checks passed. An isolated rerun after restarting
+the dev server is tracked separately below; do not hide the failed rerun.
+The isolated restart run also returned service-busy responses on cold loads;
+it was stopped after IL and EuroLeague failures (`tmp_lineups_live_restart.log`,
+`tmp_lineups_dev_restart.log`). Some SSR pages recovered through a client fetch;
+the simultaneous version/roster/data requests can hit the existing admission
+queue. This remains a local live-test limitation, not a clean six-test rerun.
+Do not change shared queue/deadline policy without a separate measured fix.
+The earlier full acceptance and Preview endpoint results above remain valid.
+Only one restarted dev server remains on 3100, with PG_PORT=5432.
+The scoped final lint (`src` and `e2e`) passes with the same two warnings.
+An earlier whole-directory lint crossed deletion of a temporary diagnostic
+script and failed ENOENT; `tmp_lineups_lint_final_clean.log` is the clean retry.
+Post-deploy checks: `tmp_lineups_preview_smoke.log`; final units/types/build:
+`tmp_lineups_units_final.log`, `tmp_lineups_types_final.log`,
+`tmp_lineups_build_deploy.log`. The entries below are historical.
+
+**Restart continuation (2026-10-21):** the slider failure was reproduced after
+restart (9/10 last-N checks passed). Temporary event/state diagnostics showed
+the correct keypress and setter value followed by a stale URL-state commit;
+this was not a missing keyboard event. Updated `web/package.json` and lockfile
+from nuqs 2.7.2 to **2.10.2**. Upstream
+[fix #1613](https://github.com/47ng/nuqs/pull/1613) specifically addresses
+flushed values being discarded before Next.js 16.4+ search params catch up.
+All temporary diagnostics were removed and browser assertions are unchanged.
+The complete On/Off browser run now passes **102/102** at 390/1440 px
+(`tmp_onoff_resume_full.log`), including the earlier stale-row interaction.
+All 82 unit tests, typecheck, build and lint pass (two existing lint warnings).
+Repeated last-N/interactions pass **28/28** (`tmp_onoff_resume_repeat.log`);
+shared Game Logs/selector regressions pass **40/40**
+(`tmp_onoff_resume_regression.log`), including EuroCup. Phone and desktop
+screenshots were inspected. On/Off browser acceptance now passes locally;
+**Lineups is next**. React Doctor's changed-file scan covers zero React files,
+not the full migration. Free disk space after restart was about 12 GiB;
+one development server is running on 3100. The fix is local and uncommitted;
+the Vercel Preview below still has the old dependency.
+
+**Restart checkpoint (user, 2026-10-21):** implementation and verification work
+is saved in `d361610`. Restart notes are also in root `MEMORY.md`, `CLAUDE.md`,
+`PROJECT.md` and `web/CLAUDE.md`. After restarting, recheck free disk space and
+whether port 3100 is listening; do not assume a previous dev process survived.
+Start only one server (`cd web; npm.cmd run dev -- --port 3100`) if needed.
+No application debugging or new feature work was done in the restart-notes turn.
+
+**Rules for this work are in `web/CLAUDE.md`** (user, 2026-10-21): features
+first in the spirit of Shiny, no redesign or pixel polish (a redesign comes
+later); one layout per viewport width, mobile first; idiomatic React (TanStack
+Table, JSX content, server first render), with Shiny's CSS only for the look.
+
+**State (2026-10-21, current execution; branch `sql/web-foundation`, not pushed,
+not merged; nothing applied to production):**
+- **Game Logs: done**, both leagues (`784face`, `7009ad0`). Unit 37/37,
+  browser 40/40 (390/1440 px, 15 stored Shiny presets), live smoke 6/6.
+  GL-06 Gameflow deferred. The latest preview below includes `7009ad0`.
+- **On/Off: page built, both leagues** (`07795cd` API, `9f7075b` page, plus
+  `ac76683`). Summary / Four Factors / Shot Profile (Israeli only),
+  sidebar incl. Opponent Strength, min-poss sliders with auto-min, Net cell
+  3PT luck / small-sample tags + tooltip, pivot menu, FF detail toggle, luck
+  popover, stat filters, **Player Stats (ps_*) chips** via
+  `GET /api/v1/{league}/player-stat-filters` (`server/playerStatFilterRepo.ts`,
+  `rules/playerStats.ts`). Row pipeline is the pure `onoffTableRows()` in
+  `rules/onoff.ts` (page and parity tests share it).
+  **Checked by hand against production Shiny:** 2026-27 defaults in all three
+  views (row counts, auto-min 180/60, first-row cells identical) and
+  2025-26 "PTS/G >= 15" (27 rows both). EuroLeague FF filtered path ~9.6 s
+  (same SQL as Shiny; Phase 8).
+- **On/Off verification added:** 45 stored Shiny presets across IL Summary /
+  Four Factors / Shot Profile and EuroLeague Summary / Four Factors. Every
+  view covers default, home, teams on the fast path, teams + outcome on the
+  filtered path, last N, starters, opponent rank, an On/Off stat filter and a
+  Player Stats chip. The harness chooses the strict readers by tab and captures
+  tables without CSV slugs by column name. All 45 goldens replay identically
+  offline. All 82 web unit tests pass, including comparison of the separately
+  captured live API rows against every stored numeric/boolean field, ranks,
+  luck and sample flags. Fixed testServer possession bars are 100 / 300.
+- **UI continuation:** Four Factors detail visibility is now React state
+  passed to the cells, replacing the imperative body-class effect. Sliders
+  cancel an interrupted pointer drag without committing its draft value.
+  TanStack Table and the shared tab kit remain in place; no new layout or
+  user-agent rules. CSV repair registered as D26 in
+  `docs/shared_definitions.md` (Israeli sidebar only; Euro has no such button).
+- **Browser acceptance is OPEN:** last complete run passed 97/102 tests;
+  five cases failed (four slider-keyboard cases under last-N presets and one
+  stale-row interaction). A narrower rerun passed 10/14; slider failures remain
+  intermittent despite waiting for auto values and URL commits. Do not mark
+  On/Off done or assume this is only a test issue. Investigate the keyboard
+  event / controlled-value / nuqs path before Lineups. Six live
+  On/Off server-render smoke checks already pass (IL / EuroLeague / EuroCup,
+  390 and 1440 px). Phone and desktop screenshots were inspected in
+  `output/playwright/onoff-*` and `live-onoff-*`.
+
+**Latest Vercel Preview:**
+https://ibpl-game-logs-n69n42tt5-ariel12091-8759.vercel.app/il/onoff?season=2026
+
+Deployment `dpl_BgYVJwgQb2L7H4r4ho1x2ogB77WR` is READY, Preview
+(`target: null`, `productionUrl: null`), protected by Vercel login. Euro paths
+use season 2025. All 16 authenticated endpoint checks pass on their first
+attempt: Game Logs, all supported On/Off views in all three competitions,
+filtered IL Summary / EuroLeague FF, the IL Player Stats frame, and version.
+Typecheck, lint (zero errors; two existing warnings) and production builds pass.
+
+**Next, in order:**
+1. Resolve the On/Off slider/browser failures before declaring that family
+   accepted. User reports disk pressure. `npm.cmd cache clean --force` completed;
+   the remaining disposable `_npx` cache (about 522 MB) was also removed.
+   C: last measured 0.71 GB free after cleanup (was 0.14 GB after npm's own clean).
+   Recheck free space and dev-server health before rerunning tests. Last debug
+   run: `tmp_onoff_key_debug.log` (5/10 passed); keydown targets the correct
+   slider, but some increments never appear. `ONOFF_DEBUG=1` enables event logs
+   in the test. A later isolated attempt (`tmp_onoff_slider_debug.log`) produced
+   no usable output and is not counted as a passing check. Temporary application
+   console logging was removed before the checkpoint. Port 3100 is shared.
+2. Lineups (Tab 2 / Tab 10) the same way; the pivot menu already links to
+   `/{league}/lineups?team=&players_on=`.
+3. Then Team Ratings, Player Stats, Gameflow + Home, Compare. Phase 0 proofs
+   stay parked until the features are across.
+
+### Reproduce the On/Off checks
+
+`web/README.md` has the commands. Export stored R frames with
+`scripts/export_onoff_goldens_json.R`; with the shared server on 3100, explicitly
+capture read-only route inputs using `web/scripts/capture-onoff-answers.mjs`.
+Those generated JSON files are ignored; the stored RDS oracle and database-query
+fixtures are versioned. Run `npm.cmd test` and the On/Off Playwright tests from
+`web/`. The live smoke suite is opt-in with `LIVE_DB_SMOKE=1`.
+
+Do not re-record R goldens just to regenerate JSON. A fresh live recording uses
+`scripts/capture_goldens.R --tab onoff --record`, alone as `app_readonly` on
+5432. `--resume` preserves completed outputs and the fixture index after an
+interruption; use it only for the same capture, not after changing presets or SQL.
+The script now asserts the existing login and sets session read-only mode.
+
+### Hiccups and lessons for the next executor
+
+- The earlier Game Logs shortcuts (plain selectors, ID chips, missing grouped
+  headers) were implementation mistakes. Numeric goldens did not prove control
+  behaviour. The user identified them; the later corrections and
+  `web/CLAUDE.md` are the authority. Compare controls and interactions as well
+  as numbers; do not treat backend scope reductions as UI redesign permission.
+- EuroLeague last 5 has zero rows at fixed 100 / 300 possession limits. The
+  first recorder rejected that legitimate result. Presets now explicitly allow
+  those two empty frames; they are not silently skipped.
+- The capture script was edited while R was still executing it. All 45 outputs
+  and the fixture index were written and the connection closed, but the process
+  then reported a trailing parse error. The saved scripts parse, and all 45
+  outputs were verified by a separate full offline replay. Freeze the executable
+  files before the next long capture; restart rather than edit a running script.
+- Browser setup initially raced auto-min updates and nuqs URL commits. It also
+  clicked rows while the table was being replaced after Reset. Tests now wait
+  for the initial auto values, each URL update, the reset answer and stable
+  scrolling, but remaining keyboard failures are unresolved. Assertions still
+  compare against the original fixed-bar R frames. The cache cleanup was
+  requested because the disk lacks space, not as a proposed fix for React.
+- One attempted duplicate dev server hit EADDRINUSE. Reuse the existing 3100
+  server; do not start another Next process in this directory.
+- Windows R emits C.UTF-8 / package-build warnings on stderr, which PowerShell
+  may present as NativeCommandError even after successful assertions. Capture
+  the log and propagate `$LASTEXITCODE`; do not classify locale warnings as
+  numeric failures. Use npm/npx `.cmd` and preserve UTF-8 when editing.
+- Sandbox registry / PostgreSQL access initially returned EACCES; approved
+  escalated read-only commands worked. This was not a credential or role issue.
+- Disk pressure became explicit during the last debug attempt. Cache cleanup
+  completed, but free space remains low. Do not conflate npm-cache cleanup with
+  a verified fix for the slider failures. No data directories, installed project
+  dependencies, source files or golden fixtures were deleted for this cleanup.
+- React Doctor's changed-file scan reports no diagnostics (five files; displayed
+  score 53/100). The broader branch scan still reports existing complexity and
+  accessibility work. Its subscription-cleanup error in `PivotMenu` was checked:
+  the timeout and every listener have matching cleanup. The real slider
+  cancellation finding was fixed. Do not describe the whole migration as clean
+  based on this scan.
+- The older Vercel first-deployment production classification and optional
+  GitHub/MCP setup gaps remain in the historical record below. The new deployment
+  is explicitly verified as Preview. No production promotion is authorized.
+
+**Integration constraint:** do not merge this entire branch. The older
+`87c3de2` publication/loader edits call functions absent from production. Keep
+them unapplied; integrate the web work separately. Existing roles/passwords,
+Shiny, schemas and ETL remain unchanged.
+
+Everything below is the earlier record.
+
+# (Earlier) Phase 0 execution status -- HANDOFF (2026-10-20)
+
+## START HERE: decision for the next session (user, 2026-10-20, end of session)
+
+**Lean thin slice first. No database changes.**
+
+- Build the **Game Logs page in Next.js** (`web/`, both leagues) and get it on a **Vercel
+  preview**. That is the whole next goal.
+- **Database:** connect as the existing `app_readonly` login (from `app/.Renviron`, server-side
+  env only, never in the browser or the repo) and run **Shiny's existing queries** against the
+  existing views -- `gl_query_*` in `app/R/svc_game_logs.R`, `euro_fetch_game_log_rows()` in
+  `app/R/global_euro.R`, `fetch_scoreless_games()` in `app/R/global.R`. No new user, no new
+  schema, no new functions, **no production apply**.
+- **Cache version:** the existing `app_meta.etl_full_last_success` (Israeli) and
+  `euro_data_version()`'s query (EuroLeague), with a short CDN cache (about 60 s).
+- The reviewed `app_api` schema and publication markers on this branch stay **unapplied**;
+  they return only when caching precision or load requires them. Do NOT merge the ETL /
+  EuroLeague loader publication edits (from `87c3de2`) -- they call functions that do not
+  exist in production and would break the nightly runs.
+- **Process (budget):** build directly in one session (no per-task subagent reviews), mid-tier
+  model for routine work, ONE review at the end. No new design/plan documents unless a real
+  decision forces one.
+- Reuse what exists in `web/` (from `87c3de2`): config, `db.ts`/`deadline.ts`, `api.ts`,
+  `csv.ts`, rules in progress. Known issues: 13/15 Game Logs goldens fail on minutes (summation
+  order / R rounding); game-type labels are hardcoded (must come from the catalogue); code is
+  minified one-liners (reformat). Goldens JSON (~280 MB) is generated by
+  `scripts/export_goldens_json.R` into the gitignored `web/test/goldens/`.
+- Vercel project linking, authentication and preview env configuration are now done;
+  see the execution update below. Loading the newly configured MCP tools requires
+  a client refresh/reload.
+- Done = the preview shows Game Logs for both leagues matching the Shiny goldens.
+
+## Lean slice execution update (2026-10-21)
+
+**Numeric/API baseline verified; UI acceptance reopened by user feedback.**
+Implemented on `sql/web-foundation`; not pushed or merged. The previous "slice
+complete" statement overstated UI parity: numeric golden tests did not verify
+searchable selectors, readable team/opponent chips, or grouped Four Factors headers.
+The broader original Phase 0/Part C remains outside this narrowed slice.
+
+### UI correction review (2026-10-21)
+
+The spec's "No redesign. Same screens, same controls, same behaviour" and plan
+Task 11 remain applicable under the lean backend amendment. Checked directly against
+`ui_tab4_gamelogs.R`, `ui_tab11_euro_gamelogs.R`, `gamelog_ff_header()` in `helpers.R`,
+and inventory GL-01/GL-02. Israeli Team is intentionally single-select; Euro teams
+and opponents in all competitions support multiple selections. The missing type-to-
+search interaction, ID-based chips and absent Offense/Defense/Usage header groups
+were implementation omissions, not authorized UI changes.
+
+Reported gaps corrected: searchable keyboard-operable pickers with removable named
+selections, human-readable active chips, and the original 9/5/5/2 Four Factors
+header spans and PPP/eFG%/OREB%/TOV%/FTR subheaders (Gameflow remains deferred).
+Added six browser cases across all three competitions at both widths: typing,
+keyboard and pointer selection, multiple teams/opponents where supported, named
+chips, removal, URL persistence, Escape, no matches, and overflow checks. All 22
+browser tests (these six plus the previous 16 regressions) pass. Typecheck and
+local/Vercel builds pass; lint has the existing TanStack compatibility warning.
+React Doctor reports 69/100 with the earlier warnings and two additional bounded
+selection-list lookup advisories. Phone and desktop screenshots were inspected.
+This is a targeted correction, not a claim that every
+remaining Shiny presentation detail or the original full Phase 0 is complete.
+
+**Verified preview (READY, Preview environment):**
+https://ibpl-game-logs-dpj400xsb-ariel12091-8759.vercel.app/il/game-logs?season=2026
+
+Use season 2025 on `/euroleague/game-logs` and `/eurocup/game-logs` for the tested
+Euro seasons. Deployment ID: `dpl_AFA5N4ngspSHco5ddByNnEk8twCE`. Next.js 16.4.2;
+updated Vercel build completed in 11 seconds. Deployment protection uses Vercel login.
+
+- Added the Next.js Game Logs screen, Summary/Four Factors, URL filters, starter
+  bounds, game context, Israeli stat filters, sorting, heat colours, CSV, loading,
+  empty and retry states. Includes Israeli League, EuroLeague and EuroCup.
+- Added read-only API routes using the existing Shiny SQL and existing version
+  queries. Raw lineup facts stay on the server: compute the table there and return
+  only its rows and filter metadata, avoiding the 12.85 MB browser payload. Warm
+  cache is bounded to four seasons/views with a 60-second TTL; CDN TTL is 60 seconds.
+  This is a deliberate lean-slice change from the original browser-filtering plan.
+- Fixed compensated minute sums and R ties-to-even decimal rounding. Tests now
+  compare against the original stored R table goldens, not a freshly rerun R service.
+  All 15 stored presets pass against the original expected tables. The complete
+  unit suite passes 35 tests, including request-validation cases.
+- Exported game-type and phase labels from the existing R catalogue. Reformatted
+  web sources. Updated Next/React/Vitest dependencies; initial typecheck, lint
+  (one TanStack/React Compiler compatibility warning) and production build passed.
+- Live local API checks succeeded as `app_readonly`: Israeli 2026 = 442 rows,
+  EuroLeague 2025 = 802, EuroCup 2025 = 384. No database objects or roles changed.
+  Connection startup measured 853 ms, so the web-only connect allowance is 1500 ms
+  rather than 500 ms; SQL budget remains 3000 ms and database-work deadline 5000 ms.
+  Server-side table computation adds time beyond that database deadline; the lean
+  slice does not claim the original plan's end-to-end performance acceptance.
+  SSL follows the existing Shiny `require` setting; optional `PG_SSLROOTCERT` plus
+  `PG_SSLMODE=verify-full` supports project CA verification.
+- Vercel CLI 64.7.0 installed globally; authenticated as `ariel12091-8759`.
+  Official Vercel Codex plugin installed in user scope (`vercel@openai-curated`).
+  Shared MCP endpoint `https://mcp.vercel.com` added to
+  `C:/Users/ariel/.codex/config.toml`; OAuth succeeded and CLI reports enabled/OAuth.
+  This running session has not loaded its tools; authenticated `list_teams` and
+  `search_vercel_documentation` checks still need a tool refresh/reload.
+- Created/linked Vercel project `ibpl-game-logs` in `ariel12091-8759`.
+  Existing PG connection settings copied into encrypted **preview-only** env vars
+  with `web/scripts/configure-preview.mjs` (values go through stdin, never logs).
+  `.vercelignore` excludes credentials, dependencies and generated golden payloads;
+  a dry-run verified deployment inputs. GitHub linking needs an additional login
+  connection and did not complete; CLI preview deployment remains available.
+- Final verification: 16 golden/browser cases passed at phone (390px) and desktop
+  (1440px) widths, covering seven presets, visible cells, URL restoration, CSV,
+  best-direction defensive sorting, empty state, retry and version refresh.
+  Six additional live browser smoke checks passed across all three competitions
+  at both widths. Phone and desktop screenshots were visually reviewed in
+  `output/playwright/`. Local typecheck, lint and production build passed; final
+  Vercel build also passed. Runtime dependency audit reports zero vulnerabilities.
+- Final review fixed defensive Four Factors sort direction, invalid stat-filter
+  URL rendering, export availability after an error, and stable empty table data.
+  React Doctor improved from 66 to 69 after its actionable table/button findings
+  were fixed. Nine warnings remain: component size/complexity, effect-based fetch,
+  stateless filter-button index keys, small bounded array lookups, an asserted map
+  invariant, and serial queries on one snapshot connection. These were reviewed;
+  they do not establish a correctness failure. Broader component cleanup is deferred.
+- `web/scripts/verify-preview.mjs <deployment-url>` verifies Summary/Four Factors
+  and version APIs through authenticated Vercel CLI calls. It invokes Node directly
+  to preserve query-string ampersands on Windows. `web/README.md` documents local
+  execution, golden generation, browser checks and deployment.
+  The final deployed verifier passed all six endpoints on the first attempt:
+  Israeli Summary/FF 442 rows each, EuroLeague Summary/FF 802 each, EuroCup
+  Summary 384, and the version endpoint reported all three leagues.
+- Vercel classified the new project's first deployment as production despite the
+  explicit Preview option. That seed deployment has no PG credentials (credentials
+  are Preview-only). Subsequent deployments correctly use Preview. Shiny and the
+  production database were not changed. No production promotion is authorized.
+- Only follow-up for agent setup: refresh/reload the client to load the already
+  authenticated MCP server, then run `search_vercel_documentation` and `list_teams`.
+  These two MCP calls could not be performed in this session's fixed tool inventory.
+  GitHub auto-deploy linking is optional and still needs its login connection.
+- Do not merge this whole historical branch: it contains the old unapplied ETL /
+  publication work. The new Game Logs commit is suitable for a separate cherry-pick
+  when integrating the lean slice. No SQL, ETL or loader edits were added this run.
+
+The rest of this file is the historical record. Its production-apply steps are
+superseded by the lean-slice decision above and must not be executed.
+
+
+Plan: `docs/superpowers/plans/2026-10-20-react-phase0-foundation.md` (read its "Execution
+amendment (user)" first). Spec: `docs/superpowers/specs/2026-10-20-react-migration-design.md`.
+Branch: `sql/web-foundation` (not pushed, not merged). `main` is at `ae865b0` locally /
+`7cd39a2` on origin (D24 fix deployed).
+
+## Authorization and constraints (user, 2026-10-20)
+
+- The web app uses the existing `app_readonly` login. No `app_web` role, no password, role
+  default, membership or connection-limit changes. Add only grants the new objects need.
+- Every production database change goes through a dry-run-by-default apply script and is
+  applied only after the user's explicit go-ahead. Nothing has been applied yet.
+- Keep Shiny working unchanged; no production game load to test publication code.
+- PostgreSQL is 17.4 (verified live), not the plan's "15" label.
+
+## History
+
+1. A first executor (Claude) committed Task 1 in its original `app_web` form (`a352e98`,
+   superseded by the amendment) and a comment fix (`db0f5b8`).
+2. A second executor started at 06:58 UTC under the amendment, worked uncommitted across
+   Tasks 2-9 and 16, and stopped at its limit without a handoff.
+3. Takeover: production verified untouched (no `app_api`, no publication objects, no
+   `app_web`). An inventory of the second executor's work is in
+   `.superpowers/sdd/2026-10-20-react-phase0-foundation/inventory-of-other-session.md`
+   (git-ignored workspace; ledger `progress.md` in the same folder). Its work was saved
+   as one unreviewed commit, `87c3de2`.
+4. Work unit U1 (database: Tasks 1-amended, 2, 5) fixed and reviewed:
+   `0e09866` app_web leftovers removed, identity proof as app_readonly;
+   `b4b4cbd` publication liveness scoped to this database;
+   `a657ded` Game Logs readers fixed (old version filtered a non-existent column) and proven
+   equal to Shiny's own season pulls;
+   `7768bf2` safe apply order + deploy-and-call catalogue test in a scratch schema.
+   Review verdict: publication semantics, reader parity and grants sound; two Important
+   findings sent back (fix round 1, below).
+
+## Last step completed before handoff
+
+**U1 fix round 1 committed:** `aca4bc0` (identity proof asserts SQLSTATE 42501 in ordinary
+rolled-back transactions, plus privilege-function checks) and `14c1a2c` (smoke calls before
+the hardening in both apply scripts -- hardening locks now held 1.75 s / 1.62 s in the dry
+runs; begin records owner pid + backend_start and refuses shared/xact locks; status reports
+`stale` unless that exact owner holds the lock -- `publication_status` is now SECURITY
+DEFINER with an empty search_path because app_readonly cannot read other roles'
+`backend_start`; finish requires the live owner; poll for `stale`; header notes).
+Scratch-schema DB tests, catalogue test and security contracts pass; both dry runs pass.
+
+**Next:** a scoped re-review of `7768bf2..14c1a2c` (the seven findings, plus the new
+SECURITY DEFINER function), then the production apply below.
+
+## Then, in order
+
+1. **Ask the user for the production apply** (off-peak, not during the nightly ETL window):
+   `scripts/apply_publication.R` first, then `scripts/apply_web_foundation.R`, each with its
+   CONFIRM flag; then the post-apply DB tests (`test-web-role-db.R`,
+   `test-app-api-game-logs-db.R`) and a security re-apply + re-test (review R9).
+2. **U2 -- Tasks 3 and 4 (ETL and EuroLeague loader).** Known defects in the WIP:
+   - merging them before step 1 breaks the nightly ETL and loader (they call publication
+     functions); the merge must follow the apply;
+   - `etl_full.R` edit breaks `test-player-identity-dictionary-contracts.R:48` (CI red);
+   - the Israeli ETL bumps the version every night even with no relevant writes (plan: it
+     must not); last-success marker and Phase 7 run after the publication closes, unfenced;
+   - EuroLeague loader: raises on the first failed group (skipping later groups), skips the
+     manifest on partial runs, verifies twice -- restore the original behaviour;
+   - Task 3 leftovers: write-inventory doc, static test, mutation check, R8 mixed-run test;
+   - "Closing open result set" warnings in `test-etl-publication-db.R`.
+3. **U3 -- Task 9 (shared Game Logs rules).** 13/15 goldens fail on minutes (Israeli
+   Summary off by 0.1; FF/EuroLeague in the last decimals) -- likely summation order /
+   rounding vs R. Golden JSON (~280 MB) is gitignored under `web/test/goldens/`. The TS test
+   must compare against the stored goldens (it re-ran R), game-type labels must come from
+   the catalogue (hardcoded now), and the web code is minified one-liners -- reformat.
+4. **U4 -- Tasks 6-8, 10-12** (scaffold leftovers, db client tests, API conventions, routes,
+   page, preview). EuroLeague season payload is 12.85 MB from the DB and the reader takes
+   ~2.8 s: Task 10 must fit 4.5 MB and the 3 s SQL budget.
+5. **U5 -- Part C** (Tasks 13-16). Task 14 must prove crash release through the session
+   pooler with a real kill.
+
+`web/.env.example` (no secrets) is untracked because the credential hook blocks `.env*` names.

@@ -1,5 +1,12 @@
 # Migration from R/Shiny to React/Next.js -- design (2026-10-20)
 
+**Execution amendment (user, 2026-10-20):** Phase 0 uses the existing `app_readonly`
+login/password and existing ETL owner. The separate `app_web` login, password,
+role-default timeouts and connection-limit changes proposed below are deferred. No role
+attributes or credentials are changed. Web deadlines are enforced per request; the shared
+connection budget must be measured with Shiny still running. This amendment takes precedence
+over conflicting identity/default-setting details below.
+
 Companion documents: `2026-10-19-api-mcp-feature-inventory.md` (the 109 features, with IDs,
 checked against the live app) and `docs/shared_definitions.md` (the contract every number
 follows). This design replaces Plans 2-7 of `2026-10-19-api-mcp-design.md`; that design's
@@ -131,7 +138,7 @@ Rules:
   the R source. The R function's existing tests are ported with it. The existing SQL owners
   are called as they are; new SQL is written only for the R-closure logic that has no SQL or
   pure-R home yet (the inventory's R-closure rows, and the five inline-SQL places). A known
-  defect is ported as-is and stays in the deviation register (e.g. D24, D25) -- fixing it is a
+  defect is ported as-is and stays in the deviation register (e.g. D25; D24 was fixed in Shiny before Phase 0) -- fixing it is a
   separate, deliberate change with re-recorded goldens.
 - **No rule has two owners**: a number the TypeScript module derives is never also derived in
   SQL, and the reverse. Each moved rule's owner is updated in `docs/shared_definitions.md` the

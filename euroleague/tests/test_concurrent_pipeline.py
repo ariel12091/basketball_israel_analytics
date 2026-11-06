@@ -409,6 +409,8 @@ class ConcurrentPipelineTest(unittest.TestCase):
             patch(
                 "euroleague_possessions.batch_pipeline.finish_load_run"
             ) as finish_run,
+            patch("euroleague_possessions.publication.publishing_europe"),
+            patch("euroleague_possessions.batch_pipeline._verify_publication") as verify,
         ):
             published = publish_staged_games(
                 records,
@@ -440,6 +442,7 @@ class ConcurrentPipelineTest(unittest.TestCase):
             errors=[],
         )
         connection.close.assert_called_once_with()
+        verify.assert_called_once_with(records, Path("unused.env"))
 
 
 if __name__ == "__main__":

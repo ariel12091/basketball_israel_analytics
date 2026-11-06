@@ -100,7 +100,12 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
 
   # The shadow schema uses a curated relation list, so a new relation is
   # closed to the app until it is added on purpose.
-  expect_match(sql, "v_curated_relations := v_schema = 'euroleague'", fixed = TRUE)
+  expect_match(sql, "v_curated_relations := v_schema = ANY(curated_schemas)", fixed = TRUE)
+  expect_match(
+    sql_block_between(sql, "curated_schemas constant text[] := ARRAY[", "];"),
+    "'euroleague'",
+    fixed = TRUE
+  )
   expect_match(
     sql,
     "ALTER DEFAULT PRIVILEGES IN SCHEMA %I REVOKE ALL PRIVILEGES ON TABLES FROM app_readonly",
@@ -109,7 +114,16 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
   expect_match(sql, "GRANT SELECT ON %I.%I TO app_readonly", fixed = TRUE)
 
   # It is also outside Supabase's managed surface.
-  expect_match(sql, "v_grant_service_role := has_service_role AND v_schema <> 'euroleague'", fixed = TRUE)
+  expect_match(
+    sql,
+    "v_grant_service_role := has_service_role AND v_schema <> ALL(private_schemas)",
+    fixed = TRUE
+  )
+  expect_match(
+    sql_block_between(sql, "private_schemas constant text[] := ARRAY[", "];"),
+    "'euroleague'",
+    fixed = TRUE
+  )
 })
 
 test_that("hardening enforces a single RLS policy name", {
@@ -174,4 +188,189 @@ test_that("database security apply script is dry-run by default", {
   expect_match(sql, "dbRollback(con)", fixed = TRUE)
   expect_match(sql, "dbCommit(con)", fixed = TRUE)
   expect_match(sql, "if (confirm_apply)", fixed = TRUE)
+})
+
+test_that("sourcing the security script defines the shared step and runs nothing", {
+  sql <- read_repo_txt("..", "scripts", "apply_db_security.R")
+  expect_match(sql, "run_db_security_hardening <- function(con, root = \".\")", fixed = TRUE)
+  expect_match(sql, "if (sys.nframe() == 0L) {", fixed = TRUE)
+  expect_match(sql, "run_db_security_hardening(con)", fixed = TRUE)
+
+  # The guard is what lets apply_web_foundation.R reuse the step: sourcing
+  # must define the function without connecting, reading env or applying.
+  env <- new.env()
+  sys.source(repo_file("..", "scripts", "apply_db_security.R"), envir = env)
+  expect_true(is.function(env$run_db_security_hardening))
+  expect_false(exists("confirm_apply", envir = env, inherits = FALSE))
+  expect_false(exists("con", envir = env, inherits = FALSE))
+})
+
+# ---- Web foundation: app_api schema under the existing app_readonly login ----
+
+# Quoted identifiers in one list block, in order.
+sql_quoted_names <- function(block) {
+  hits <- regmatches(block, gregexpr("'[A-Za-z0-9_]+'", block))[[1]]
+  gsub("'", "", hits, fixed = TRUE)
+}
+
+test_that("hardening covers app_api through its own enumerated allowlist", {
+  sql <- read_repo_txt("..", "sql", "security", "enable_readonly_rls.sql")
+
+  expect_true("app_api" %in% sql_quoted_names(
+    sql_block_between(sql, "target_schemas constant text[] := ARRAY[", "];")
+  ))
+  # Curated (no blanket SELECT) and private (no service_role), like euroleague.
+  expect_true("app_api" %in% sql_quoted_names(
+    sql_block_between(sql, "curated_schemas constant text[] := ARRAY[", "];")
+  ))
+  expect_true("app_api" %in% sql_quoted_names(
+    sql_block_between(sql, "private_schemas constant text[] := ARRAY[", "];")
+  ))
+  expect_match(sql, "WHEN 'app_api' THEN app_api_function_names", fixed = TRUE)
+  expect_match(sql, "WHEN 'app_api' THEN app_api_relations", fixed = TRUE)
+  expect_match(sql, "FOREACH v_relation IN ARRAY v_relation_names", fixed = TRUE)
+
+  # Writers never go on the web API's allowlist.
+  app_api_block <- sql_block_between(
+    sql,
+    "app_api_function_names constant text[] := ARRAY[",
+    "]::text[];"
+  )
+  expect_false(grepl("(refresh_|begin_publication|fence_publication|finish_publication)",
+                     app_api_block))
+})
+
+test_that("audit checks app_api with its own allowlist", {
+  sql <- read_repo_txt("..", "sql", "security", "audit_app_access.sql")
+
+  expect_match(
+    sql,
+    "WHERE nspname IN ('basketball_test', 'basketball', 'euroleague', 'app_api')",
+    fixed = TRUE
+  )
+  expect_match(sql, "WHEN 'app_api' THEN 'app_api'", fixed = TRUE)
+  expect_match(sql, "JOIN app_api_routines r ON s.allowlist = 'app_api'", fixed = TRUE)
+  expect_match(sql, "JOIN app_api_app_relations r ON s.allowlist = 'app_api'", fixed = TRUE)
+  # app_api must not inherit another schema's lists through the old
+  # curated/not-curated join.
+  expect_false(grepl("JOIN \\w+_app_(routines|relations) r ON (NOT )?s\\.curated_relations", sql))
+})
+
+test_that("hardening and audit allowlists are twins", {
+  hardening <- read_repo_txt("..", "sql", "security", "enable_readonly_rls.sql")
+  audit <- read_repo_txt("..", "sql", "security", "audit_app_access.sql")
+
+  pairs <- list(
+    israeli_routines = list(
+      c("app_function_names constant text[] := ARRAY[", "];"),
+      c("israeli_app_routines(routine_name) AS (", "\n),")
+    ),
+    euro_routines = list(
+      c("euro_function_names constant text[] := ARRAY[", "];"),
+      c("euro_app_routines(routine_name) AS (", "\n),")
+    ),
+    app_api_routines = list(
+      c("app_api_function_names constant text[] := ARRAY[", "]::text[];"),
+      c("app_api_routines(routine_name) AS (", "\n),")
+    ),
+    euro_relations = list(
+      c("euro_app_relations constant text[] := ARRAY[", "];"),
+      c("euro_app_relations(relation_name) AS (", "\n),")
+    ),
+    app_api_relations = list(
+      c("app_api_relations constant text[] := ARRAY[", "]::text[];"),
+      c("app_api_app_relations(relation_name) AS (", "\n),")
+    )
+  )
+  for (name in names(pairs)) {
+    markers <- pairs[[name]]
+    from_hardening <- sql_quoted_names(
+      sql_block_between(hardening, markers[[1]][[1]], markers[[1]][[2]])
+    )
+    from_audit <- sql_quoted_names(
+      sql_block_between(audit, markers[[2]][[1]], markers[[2]][[2]])
+    )
+    expect_identical(sort(from_hardening), sort(from_audit), info = name)
+    expect_false(anyDuplicated(from_hardening) > 0L, info = name)
+  }
+})
+
+test_that("app_api schema file grants USAGE only, never EXECUTE", {
+  sql <- read_repo_txt("..", "sql", "app_api", "000_schema.sql")
+
+  expect_match(sql, "CREATE SCHEMA IF NOT EXISTS app_api;", fixed = TRUE)
+  expect_match(sql, "REVOKE ALL PRIVILEGES ON SCHEMA app_api FROM PUBLIC;", fixed = TRUE)
+  expect_match(sql, "ARRAY['anon', 'authenticated']", fixed = TRUE)
+  expect_match(sql, "REVOKE CREATE ON SCHEMA app_api FROM app_readonly;", fixed = TRUE)
+  expect_match(sql, "GRANT USAGE ON SCHEMA app_api TO app_readonly;", fixed = TRUE)
+  # Function grants come only from the hardening allowlist (review R9); a
+  # grant here would vanish on the next re-apply and hide a missing entry.
+  expect_false(grepl("GRANT\\s+EXECUTE", sql, ignore.case = TRUE))
+})
+
+# TRUE when one statement fragment grants something on app_api to a
+# browser-facing role or PUBLIC.
+grants_app_api_to_untrusted <- function(statement) {
+  grepl("\\bGRANT\\b", statement, ignore.case = TRUE) &&
+    grepl("\\bapp_api\\b", statement, ignore.case = TRUE) &&
+    grepl("\\bTO\\b[^;]*\\b(anon|authenticated|public)\\b", statement, ignore.case = TRUE)
+}
+
+test_that("the app_api grant scan can fail", {
+  expect_true(grants_app_api_to_untrusted("GRANT USAGE ON SCHEMA app_api TO anon"))
+  expect_true(grants_app_api_to_untrusted(
+    "grant execute on all functions in schema app_api to PUBLIC"
+  ))
+  expect_true(grants_app_api_to_untrusted(
+    "GRANT EXECUTE ON FUNCTION app_api.version() TO app_readonly, authenticated"
+  ))
+  expect_false(grants_app_api_to_untrusted("GRANT USAGE ON SCHEMA app_api TO app_readonly"))
+  expect_false(grants_app_api_to_untrusted("REVOKE ALL PRIVILEGES ON SCHEMA app_api FROM PUBLIC"))
+})
+
+test_that("no SQL file grants anything on app_api to anon, authenticated or PUBLIC", {
+  sql_files <- list.files(repo_file("..", "sql"), pattern = "\\.sql$",
+                          recursive = TRUE, full.names = TRUE)
+  expect_true(any(grepl("/app_api/", sql_files, fixed = TRUE)))
+
+  offenders <- unlist(lapply(sql_files, function(path) {
+    # Statements only: prose in a comment ("a grant ... to PUBLIC") is not one.
+    text <- paste(sub("--.*$", "", readLines(path, warn = FALSE)), collapse = "\n")
+    statements <- strsplit(text, ";", fixed = TRUE)[[1]]
+    hits <- Filter(grants_app_api_to_untrusted, statements)
+    if (length(hits)) paste0(basename(path), ": ", trimws(hits)) else NULL
+  }))
+  expect_identical(offenders, NULL)
+
+  # Inside sql/app_api nothing is granted to those roles at all.
+  app_api_files <- sql_files[grepl("/app_api/", sql_files, fixed = TRUE)]
+  for (path in app_api_files) {
+    text <- paste(readLines(path, warn = FALSE), collapse = "\n")
+    expect_false(
+      grepl("GRANT[^;]*\\bTO\\b[^;]*\\b(anon|authenticated|public)\\b", text, ignore.case = TRUE),
+      info = basename(path)
+    )
+  }
+})
+
+test_that("no SQL file or script references the abandoned app_web role", {
+  # Execution amendment (2026-10-20): the web app logs in as app_readonly.
+  expect_false(file.exists(repo_file("..", "sql", "security", "web_role.sql")))
+  paths <- c(
+    list.files(repo_file("..", "sql"), pattern = "\\.sql$", recursive = TRUE, full.names = TRUE),
+    list.files(repo_file("..", "scripts"), pattern = "\\.R$", full.names = TRUE)
+  )
+  offenders <- Filter(function(path) {
+    any(grepl("app_web|APP_WEB|web_role", readLines(path, warn = FALSE)))
+  }, paths)
+  expect_identical(basename(offenders), character(0))
+})
+
+test_that("web API deploy reuses current roles without password or role changes", {
+  src <- read_repo_txt("..", "scripts", "apply_web_foundation.R")
+  expect_match(src, 'Sys.getenv("CONFIRM_WEB_FOUNDATION_APPLY", "0")', fixed=TRUE)
+  expect_match(src, "dbRollback(con)", fixed=TRUE)
+  expect_match(src, "dbCommit(con)", fixed=TRUE)
+  expect_match(src, "run_db_security_hardening(con)", fixed=TRUE)
+  expect_false(grepl("APP_WEB_PASSWORD|web_role.sql|ALTER ROLE|CREATE ROLE", src))
 })

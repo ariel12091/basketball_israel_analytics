@@ -16,6 +16,8 @@ finish_canonical_segment_minutes_refresh <- function() {
   if (!"--apply" %in% commandArgs(trailingOnly = TRUE)) {
     stop("Refusing to change the database without --apply")
   }
+  source("etl/publication.R")
+  with_publication("il", function(pub) {
 
   con <- dbConnect(
     Postgres(),
@@ -82,7 +84,7 @@ finish_canonical_segment_minutes_refresh <- function() {
     readLines("sql/functions/refresh_sub_lineups_incremental.sql", warn = FALSE),
     collapse = "\n"
   )
-  dbExecute(con, incremental_sql, immediate = TRUE)
+  publication_fenced_tx(pub, con, dbExecute(con, incremental_sql, immediate = TRUE))
 
   season_games <- dbGetQuery(con, "
     SELECT DISTINCT s.game_year, d.game_id
@@ -96,13 +98,13 @@ finish_canonical_segment_minutes_refresh <- function() {
     batches <- split(ids, ceiling(seq_along(ids) / 50L))
     for (i in seq_along(batches)) {
       batch_ids <- batches[[i]]
-      result <- dbGetQuery(
+      result <- publication_fenced_tx(pub, con, dbGetQuery(
         con,
         sprintf(
           "SELECT basketball_test.refresh_sub_lineups_stats_for_games(ARRAY[%s]::int4[]) AS n",
           paste(batch_ids, collapse = ",")
         )
-      )$n[[1]]
+      ))$n[[1]]
       touched <- as.numeric(result)
       total_rows <- total_rows + touched
       message(
@@ -112,10 +114,10 @@ finish_canonical_segment_minutes_refresh <- function() {
     }
   }
 
-  dbExecute(
+  publication_fenced_tx(pub, con, dbExecute(
     con,
     "REFRESH MATERIALIZED VIEW CONCURRENTLY basketball_test.team_metrics_rolling_mv"
-  )
+  ))
 
   rolling_mismatches <- as.numeric(dbGetQuery(con, "
     SELECT count(*)::bigint AS n
@@ -133,6 +135,7 @@ finish_canonical_segment_minutes_refresh <- function() {
     "Final canonical-minute consumers refreshed successfully; sub-lineup rows=",
     format(total_rows, big.mark = ","), ", rolling mismatches=0"
   )
+  })
 }
 
 finish_canonical_segment_minutes_refresh()

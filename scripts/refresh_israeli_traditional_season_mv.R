@@ -18,6 +18,10 @@ on.exit(dbDisconnect(con), add = TRUE)
 dbExecute(con, "SET statement_timeout = '180s'")
 
 started <- proc.time()[["elapsed"]]
-dbExecute(con, "REFRESH MATERIALIZED VIEW CONCURRENTLY basketball_test.player_traditional_stats_mv")
+source(file.path(repo_root, "etl", "publication.R"))
+with_publication("il", function(pub) {
+  publication_fenced_tx(pub, con,
+    dbExecute(con, "REFRESH MATERIALIZED VIEW CONCURRENTLY basketball_test.player_traditional_stats_mv"))
+})
 rows <- dbGetQuery(con, "SELECT count(*) AS n FROM basketball_test.player_traditional_stats_mv")$n[[1]]
 cat(sprintf("refreshed rows=%s seconds=%.2f\n", rows, proc.time()[["elapsed"]] - started))

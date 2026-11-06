@@ -8,14 +8,24 @@
 -- and load bookkeeping closed. `curated_relations` selects that mode, and
 -- `allow_service_role` records that euroleague is deliberately outside
 -- Supabase's managed surface.
+--
+-- app_api (the web app's function-only schema) is curated and private like
+-- euroleague, with its own routine allowlist and no relations. `allowlist`
+-- picks each schema's lists. The web app logs in as app_readonly itself
+-- (execution amendment, 2026-10-20), so it has no role of its own to audit.
 
-WITH target_schemas(schema_name, curated_relations, allow_service_role) AS (
+WITH target_schemas(schema_name, curated_relations, allow_service_role, allowlist) AS (
   SELECT
     nspname,
-    nspname = 'euroleague',
-    nspname <> 'euroleague'
+    nspname IN ('euroleague', 'app_api'),
+    nspname NOT IN ('euroleague', 'app_api'),
+    CASE nspname
+      WHEN 'euroleague' THEN 'euroleague'
+      WHEN 'app_api' THEN 'app_api'
+      ELSE 'israeli'
+    END
   FROM pg_namespace
-  WHERE nspname IN ('basketball_test', 'basketball', 'euroleague')
+  WHERE nspname IN ('basketball_test', 'basketball', 'euroleague', 'app_api')
 ),
 untrusted_roles(role_name) AS (
   VALUES ('anon'), ('authenticated')
@@ -27,6 +37,8 @@ existing_untrusted_roles AS (
 ),
 israeli_app_routines(routine_name) AS (
   VALUES
+    ('publication_status'),
+    ('publication_lock_key'),
     ('onoff_compute'),
     ('four_factors_compute'),
     ('four_factors_dashboard_compute'),
@@ -73,14 +85,22 @@ euro_app_routines(routine_name) AS (
     ('effective_period'),
     ('person_display_name')
 ),
+-- Mirrors app_api_function_names in enable_readonly_rls.sql, one entry each.
+app_api_routines(routine_name) AS (
+  VALUES ('version'),('game_logs_il'),('game_logs_euro'),('scoreless_games_il')
+),
 allowed_app_routines(schema_name, routine_name) AS (
   SELECT s.schema_name, r.routine_name
   FROM target_schemas s
-  JOIN israeli_app_routines r ON NOT s.curated_relations
+  JOIN israeli_app_routines r ON s.allowlist = 'israeli'
   UNION ALL
   SELECT s.schema_name, r.routine_name
   FROM target_schemas s
-  JOIN euro_app_routines r ON s.curated_relations
+  JOIN euro_app_routines r ON s.allowlist = 'euroleague'
+  UNION ALL
+  SELECT s.schema_name, r.routine_name
+  FROM target_schemas s
+  JOIN app_api_routines r ON s.allowlist = 'app_api'
 ),
 israeli_app_relations(relation_name) AS (
   VALUES
@@ -127,14 +147,23 @@ euro_app_relations(relation_name) AS (
     ('ribbon_segments_v'),
     ('ribbon_margin_v')
 ),
+-- Mirrors app_api_relations in enable_readonly_rls.sql: functions only.
+app_api_app_relations(relation_name) AS (
+  SELECT unnest(ARRAY[
+  ]::text[])
+),
 required_app_relations(schema_name, relation_name) AS (
   SELECT s.schema_name, r.relation_name
   FROM target_schemas s
-  JOIN israeli_app_relations r ON NOT s.curated_relations
+  JOIN israeli_app_relations r ON s.allowlist = 'israeli'
   UNION ALL
   SELECT s.schema_name, r.relation_name
   FROM target_schemas s
-  JOIN euro_app_relations r ON s.curated_relations
+  JOIN euro_app_relations r ON s.allowlist = 'euroleague'
+  UNION ALL
+  SELECT s.schema_name, r.relation_name
+  FROM target_schemas s
+  JOIN app_api_app_relations r ON s.allowlist = 'app_api'
 ),
 relations AS (
   SELECT
@@ -348,6 +377,7 @@ violations AS (
   FROM pg_policy pol
   JOIN base_tables x ON x.oid = pol.polrelid
   WHERE pol.polname <> 'app_readonly_select_all'
+
 )
 SELECT violation, role_name, object_name
 FROM violations
