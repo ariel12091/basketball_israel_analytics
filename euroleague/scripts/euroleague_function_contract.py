@@ -21,6 +21,8 @@ DIRECT_APP_READERS = frozenset(
         "get_team_minutes_dynamic",
         "get_team_minutes_direct",
         "get_team_dashboard_dynamic",
+        "get_team_traditional_pergame",
+        "get_team_traditional_direct",
         "fetch_lineups_pergame",
         "fetch_lineups_dynamic",
         "fetch_lineups_direct",
@@ -57,6 +59,8 @@ APP_READER_SMOKE = (
       for base in ("get_team_ratings", "get_team_four_factors", "get_team_minutes")
       for kind in ("pergame", "dynamic", "direct")),
     ("get_team_dashboard_dynamic", "'E',2025,p_max_margin=>5,p_margin_status=>'all',p_max_time_remaining=>300"),
+    ("get_team_traditional_pergame", "'E',2025,p_side=>'defense'"),
+    ("get_team_traditional_direct", "'E',2025,p_max_margin=>5,p_margin_status=>'all',p_max_time_remaining=>300"),
     *((f"fetch_lineups_{kind}", "'E',2025,p_last_n_games=>2,p_unit_size=>2")
       for kind in ("pergame", "dynamic", "direct")),
     ("get_player_traditional_pergame", "'E',2025"),

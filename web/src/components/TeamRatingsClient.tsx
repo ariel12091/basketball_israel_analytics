@@ -88,8 +88,9 @@ export default function TeamRatingsClient({
   const teams = teamChoices(league, query.season, data?.meta.teams),
     bounds = seasonBounds(league, query.season),
     frag = ui.teamRatings[euro ? "euro" : "il"];
+  // Shot Profile needs shot types EuroLeague never collected.
   const views = euro
-    ? (["summary", "four_factors"] as TeamView[])
+    ? (["summary", "four_factors", "traditional"] as TeamView[])
     : (Object.keys(LABELS) as TeamView[]);
   const reset = () =>
     set({
@@ -271,7 +272,7 @@ export default function TeamRatingsClient({
                       <span>Opponent</span>
                     </div>
                     <Selectize
-                      id="tr_trad_display_mode"
+                      id={`${p}_trad_display_mode`}
                       label="Traditional display mode"
                       choices={[
                         { value: "per_game", label: "Per Game" },

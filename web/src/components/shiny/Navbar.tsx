@@ -84,10 +84,11 @@ const TABS: Tab[] = [
     path: "compare",
   },
 ];
-// app.js CFG for the EuroLeague tabs: On/Off and Team Ratings have two modes.
+// app.js CFG for the EuroLeague tabs: On/Off has two modes; Team Ratings adds
+// Traditional (web only; Shiny Tab 9 has Summary and Four Factors).
 const EURO_MODES: Record<string, string[]> = {
   euro: ["Summary", "Four Factors"],
-  euro_team: ["Summary", "Four Factors"],
+  euro_team: ["Summary", "Four Factors", "Traditional"],
 };
 const VIEW_PARAM: Record<string, string> = {
   Totals: "Totals",

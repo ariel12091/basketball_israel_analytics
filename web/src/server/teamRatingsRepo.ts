@@ -23,7 +23,7 @@ export function parseTeamRatings(s: URLSearchParams, league: League) {
     !(
       league === "il"
         ? ["summary", "four_factors", "shot_profile", "traditional"]
-        : ["summary", "four_factors"]
+        : ["summary", "four_factors", "traditional"]
     ).includes(view)
   )
     throw new ParamError("view", "Invalid view");
@@ -62,7 +62,7 @@ const EL_HEAD = [
 const call = (fn: string, types: string[]) =>
   `SELECT * FROM ${fn}(${types.map((t, i) => `$${i + 1}::${t}`).join(",")})`;
 /** Unchanged Tab 3/9 stored readers and argument order. */
-async function readFacts(
+export async function readFacts(
   q: Query,
   p: Params,
   kind: "ratings" | "four_factors" | "minutes" | "traditional" | "dashboard",
@@ -124,6 +124,27 @@ async function readFacts(
       ...clutch,
       ...tail,
     ]);
+  }
+  // Traditional has no standard-clutch cache: any window reads the action
+  // fact (euroleague/sql/059_team_traditional_readers.sql).
+  if (kind === "traditional") {
+    const owner = p.maxMargin == null ? "pergame" : "direct";
+    return q<Row>(
+      call(`euroleague.get_team_traditional_${owner}`, [
+        ...EL_HEAD,
+        ...(owner === "pergame" ? [] : ["int4", "text", "int4", "bool"]),
+        ...Array(3).fill("int4"),
+        "text",
+      ]),
+      [
+        ...head,
+        ...(owner === "pergame" ? [] : clutch),
+        a.minGn,
+        a.maxGn,
+        a.lastN,
+        p.side,
+      ],
+    );
   }
   const readerKind =
     p.maxMargin == null
@@ -219,7 +240,10 @@ async function read(q: Query, p: Params) {
     p.maxTime === 300 &&
     !p.otMargin;
   const dashboard =
-    filtered && dynamicClutch && (euro || p.view === "four_factors");
+    filtered &&
+    dynamicClutch &&
+    p.view !== "traditional" &&
+    (euro || p.view === "four_factors");
   const fact =
     p.view === "traditional"
       ? "traditional"
