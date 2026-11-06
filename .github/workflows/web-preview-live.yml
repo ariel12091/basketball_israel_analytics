@@ -21,7 +21,9 @@ concurrency:
 
 jobs:
   live:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest became 26.04 on 2026-11-03 and Playwright 1.56.1
+    # has no Chromium build for it. Unpin after a Playwright upgrade.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
       run:
