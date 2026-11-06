@@ -80,6 +80,8 @@ DECLARE
     'get_team_minutes_direct',
     'get_team_minutes_pergame',
     'get_team_dashboard_dynamic',
+    'get_team_traditional_pergame',
+    'get_team_traditional_direct',
     'get_player_traditional_dynamic',
     'get_player_traditional_pergame',
     'get_player_traditional_clutch',

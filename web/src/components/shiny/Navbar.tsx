@@ -84,10 +84,11 @@ const TABS: Tab[] = [
     path: "compare",
   },
 ];
-// app.js CFG for the EuroLeague tabs: On/Off and Team Ratings have two modes.
+// app.js CFG for the EuroLeague tabs: On/Off has two modes; Team Ratings adds
+// Traditional (web only; Shiny Tab 9 has Summary and Four Factors).
 const EURO_MODES: Record<string, string[]> = {
   euro: ["Summary", "Four Factors"],
-  euro_team: ["Summary", "Four Factors"],
+  euro_team: ["Summary", "Four Factors", "Traditional"],
 };
 const VIEW_PARAM: Record<string, string> = {
   Totals: "Totals",
@@ -199,6 +200,65 @@ export default function Navbar({
   const stamp = updated
     ? `Last updated: ${updated}`
     : "Last updated: unavailable";
+  // "Showing <league> . <season>": both plain-text menus. With the collapsed
+  // nav it sits in the header bar beside the burger, so the competition and
+  // season stay visible and changeable without opening the menu (user
+  // 2026-11-06); otherwise it leads the fixed right cluster. Both copies are
+  // always rendered and web.css shows one by the body width class, which the
+  // pre-paint script sets: nothing moves when the client takes over.
+  const showing = (
+    <div className="navbar-showing">
+      <span className="navbar-showing-label">Showing</span>
+      <NavMenu
+        id="league"
+        name="League"
+        current={LEAGUE_TOGGLE.find((l) => l.league === league)!.name}
+        items={LEAGUE_TOGGLE.map((l) => {
+          const currentTab = TABS.find((t) => t.value === tab);
+          // app.js applyValue(): a league-only tab must fall back to Home
+          // when switching away from its league. Euro has no Compare route.
+          const path =
+            l.league !== "il" && currentTab?.ilOnly
+              ? "home"
+              : (currentTab?.path ?? "home");
+          return {
+            key: l.league,
+            label: l.name,
+            active: l.league === league,
+            // EuroLeague and EuroCup share a season convention, so a
+            // switch between them keeps the season.
+            href: `/${l.league}/${path}${euro && l.league !== "il" ? `?season=${season}` : ""}`,
+            onSelect: () => {
+              try {
+                window.localStorage.setItem(
+                  "ibpl_league_select",
+                  LEAGUE_VALUE[l.league],
+                );
+              } catch {}
+            },
+          };
+        })}
+      />
+      <span className="navbar-showing-sep" aria-hidden="true">
+        &middot;
+      </span>
+      <span
+        className={`navbar-season-menu ${euro ? "league-nav-el" : "league-nav-il"}`}
+      >
+        <NavMenu
+          id={euro ? "euro_game_year" : "game_year"}
+          name="Season"
+          current={seasonLabel(season, !euro)}
+          items={seasons.map((s) => ({
+            key: s,
+            label: seasonLabel(s, !euro),
+            active: s === season,
+            onSelect: () => s !== season && onSeason(s),
+          }))}
+        />
+      </span>
+    </div>
+  );
   // mobile.js relocates the fixed cluster into the collapsed menu.
   const cluster = (
     <div
@@ -218,58 +278,7 @@ export default function Navbar({
         whiteSpace: "nowrap",
       }}
     >
-      {/* "Showing <league> . <season>": both plain-text menus. */}
-      <div className="navbar-showing">
-        <span className="navbar-showing-label">Showing</span>
-        <NavMenu
-          id="league"
-          name="League"
-          current={LEAGUE_TOGGLE.find((l) => l.league === league)!.name}
-          items={LEAGUE_TOGGLE.map((l) => {
-            const currentTab = TABS.find((t) => t.value === tab);
-            // app.js applyValue(): a league-only tab must fall back to Home
-            // when switching away from its league. Euro has no Compare route.
-            const path =
-              l.league !== "il" && currentTab?.ilOnly
-                ? "home"
-                : (currentTab?.path ?? "home");
-            return {
-              key: l.league,
-              label: l.name,
-              active: l.league === league,
-              // EuroLeague and EuroCup share a season convention, so a
-              // switch between them keeps the season.
-              href: `/${l.league}/${path}${euro && l.league !== "il" ? `?season=${season}` : ""}`,
-              onSelect: () => {
-                try {
-                  window.localStorage.setItem(
-                    "ibpl_league_select",
-                    LEAGUE_VALUE[l.league],
-                  );
-                } catch {}
-              },
-            };
-          })}
-        />
-        <span className="navbar-showing-sep" aria-hidden="true">
-          &middot;
-        </span>
-        <span
-          className={`navbar-season-menu ${euro ? "league-nav-el" : "league-nav-il"}`}
-        >
-          <NavMenu
-            id={euro ? "euro_game_year" : "game_year"}
-            name="Season"
-            current={seasonLabel(season, !euro)}
-            items={seasons.map((s) => ({
-              key: s,
-              label: seasonLabel(s, !euro),
-              active: s === season,
-              onSelect: () => s !== season && onSeason(s),
-            }))}
-          />
-        </span>
-      </div>
+      {showing}
       <button
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
         id="open_glossary"
@@ -351,6 +360,7 @@ export default function Navbar({
                 IBPL Analytics
               </span>
             </Link>
+            {showing}
           </div>
           <div
             className={`navbar-collapse collapse${collapsed ? "" : " show"}`}

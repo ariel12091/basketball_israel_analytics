@@ -204,7 +204,8 @@ export default function TeamRatingsTable({
       plain("gp", "GP", 1);
       plain("poss_on_floor", "Poss On Floor", 1);
       plain("minutes", "Min", 1);
-      for (const m of TRAD_ORDER)
+      // EuroLeague records no deflections (dfl is NULL), as in Player Stats.
+      for (const m of TRAD_ORDER.filter((m) => m !== "dfl" || league === "il"))
         metric(
           m,
           TRAD_LABELS[m],
@@ -254,7 +255,7 @@ export default function TeamRatingsTable({
       if (view === "four_factors") metric("net_rtg", "Net", false, true);
     }
     return cols;
-  }, [rows, view, side]);
+  }, [rows, view, side, league]);
   const ordered =
     view === "traditional"
       ? [

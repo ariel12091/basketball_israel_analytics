@@ -14,7 +14,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   list_teams:
     "The season's teams with their ids. Call it first whenever the question names a team, including Hebrew names and nicknames, then use the id. query: season.",
   team_ratings:
-    "Team Ratings page: every team's offense, defense and net rating with league ranks. query: season, view (summary|four_factors|shot_profile|traditional; shot_profile and traditional Israeli only), side (offense|defense, traditional only), display (per_game|per75|per40, traditional only), plus the shared game filters. Ranks are columns named rank_<column>.",
+    "Team Ratings page: every team's offense, defense and net rating with league ranks. query: season, view (summary|four_factors|shot_profile|traditional; shot_profile Israeli only), side (offense|defense, traditional only), display (per_game|per75|per40, traditional only), plus the shared game filters. Ranks are columns named rank_<column>.",
   team_overview:
     "Israeli Home hub for one team: record, ratings with league ranks, four-factor ranks, key players, top scorer, best and worst five-man lineups (100+ possessions), storylines, last game. Best for 'what is team X good at'. query: season, team_id.",
   lineups:
