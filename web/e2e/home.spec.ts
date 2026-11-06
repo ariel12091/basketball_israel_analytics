@@ -198,8 +198,7 @@ for (const league of ["euroleague", "eurocup"])
     await expect(page.locator(".league-chooser")).toHaveCount(0);
     await expect(page.locator(".home-more-toggle")).toHaveCount(0);
     const next = league === "euroleague" ? "eurocup" : "euroleague";
-    if (page.viewportSize()!.width < 1000)
-      await page.getByRole("button", { name: "Toggle navigation" }).click();
+    // On a phone the league menu sits in the header bar, burger closed.
     const current = page.getByRole("button", { name: /^League:/ });
     await expect(current).toHaveText(
       `League: ${league === "eurocup" ? "EuroCup" : "EuroLeague"}`,
@@ -391,8 +390,6 @@ test("Home season changes preserve a valid selected team", async ({ page }) => {
   await routes(page);
   await page.goto("/il/home?season=2026&team_id=5");
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
-  if (page.viewportSize()!.width < 1000)
-    await page.getByRole("button", { name: "Toggle navigation" }).click();
   await openNavMenu(page, /^Season:/);
   await page
     .locator("#game_year_menu")

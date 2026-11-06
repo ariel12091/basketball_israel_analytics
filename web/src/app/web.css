@@ -224,7 +224,26 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .navbar-text-menu-options a, .navbar-text-menu-options button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ibpl-text); font-size: .85rem; text-align: left; text-decoration: none; }
 .navbar-text-menu-options a:hover, .navbar-text-menu-options button:hover { background: var(--ibpl-surface-2); color: var(--ibpl-accent); }
 .navbar-text-menu-options .active { color: var(--ibpl-accent); font-weight: 700; }
-body.ibpl-collapsed-nav .navbar-showing { grid-column: 1 / -1; }
+/* Collapsed nav: the menus sit in the header bar between the brand and the
+   burger (Navbar.tsx), so they stay visible with the menu closed. */
+.navbar-header .navbar-showing,
+body.ibpl-collapsed-nav #navbar_right_cluster .navbar-showing { display: none; }
+body.ibpl-collapsed-nav .navbar-header .navbar-showing { display: inline-flex; order: 1; margin-left: auto; margin-right: 6px; min-width: 0; }
+body.ibpl-collapsed-nav .navbar-header .navbar-showing-label { display: none; }
+/* Navbar.tsx renders only the current league's season menu, so it needs no
+   body.league-* gate (app.css hides .league-nav-* until that class lands,
+   which left the season missing on a fresh phone load). */
+.navbar-season-menu.league-nav-il, .navbar-season-menu.league-nav-el { display: inline-flex !important; align-items: center; }
+body.ibpl-collapsed-nav .navbar-header .navbar-season-menu { width: auto !important; }
+body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-current { min-height: 44px; padding: 4px 6px; }
+body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-options { left: auto; right: 0; }
+body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Brand + league + season + burger need ~340px of bar; below 420px of
+   viewport the brand keeps only its icon. */
+@media (max-width: 419.98px) {
+  body.ibpl-collapsed-nav .navbar-header .navbar-brand > span { font-size: 0; }
+  body.ibpl-collapsed-nav .navbar-header .navbar-brand .bi { font-size: 1.1rem; margin-right: 0 !important; }
+}
 
 @media (max-width: 767.98px) {
   .cmp-compare-grid { grid-template-columns: minmax(0, 1fr) minmax(64px, .8fr) minmax(0, 1fr); column-gap: 4px; }

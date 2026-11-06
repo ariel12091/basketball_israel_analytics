@@ -55,8 +55,6 @@ for (const next of ["euroleague", "eurocup"] as const)
         exact: true,
       }),
     ).toBeVisible();
-    if (page.viewportSize()!.width < 1000)
-      await page.getByRole("button", { name: "Toggle navigation" }).click();
     await openNavMenu(page, /^League:/);
     await page
       .locator("#league_menu")
