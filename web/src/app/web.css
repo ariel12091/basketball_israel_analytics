@@ -72,6 +72,8 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-gameflow-score-grid > :nth-child(3n + 1) { text-align: right; }
 .ibpl-gameflow-score-grid .is-rtg { color: var(--ibpl-text-muted); font-size: 11px; }
 .ibpl-gameflow-rtg-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--ibpl-text-muted); font-size: 12px; }
+.ibpl-gameflow-rtg-title { display: inline-flex; flex-direction: column; margin-right: 4px; color: var(--ibpl-text); font-size: 13px; font-weight: 700; line-height: 1.2; }
+.ibpl-gameflow-rtg-title small { color: var(--ibpl-text-faint); font-size: 11px; font-weight: 400; }
 .ibpl-gameflow-rtg-toggle button { min-height: 32px; padding: 4px 10px; border: 1px solid var(--ibpl-border); border-radius: 6px; background: transparent; color: var(--ibpl-text-muted); font-size: 12px; }
 .ibpl-gameflow-rtg-toggle button.is-on { border-color: var(--ibpl-accent); background: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
 
