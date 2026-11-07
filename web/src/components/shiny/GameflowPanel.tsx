@@ -18,8 +18,10 @@ import {
   lineupsRoom,
   marginPath,
   pmLabel,
+  RATING_WINDOW,
   ratingAt,
   ratingLabel,
+  type RatingMode,
   scoreAt,
   sharedLineups,
   sharedWindows,
@@ -103,8 +105,9 @@ export function GameflowView({
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState(""),
-    // Each team's ORtg in the score readouts (user 2026-11-07); on by default.
-    [showRatings, setShowRatings] = useState(true);
+    // Each team's ORtg in the score readouts (user 2026-11-07): since tip-off
+    // by default, or over its last RATING_WINDOW possessions.
+    [ratingMode, setRatingMode] = useState<RatingMode | "off">("game");
   const cards = useRef(new Map<number, HTMLElement>()),
     detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
@@ -238,7 +241,7 @@ export function GameflowView({
     stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
     layout,
-    showRatings,
+    ratingMode,
   };
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
@@ -318,14 +321,30 @@ export function GameflowView({
           {prompt}
         </div>
         {data.ratings && (
-          <label className="ibpl-gameflow-rtg-toggle">
-            <input
-              type="checkbox"
-              checked={showRatings}
-              onChange={(e) => setShowRatings(e.target.checked)}
-            />
-            Show ORtg
-          </label>
+          <div
+            className="ibpl-gameflow-rtg-toggle"
+            role="group"
+            aria-label="ORtg in the score readout"
+          >
+            <span>ORtg</span>
+            {(
+              [
+                ["off", "Off"],
+                ["game", "So far"],
+                ["window", `Last ${RATING_WINDOW} poss`],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={ratingMode === mode}
+                className={ratingMode === mode ? "is-on" : undefined}
+                onClick={() => setRatingMode(mode)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
       {compact && (
@@ -375,11 +394,11 @@ export function GameflowView({
                       ((e.clientX - r.left) / r.width) *
                       data.margin.at(-1)!.elapsed;
                   const rtg =
-                    showRatings && data.ratings
-                      ? ratingAt(data.ratings, elapsed)
+                    ratingMode !== "off" && data.ratings
+                      ? ratingAt(data.ratings[ratingMode], elapsed)
                       : null;
                   setScore(
-                    `${clock(elapsed)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
+                    `${clock(elapsed)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg${ratingMode === "window" ? ` (last ${RATING_WINDOW})` : ""} ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
                   );
                 }}
                 onPointerLeave={() => setScore("")}

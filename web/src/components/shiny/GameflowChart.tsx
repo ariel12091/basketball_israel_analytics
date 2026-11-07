@@ -7,8 +7,10 @@ import {
   marginPath,
   marginScale,
   pmLabel,
+  RATING_WINDOW,
   ratingAt,
   ratingLabel,
+  type RatingMode,
   shortLabels,
   scoreAt,
   windowDetail,
@@ -35,10 +37,10 @@ export default function GameflowChart({
   lineupIndex,
   crop,
   layout,
-  showRatings = false,
+  ratingMode = "off",
 }: {
-  /** Each team's ORtg under its score in the margin tooltip. */
-  showRatings?: boolean;
+  /** Each team's ORtg under its score in the margin tooltip, and which one. */
+  ratingMode?: RatingMode | "off";
   /** Draw only the top team's lanes ("top") or the rest ("bottom"), so the
    * lineup details can sit between them (user 2026-10-28). */
   crop?: "top" | "bottom";
@@ -549,8 +551,8 @@ export default function GameflowChart({
               own = scoreAt(data.steps, scoreTip.elapsed, "own"),
               opp = own - scoreAt(data.steps, scoreTip.elapsed),
               r =
-                showRatings && data.ratings
-                  ? ratingAt(data.ratings, scoreTip.elapsed)
+                ratingMode !== "off" && data.ratings
+                  ? ratingAt(data.ratings[ratingMode], scoreTip.elapsed)
                   : null;
             if (!r)
               return `${when}\n${data.meta.ownTeam} ${own} – ${opp} ${data.meta.oppTeam}`;
@@ -558,6 +560,8 @@ export default function GameflowChart({
             return (
               <>
                 {when}
+                {ratingMode === "window" &&
+                  ` · ORtg over the last ${RATING_WINDOW} possessions`}
                 <span className="ibpl-gameflow-score-grid">
                   <span>
                     {data.meta.ownTeam} {own}
