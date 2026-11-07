@@ -10,6 +10,12 @@ import {
   points,
   marginScale,
   clock,
+  ratingSeries,
+  ratingAt,
+  RATING_MIN_POSS,
+  RATING_WINDOW,
+  type PossEnd,
+  type Score,
   windowDetail,
   type RawRibbon,
 } from "./gameflow";
@@ -134,5 +140,44 @@ describe("Gameflow edge cases and shared-player windows", () => {
     ).toEqual(["F. SMITH", "S. SMITH", "JONES"]);
     expect(clock(59.99)).toBe("0:59");
     expect(marginScale([{ elapsed: 0, margin: 30 }]).interval).toBe(10);
+  });
+});
+describe("ratingSeries", () => {
+  // 25 offensive and 25 defensive possessions, alternating. The team scores 2
+  // on every offensive possession; the opponent 1 on every defensive one. An
+  // and-one free throw lands after the 25th offensive end.
+  const poss: PossEnd[] = [],
+    steps: Score[] = [];
+  let own = 0,
+    opp = 0,
+    key = 0;
+  for (let i = 1; i <= 25; i++) {
+    own += 2;
+    steps.push({ elapsed: 4 * i, order_key: ++key, own, margin: own - opp });
+    poss.push({ elapsed: 4 * i, order_key: key, off: true, own, opp });
+    opp += 1;
+    steps.push({ elapsed: 4 * i + 2, order_key: ++key, own, margin: own - opp });
+    poss.push({ elapsed: 4 * i + 2, order_key: key, off: false, own, opp });
+  }
+  steps.push({ elapsed: 101, order_key: ++key, own: own + 1, margin: own + 1 - opp });
+  it("running totals wait for the minimum and end on the box-score rating", () => {
+    const s = ratingSeries(poss, steps, "game");
+    expect(ratingAt(s, 4 * (RATING_MIN_POSS - 1)).ortg).toBeNull();
+    expect(ratingAt(s, 4 * RATING_MIN_POSS).ortg).toBe(200);
+    const last = s[s.length - 1];
+    expect(last.ortg).toBeCloseTo((100 * 51) / 25, 10);
+    expect(last.drtg).toBe(100);
+  });
+  it("the window counts each side's last N possessions from its own ends", () => {
+    const s = ratingSeries(poss, steps, "window");
+    expect(ratingAt(s, 4 * RATING_WINDOW).ortg).toBeNull();
+    expect(ratingAt(s, 4 * (RATING_WINDOW + 1)).ortg).toBe(200);
+    expect(ratingAt(s, 4 * (RATING_WINDOW + 1) + 2).drtg).toBe(100);
+    // The trailing free throw is after the last end: the window ignores it.
+    expect(s[s.length - 1].ortg).toBe(200);
+  });
+  it("is absent from the model when the reader sends no possessions", () => {
+    const raw = { lanes: [], margin: [], n_periods: 4 };
+    expect(ribbonModel(raw, 1, "euroleague", 1).ratings).toBeNull();
   });
 });

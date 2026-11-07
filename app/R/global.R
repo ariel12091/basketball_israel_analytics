@@ -349,10 +349,26 @@ marg AS (
          id AS order_key
   FROM basketball_test.df_pts_poss_lineups_longer_mv
   WHERE game_id = $1 AND team_id = $2
+),
+poss AS (
+  -- Possession ends, with the score on their row, for the web Gameflow's
+  -- ratings panel (points per 100 possessions as the game goes on). Counted
+  -- as every rating reader counts them: a row with final_end_poss
+  -- (docs/shared_definitions.md, Possession). Shiny does not read it.
+  SELECT event_elapsed_seconds AS elapsed,
+         id AS order_key,
+         (type_lineup = 'offense') AS off,
+         own_team_score AS own,
+         opp_team_score AS opp
+  FROM basketball_test.df_pts_poss_lineups_longer_mv
+  WHERE game_id = $1 AND team_id = $2
+    AND final_end_poss IS TRUE
+    AND type_lineup IN ('offense', 'defense')
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  (SELECT jsonb_agg(to_jsonb(poss) ORDER BY elapsed, order_key) FROM poss) AS poss,
   (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
     WHERE game_id = $1) AS n_periods,
   (SELECT COUNT(*) FROM segs s
@@ -398,6 +414,10 @@ marg AS (
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  -- No possession ends yet: they live in action_team_context_actions
+  -- (possession_flag), which app_readonly may not read; the curated layer
+  -- needs a view for them first. NULL hides the web ratings panel.
+  NULL::jsonb AS poss,
   (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
   0 AS excluded_segments,
   0 AS false_straddle_segments,

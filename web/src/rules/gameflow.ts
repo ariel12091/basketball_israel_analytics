@@ -38,6 +38,8 @@ export type RawRibbon = {
       }[]
     | null;
   margin: Score[] | null;
+  /** Possession ends with the score on their row (Israeli league only). */
+  poss?: PossEnd[] | null;
   n_periods: number | null;
   excluded_segments?: number;
   false_straddle_segments?: number;
@@ -218,6 +220,98 @@ export function points(side: Side, start: number, end: number, steps: Score[]) {
     ? { pm: finite(-pm), pf: finite(pa), pa: finite(pf) }
     : { pm: finite(pm), pf: finite(pf), pa: finite(pa) };
 }
+/** A possession end from the team's point of view: `off` is its own. */
+export type PossEnd = {
+  elapsed: number;
+  order_key: number;
+  off: boolean;
+  own: number;
+  opp: number;
+};
+export type RatingPoint = {
+  elapsed: number;
+  ortg: number | null;
+  drtg: number | null;
+};
+/** A rating is not drawn before this many possessions (it swings wildly). */
+export const RATING_MIN_POSS = 10;
+/** The rolling version counts this many of a side's latest possessions. */
+export const RATING_WINDOW = 20;
+const byEvent = (a: { elapsed: number; order_key: number }, b: typeof a) =>
+  a.elapsed - b.elapsed || a.order_key - b.order_key;
+/**
+ * Offensive and defensive rating (points per 100 possessions) as the game goes
+ * on, derived from counts (shared_definitions.md rule 5).
+ * - "game": everything since tip-off, updated at every score and possession
+ *   end, so it ends on the box-score rating.
+ * - "window": the side's last RATING_WINDOW possessions, updated at each of its
+ *   possession ends: points between the end of possession k - N and the end of
+ *   possession k (each read off the possession end's own row).
+ */
+export function ratingSeries(
+  poss: PossEnd[],
+  steps: Score[],
+  mode: "game" | "window",
+): RatingPoint[] {
+  const ends = [...poss].sort(byEvent),
+    out: RatingPoint[] = [];
+  if (mode === "window") {
+    const offEnds = ends.filter((p) => p.off),
+      defEnds = ends.filter((p) => !p.off);
+    let ortg: number | null = null,
+      drtg: number | null = null;
+    for (const p of ends) {
+      const list = p.off ? offEnds : defEnds,
+        k = list.indexOf(p);
+      if (k >= RATING_WINDOW) {
+        const from = list[k - RATING_WINDOW],
+          pts = p.off ? p.own - from.own : p.opp - from.opp,
+          value = (100 * pts) / RATING_WINDOW;
+        if (p.off) ortg = value;
+        else drtg = value;
+      }
+      out.push({ elapsed: p.elapsed, ortg, drtg });
+    }
+    return out;
+  }
+  // Running totals: walk scores and possession ends in event order.
+  const events = [
+    ...steps
+      .filter((s) => s.own != null)
+      .map((s) => ({
+        elapsed: n(s.elapsed),
+        order_key: n(s.order_key),
+        own: n(s.own),
+        opp: n(s.own) - n(s.margin),
+        end: null as boolean | null,
+      })),
+    ...ends.map((p) => ({ ...p, end: p.off as boolean | null })),
+  ].sort(byEvent);
+  let own = 0,
+    opp = 0,
+    off = 0,
+    def = 0;
+  for (const e of events) {
+    own = Math.max(own, e.own);
+    opp = Math.max(opp, e.opp);
+    if (e.end === true) off++;
+    else if (e.end === false) def++;
+    out.push({
+      elapsed: e.elapsed,
+      ortg: off >= RATING_MIN_POSS ? (100 * own) / off : null,
+      drtg: def >= RATING_MIN_POSS ? (100 * opp) / def : null,
+    });
+  }
+  return out;
+}
+/** The series' values as of a moment (the last point at or before it). */
+export function ratingAt(series: RatingPoint[], time: number) {
+  let value: RatingPoint = { elapsed: 0, ortg: null, drtg: null };
+  for (const r of series)
+    if (r.elapsed <= time) value = r;
+    else break;
+  return value;
+}
 /**
  * A player card's numbers over any set of windows (one stint, a player's whole
  * game, or the minutes several players shared): floor time and the score
@@ -396,6 +490,12 @@ export function ribbonModel(
     totals,
     details: bars.map((b) => windowDetail(lanes, steps, dict, b)),
     health,
+    ratings: raw.poss?.length
+      ? {
+          game: ratingSeries(raw.poss, steps, "game"),
+          window: ratingSeries(raw.poss, steps, "window"),
+        }
+      : null,
   };
 }
 export type RibbonModel = ReturnType<typeof ribbonModel>;
