@@ -1,5 +1,5 @@
 // Web On/Off auto min-poss (deviation D34): both bars fit the rows in view,
-// raising as well as lowering -- the top 35% of the league, relaxed to the
+// raising as well as lowering -- the top 60% of the league, relaxed to the
 // top 75% under a team filter.
 import { describe, expect, it } from "vitest";
 import {
@@ -19,8 +19,8 @@ const summaryRows = (n: number, team = 2, scale = 10) =>
   }));
 
 describe("autoShare", () => {
-  it("keeps Shiny's 35% for the league and relaxes to 75% under a team filter", () => {
-    expect(AUTO_TOP_PCT).toBe(0.35);
+  it("keeps 60% of the league and relaxes to 75% under a team filter", () => {
+    expect(AUTO_TOP_PCT).toBe(0.6);
     expect(autoShare([])).toBe(AUTO_TOP_PCT);
     expect(autoShare([3])).toBe(AUTO_TOP_PCT_TEAMS);
     expect(autoShare([3, 10])).toBe(0.75);
@@ -36,13 +36,13 @@ describe("autoBars", () => {
     expect(shown.length / rows.length).toBeLessThanOrEqual(0.8);
   });
 
-  it("holds the whole league to the harder 35% floor", () => {
+  it("holds the whole league to the harder 60% floor", () => {
     const rows = summaryRows(200); // 10..2000 ON possessions
     const league = autoBars(rows, "summary", autoShare([]))!;
     const team = autoBars(rows, "summary", autoShare([2]))!;
     expect(league.minOn).toBeGreaterThan(team.minOn);
     const shown = filterSummaryRows(rows, [], league.minAll, league.minOn);
-    expect(shown).toHaveLength(70); // ceil(200 x 0.35)
+    expect(shown).toHaveLength(120); // ceil(200 x 0.6)
   });
 
   it("raises the bar above the 300 default for a team of heavy-minute players", () => {

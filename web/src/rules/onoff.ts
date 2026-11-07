@@ -10,12 +10,14 @@ import ui from "../data/shinyUi.json";
 
 const RANKING_BASELINE = ui.rankingBaseline; // global.R
 const RANKING_MIN_PCT = 0.25; // global.R
-/** Auto min-poss share of rows kept, by ON possessions (deviation D34). The
- * whole league keeps Shiny's top 35% (helpers.R AUTO_TOP_PCT): a hard floor,
- * since a league-wide 75% falls to about 20 possessions of noise. A team
- * filter relaxes it to the top 75% (web-only), so about three in four of the
- * team's players show after the bar is rounded down. */
-export const AUTO_TOP_PCT = ui.autoTopPct;
+/** Auto min-poss share of rows kept, by ON possessions (deviation D34, both
+ * web-only; Shiny's helpers.R AUTO_TOP_PCT is 35%). The whole league keeps the
+ * top 60%: a harder floor, since a league-wide 75% falls to about 20
+ * possessions of noise, while 35% hides regulars well past small-sample
+ * territory (2026-27: 60% puts the bar at 110, above the 100-possession
+ * ranking baseline). A team filter relaxes it to the top 75%, so about three
+ * in four of the team's players show after the bar is rounded down. */
+export const AUTO_TOP_PCT = 0.6;
 export const AUTO_TOP_PCT_TEAMS = 0.75;
 /** The share auto keeps for the rows in view: relaxed under a team filter. */
 export const autoShare = (teams: readonly number[]) =>
