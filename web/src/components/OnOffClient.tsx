@@ -7,7 +7,12 @@
 // the stat filters, and renders the table.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
-import { autoBars, onoffTableRows, type View } from "@/rules/onoff";
+import {
+  autoBars,
+  autoShare,
+  onoffTableRows,
+  type View,
+} from "@/rules/onoff";
 import { contextParams, onoffPath } from "@/lib/tabQuery";
 import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
@@ -82,29 +87,31 @@ function statGroups(cols: { col: string }[]) {
 }
 
 /** Auto min-poss (web-only, deviation D34): while auto is on, both bars are
- * set to fit the rows in view (autoBars: about three in four show), raising
- * as well as lowering. A hand move turns auto off; any filter, season or view
- * change turns it back on. Shiny's setup_onoff_auto_min only lowers. */
+ * set to fit the rows in view (autoBars, keeping the top `share`: 35% of the
+ * league, 75% under a team filter), raising as well as lowering. A hand move
+ * turns auto off; any filter, season or view change turns it back on.
+ * Shiny's setup_onoff_auto_min only lowers. */
 function useAutoMin(args: {
   enabled: boolean;
   base: Row[] | null;
   view: View;
+  share: number;
   minAll: number;
   minOn: number;
   setMins: (patch: { min_all?: number; min_on?: number }) => void;
 }) {
   const last = useRef({ on: NaN, all: NaN });
-  const { enabled, base, view, minAll, minOn, setMins } = args;
+  const { enabled, base, view, share, minAll, minOn, setMins } = args;
   useEffect(() => {
     if (!enabled || !base) return;
-    const bars = autoBars(base, view);
+    const bars = autoBars(base, view, share);
     if (!bars) return;
     last.current = { on: bars.minOn, all: bars.minAll };
     const patch: { min_all?: number; min_on?: number } = {};
     if (bars.minOn !== minOn) patch.min_on = bars.minOn;
     if (bars.minAll !== minAll) patch.min_all = bars.minAll;
     if (Object.keys(patch).length) setMins(patch);
-  }, [enabled, base, view, minAll, minOn, setMins]);
+  }, [enabled, base, view, share, minAll, minOn, setMins]);
   return {
     /** A hand move of a slider: off unless it is the value auto just wrote. */
     isOwn: (which: "on" | "all", v: number) => v === last.current[which],
@@ -174,6 +181,7 @@ export default function OnOffClient({
     enabled: autoOn,
     base: autoBase,
     view: dataView,
+    share: autoShare(teamIds),
     minAll,
     minOn,
     setMins: (patch) =>

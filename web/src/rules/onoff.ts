@@ -10,11 +10,16 @@ import ui from "../data/shinyUi.json";
 
 const RANKING_BASELINE = ui.rankingBaseline; // global.R
 const RANKING_MIN_PCT = 0.25; // global.R
-/** Web-only (deviation D34): auto keeps the top three in four rows by ON
- * possessions, so about 75-80% of the rows in view show after the bar is
- * rounded down. Shiny's setup_onoff_auto_min keeps the top 35%
- * (`ui.autoTopPct`) and only lowers the bar. */
-export const AUTO_TOP_PCT = 0.75;
+/** Auto min-poss share of rows kept, by ON possessions (deviation D34). The
+ * whole league keeps Shiny's top 35% (helpers.R AUTO_TOP_PCT): a hard floor,
+ * since a league-wide 75% falls to about 20 possessions of noise. A team
+ * filter relaxes it to the top 75% (web-only), so about three in four of the
+ * team's players show after the bar is rounded down. */
+export const AUTO_TOP_PCT = ui.autoTopPct;
+export const AUTO_TOP_PCT_TEAMS = 0.75;
+/** The share auto keeps for the rows in view: relaxed under a team filter. */
+export const autoShare = (teams: readonly number[]) =>
+  teams.length ? AUTO_TOP_PCT_TEAMS : AUTO_TOP_PCT;
 export const ONOFF_PAD_POSS = ui.onoffPadPoss;
 
 export type View = "summary" | "four_factors" | "shot_profile";
@@ -269,9 +274,9 @@ export function possCols(view: View): { on: string; off: string } {
     ? { on: "off_on_poss", off: "off_off_poss" }
     : { on: "ON Poss", off: "OFF Poss" };
 }
-function topRows(rows: Row[], usage: string): Row[] {
+function topRows(rows: Row[], usage: string, share: number): Row[] {
   const n = rows.length;
-  const top = Math.max(1, Math.ceil(n * AUTO_TOP_PCT));
+  const top = Math.max(1, Math.ceil(n * share));
   // arrange(desc(x)): NA last, stable.
   return rows
     .map((r, i) => ({ r, i }))
@@ -289,10 +294,11 @@ function topRows(rows: Row[], usage: string): Row[] {
 export function autoMinOn(
   rows: Row[],
   usage: string,
+  share = AUTO_TOP_PCT,
   step = 10,
 ): number | null {
   if (!rows.length) return null;
-  const v = topRows(rows, usage)
+  const v = topRows(rows, usage, share)
     .map((r) => num(r[usage]))
     .filter((x): x is number => x != null);
   if (!v.length) return null;
@@ -304,10 +310,11 @@ export function autoMinAll(
   usage: string,
   on: string,
   off: string,
+  share = AUTO_TOP_PCT,
   step = 10,
 ): number | null {
   if (!rows.length) return null;
-  const v = topRows(rows, usage)
+  const v = topRows(rows, usage, share)
     .map((r) =>
       num(r[on]) == null || num(r[off]) == null
         ? null
@@ -318,18 +325,19 @@ export function autoMinAll(
   return Math.floor(Math.min(...v) / step) * step;
 }
 
-/** Both auto bars for the rows in view (teams filtered, no possession bars).
- * Web-only (D34): applied as computed, up or down, on every filter change, and
- * both bars measure the same top rows. (Shiny measures Four Factors' all-side
- * bar on the rows that clear the ON bar, which at a 75% share would show only
- * about 56%.) */
+/** Both auto bars for the rows in view (teams filtered, no possession bars),
+ * keeping `share` of them (autoShare). Web-only (D34): applied as computed, up
+ * or down, on every filter change, and both bars measure the same top rows.
+ * (Shiny measures Four Factors' all-side bar on the rows that clear the ON
+ * bar, which at a 75% share would show only about 56%.) */
 export function autoBars(
   rows: Row[],
   view: View,
+  share: number,
 ): { minOn: number; minAll: number } | null {
   const cols = possCols(view);
-  const minOn = autoMinOn(rows, cols.on);
-  const minAll = autoMinAll(rows, cols.on, cols.on, cols.off);
+  const minOn = autoMinOn(rows, cols.on, share);
+  const minAll = autoMinAll(rows, cols.on, cols.on, cols.off, share);
   return minOn == null || minAll == null ? null : { minOn, minAll };
 }
 

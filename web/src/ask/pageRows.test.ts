@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ui from "@/data/shinyUi.json";
 import { lineupAutoMin, lineupTableRows, localLineups } from "@/rules/lineups";
-import { autoBars, possCols } from "@/rules/onoff";
+import { autoBars, autoShare, possCols } from "@/rules/onoff";
 import { pageRows, autoBar, withTeamNetRank } from "./pageRows";
 
 const q = (s: string) => new URLSearchParams(s);
@@ -54,6 +54,7 @@ describe("pageRows: the rows a freshly opened link shows", () => {
     const bars = autoBars(
       rows.filter((r) => r.team_id === 2),
       "summary",
+      autoShare([2]),
     )!;
     expect(bars.minOn).toBeGreaterThan(300);
     // pageRows applies those bars to onoffTableRows; with no qualifying ranks

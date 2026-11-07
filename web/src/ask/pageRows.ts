@@ -5,7 +5,12 @@
 import ui from "@/data/shinyUi.json";
 import type { League, Row } from "@/rules/gameLogs";
 import { lineupPage, playerIds } from "@/rules/lineups";
-import { autoBars, onoffTableRows, type View } from "@/rules/onoff";
+import {
+  autoBars,
+  autoShare,
+  onoffTableRows,
+  type View,
+} from "@/rules/onoff";
 import {
   PLAYER_MODES,
   playerDisplay,
@@ -106,7 +111,7 @@ export function pageRows(
         : teams.length
           ? rows.filter((r) => teams.includes(Number(r.team_id)))
           : rows;
-    const bars = autoBars(base, view);
+    const bars = autoBars(base, view, autoShare(teams));
     const minOn = autoBar(q.get("min_on"), defaults.minOn, bars?.minOn ?? null);
     const minAll = autoBar(
       q.get("min_all"),
