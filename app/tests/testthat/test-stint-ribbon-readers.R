@@ -113,6 +113,11 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
                          warn = FALSE), collapse = "\n")
   sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src, perl = TRUE))
   expect_true(nzchar(sql))
+  # The poss CTE (the web's ORtg) needs the side of each possession end and
+  # keeps both; the lanes and the margin must not filter on it.
+  poss <- regmatches(sql, regexpr("poss AS \\((.|\n)*?\n\\)", sql, perl = TRUE))
+  expect_match(poss, "type_lineup IN \\('offense', 'defense'\\)")
+  sql <- sub(poss, "", sql, fixed = TRUE)
   expect_false(grepl("type_lineup\\s*=", sql))
   expect_false(grepl("type_lineup\\s+IS\\s+NOT\\s+NULL", sql, ignore.case = TRUE))
   expect_false(grepl("GROUP BY[^)]*type_lineup", sql, ignore.case = TRUE))
