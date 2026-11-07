@@ -30,6 +30,7 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type BarWindow } from "./GameflowChart";
+import GameflowRatings from "./GameflowRatings";
 import { text as labels } from "@/data/gameflowLayout.json";
 function subscribeNarrow(notify: () => void) {
   const q = matchMedia(NARROW);
@@ -235,6 +236,11 @@ export function GameflowView({
     lineupIndex: focused?.dictIndex,
     layout,
   };
+  const ratings = (
+    <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+      <GameflowRatings data={data} compact={compact} layout={layout} />
+    </div>
+  );
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
     : selected.length
@@ -422,6 +428,7 @@ export function GameflowView({
             <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
               <GameflowChart {...common} crop="bottom" />
             </div>
+            {ratings}
           </>
         ) : (
           <>
@@ -431,6 +438,7 @@ export function GameflowView({
             >
               <GameflowChart {...common} />
             </div>
+            {ratings}
             {details}
           </>
         )
@@ -461,6 +469,7 @@ export function GameflowView({
               </section>
             ))}
           </div>
+          {ratings}
         </>
       )}
     </div>
