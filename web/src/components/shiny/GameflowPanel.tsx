@@ -326,27 +326,35 @@ export function GameflowView({
             role="group"
             aria-label="ORtg in the score readout"
           >
-            <span className="ibpl-gameflow-rtg-title">
-              Offensive rating (ORtg)
-              <small>points per 100 possessions</small>
-            </span>
-            {(
-              [
-                ["off", "Off"],
-                ["game", "So far"],
-                ["window", `Last ${RATING_WINDOW} poss`],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={ratingMode === mode}
-                className={ratingMode === mode ? "is-on" : undefined}
-                onClick={() => setRatingMode(mode)}
-              >
-                {label}
-              </button>
-            ))}
+            <div className="ibpl-gameflow-rtg-row">
+              <span className="ibpl-gameflow-rtg-title">
+                Offensive rating (ORtg)
+              </span>
+              {(
+                [
+                  ["off", "Off"],
+                  ["game", "Entire game"],
+                  ["window", `Last ${RATING_WINDOW} poss`],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={ratingMode === mode}
+                  className={ratingMode === mode ? "is-on" : undefined}
+                  onClick={() => setRatingMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {ratingMode !== "off" && (
+              <p className="ibpl-gameflow-rtg-hint">
+                {ratingMode === "game"
+                  ? "Points per 100 possessions from tip-off up to the moment you hover. Shows how efficient each team has been overall."
+                  : `Points per 100 possessions in each team's last ${RATING_WINDOW} trips down the floor, about 10 minutes of play. Shows who is hot right now, which an entire-game number hides.`}
+              </p>
+            )}
           </div>
         )}
       </div>
