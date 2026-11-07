@@ -352,7 +352,7 @@ export function GameflowView({
               <p className="ibpl-gameflow-rtg-hint">
                 {ratingMode === "game"
                   ? "Points per 100 possessions since tip-off."
-                  : `Points per 100 possessions over the last ${RATING_WINDOW}: who's hot right now.`}
+                  : `Points per 100 possessions over each team's last ${RATING_WINDOW} possessions (about 10 minutes): shows who's hot right now.`}
               </p>
             )}
           </div>
