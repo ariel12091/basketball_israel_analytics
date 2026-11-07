@@ -7,13 +7,7 @@
 // the stat filters, and renders the table.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
-import {
-  autoMinAll,
-  autoMinOn,
-  onoffTableRows,
-  possCols,
-  type View,
-} from "@/rules/onoff";
+import { autoBars, onoffTableRows, type View } from "@/rules/onoff";
 import { contextParams, onoffPath } from "@/lib/tabQuery";
 import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
@@ -87,9 +81,10 @@ function statGroups(cols: { col: string }[]) {
   ];
 }
 
-/** setup_onoff_auto_min(): both bars lower the slider below its default or
- * hand-set value and raise it only to undo their own lowering, capped at that
- * value; a hand move turns auto off, any filter change turns it back on. */
+/** Auto min-poss (web-only, deviation D34): while auto is on, both bars are
+ * set to fit the rows in view (autoBars: about three in four show), raising
+ * as well as lowering. A hand move turns auto off; any filter, season or view
+ * change turns it back on. Shiny's setup_onoff_auto_min only lowers. */
 function useAutoMin(args: {
   enabled: boolean;
   base: Row[] | null;
@@ -98,67 +93,25 @@ function useAutoMin(args: {
   minOn: number;
   setMins: (patch: { min_all?: number; min_on?: number }) => void;
 }) {
-  const state = useRef({
-    lastOn: NaN,
-    lastAll: NaN,
-    baseOn: NaN,
-    baseAll: NaN,
-  });
+  const last = useRef({ on: NaN, all: NaN });
   const { enabled, base, view, minAll, minOn, setMins } = args;
   useEffect(() => {
     if (!enabled || !base) return;
-    const cols = possCols(view);
-    const s = state.current;
-    const step = (
-      cur: number,
-      needed: number | null,
-      last: "lastOn" | "lastAll",
-      baseKey: "baseOn" | "baseAll",
-    ) => {
-      if (needed == null) return null;
-      const own = !Number.isNaN(s[last]) && cur === s[last];
-      if (cur > needed) {
-        if (!own || Number.isNaN(s[baseKey])) s[baseKey] = cur;
-        return needed;
-      }
-      if (!own || Number.isNaN(s[baseKey])) return null;
-      const target = Math.min(needed, s[baseKey]);
-      return target <= cur ? null : target;
-    };
-    const onTarget = step(minOn, autoMinOn(base, cols.on), "lastOn", "baseOn");
-    // The all-side bar measures the rows that clear the ON bar (Four Factors).
-    const gateOn = onTarget ?? minOn;
-    const allBase =
-      view === "four_factors"
-        ? base.filter((r) => Number(r.off_on_poss) >= gateOn)
-        : base;
-    const allTarget = step(
-      minAll,
-      autoMinAll(allBase, cols.on, cols.on, cols.off),
-      "lastAll",
-      "baseAll",
-    );
+    const bars = autoBars(base, view);
+    if (!bars) return;
+    last.current = { on: bars.minOn, all: bars.minAll };
     const patch: { min_all?: number; min_on?: number } = {};
-    if (onTarget != null) {
-      s.lastOn = onTarget;
-      patch.min_on = onTarget;
-    }
-    if (allTarget != null) {
-      s.lastAll = allTarget;
-      patch.min_all = allTarget;
-    }
+    if (bars.minOn !== minOn) patch.min_on = bars.minOn;
+    if (bars.minAll !== minAll) patch.min_all = bars.minAll;
     if (Object.keys(patch).length) setMins(patch);
   }, [enabled, base, view, minAll, minOn, setMins]);
   return {
     /** A hand move of a slider: off unless it is the value auto just wrote. */
-    isOwn: (which: "on" | "all", v: number) =>
-      v === (which === "on" ? state.current.lastOn : state.current.lastAll),
+    isOwn: (which: "on" | "all", v: number) => v === last.current[which],
     reset: () =>
-      (state.current = {
-        lastOn: ui.onoffDefaults.israel.minOn,
-        lastAll: ui.onoffDefaults.israel.minAll,
-        baseOn: NaN,
-        baseAll: NaN,
+      (last.current = {
+        on: ui.onoffDefaults.israel.minOn,
+        all: ui.onoffDefaults.israel.minAll,
       }),
   };
 }

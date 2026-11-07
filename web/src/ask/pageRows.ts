@@ -5,13 +5,7 @@
 import ui from "@/data/shinyUi.json";
 import type { League, Row } from "@/rules/gameLogs";
 import { lineupPage, playerIds } from "@/rules/lineups";
-import {
-  autoMinAll,
-  autoMinOn,
-  onoffTableRows,
-  possCols,
-  type View,
-} from "@/rules/onoff";
+import { autoBars, onoffTableRows, type View } from "@/rules/onoff";
 import {
   PLAYER_MODES,
   playerDisplay,
@@ -24,9 +18,16 @@ import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 
 const list = (v: string | null) => (v ?? "").split(",").filter(Boolean);
 
-/** useAutoMin's first pass: auto may lower the bar, never raise it. */
-export function lowerOnly(current: number, needed: number | null): number {
-  return needed != null && current > needed ? needed : current;
+/** The page's auto min-poss (D34): a bar the request names is hand-set and
+ * stays; otherwise auto's value applies, up or down, falling back to the
+ * default when auto has nothing to measure. */
+export function autoBar(
+  asked: string | null,
+  fallback: number,
+  needed: number | null,
+): number {
+  if (asked != null && asked !== "") return Number(asked) || 0;
+  return needed ?? fallback;
 }
 
 type Payload = {
@@ -105,18 +106,12 @@ export function pageRows(
         : teams.length
           ? rows.filter((r) => teams.includes(Number(r.team_id)))
           : rows;
-    const cols = possCols(view);
-    const minOn = lowerOnly(
-      Number(q.get("min_on") ?? defaults.minOn) || 0,
-      autoMinOn(base, cols.on),
-    );
-    const allBase =
-      view === "four_factors"
-        ? base.filter((r) => Number(r.off_on_poss) >= minOn)
-        : base;
-    const minAll = lowerOnly(
-      Number(q.get("min_all") ?? defaults.minAll) || 0,
-      autoMinAll(allBase, cols.on, cols.on, cols.off),
+    const bars = autoBars(base, view);
+    const minOn = autoBar(q.get("min_on"), defaults.minOn, bars?.minOn ?? null);
+    const minAll = autoBar(
+      q.get("min_all"),
+      defaults.minAll,
+      bars?.minAll ?? null,
     );
     const shown = onoffTableRows(
       { rows, league3p: p.league3p ?? null, view },

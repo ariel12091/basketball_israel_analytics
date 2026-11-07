@@ -10,7 +10,11 @@ import ui from "../data/shinyUi.json";
 
 const RANKING_BASELINE = ui.rankingBaseline; // global.R
 const RANKING_MIN_PCT = 0.25; // global.R
-export const AUTO_TOP_PCT = ui.autoTopPct;
+/** Web-only (deviation D34): auto keeps the top three in four rows by ON
+ * possessions, so about 75-80% of the rows in view show after the bar is
+ * rounded down. Shiny's setup_onoff_auto_min keeps the top 35%
+ * (`ui.autoTopPct`) and only lowers the bar. */
+export const AUTO_TOP_PCT = 0.75;
 export const ONOFF_PAD_POSS = ui.onoffPadPoss;
 
 export type View = "summary" | "four_factors" | "shot_profile";
@@ -312,6 +316,21 @@ export function autoMinAll(
     .filter((x): x is number => x != null);
   if (!v.length) return null;
   return Math.floor(Math.min(...v) / step) * step;
+}
+
+/** Both auto bars for the rows in view (teams filtered, no possession bars).
+ * Web-only (D34): applied as computed, up or down, on every filter change, and
+ * both bars measure the same top rows. (Shiny measures Four Factors' all-side
+ * bar on the rows that clear the ON bar, which at a 75% share would show only
+ * about 56%.) */
+export function autoBars(
+  rows: Row[],
+  view: View,
+): { minOn: number; minAll: number } | null {
+  const cols = possCols(view);
+  const minOn = autoMinOn(rows, cols.on);
+  const minAll = autoMinAll(rows, cols.on, cols.on, cols.off);
+  return minOn == null || minAll == null ? null : { minOn, minAll };
 }
 
 /** helpers.R onoff_league_3p: league 3P% from each team's best-covered row. */
