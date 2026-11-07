@@ -4,7 +4,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { loadGolden } from "../test/onoffGoldens";
 import ui from "../src/data/shinyUi.json";
 import layout from "../src/data/layoutUi.json";
-import { autoMinOn, possCols } from "../src/rules/onoff";
+import { autoBars, autoShare } from "../src/rules/onoff";
 
 async function stub(page: Page, league = "il") {
   const requests: URL[] = [];
@@ -163,27 +163,26 @@ test("a stepper tap turns auto min-poss off; a filter change turns it back on", 
 }) => {
   await stub(page);
   const { answer } = loadGolden("il_summary_default.json");
-  const cols = possCols("summary");
-  const autoFor = (rows: typeof answer.rows) =>
-    Math.min(300, autoMinOn(rows, cols.on) ?? 300);
+  const autoFor = (rows: typeof answer.rows, teams: number[]) =>
+    autoBars(rows, "summary", autoShare(teams))?.minOn ?? 300;
   const input = page.locator("#min_on_poss");
-  await expect(input).toHaveValue(String(autoFor(answer.rows)));
+  await expect(input).toHaveValue(String(autoFor(answer.rows, [])));
   const before = Number(await input.inputValue());
   await page.getByRole("button", { name: "Increase Min ON Poss" }).click();
   await expect(input).toHaveValue(String(before + 10));
   await expect(page).toHaveURL(new RegExp(`min_on=${before + 10}`));
-  // A filter change re-arms auto. Auto only lowers a hand-set minimum
-  // (helpers.R setup_onoff_auto_min), so hand-set the maximum first: the
-  // re-armed auto value must then bring it down to the team's own value.
-  await input.fill("3000");
+  // A filter change re-arms auto, which replaces a hand-set minimum with the
+  // team's own value in either direction (D34). Hand-set 0 first, so the
+  // re-armed value must RAISE it -- the case Shiny's lower-only rule skips.
+  await input.fill("0");
   await input.press("Enter");
-  await expect(page).toHaveURL(/min_on=3000/);
+  await expect(page).toHaveURL(/min_on=0/);
   const team = answer.rows[0];
   const teamRows = answer.rows.filter(
     (r) => Number(r.team_id) === Number(team.team_id),
   );
-  const expected = autoMinOn(teamRows, cols.on)!;
-  expect(expected).toBeLessThan(3000);
+  const expected = autoFor(teamRows, [Number(team.team_id)]);
+  expect(expected).toBeGreaterThan(0);
   await filtersButton(page).click();
   await pickTeam(page, String(team.Team));
   await expect(input).toHaveValue(String(expected));

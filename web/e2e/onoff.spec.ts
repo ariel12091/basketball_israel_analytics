@@ -3,7 +3,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { loadGolden, presets } from "../test/onoffGoldens";
-import { autoMinAll, autoMinOn, possCols } from "../src/rules/onoff";
+import { autoBars, autoShare } from "../src/rules/onoff";
 
 /** Sets a possession stepper to `target` by typing it, as a user would. */
 async function fixedStep(page: Page, id: string, target: number) {
@@ -67,16 +67,9 @@ for (const file of presets)
     const base = answer.rows.filter(
       (r) => !teamIds.length || teamIds.includes(Number(r.team_id)),
     );
-    const cols = possCols(g.view);
-    const initialOn = Math.min(300, autoMinOn(base, cols.on) ?? 300);
-    const allBase =
-      g.view === "four_factors"
-        ? base.filter((r) => Number(r.off_on_poss) >= initialOn)
-        : base;
-    const initialAll = Math.min(
-      100,
-      autoMinAll(allBase, cols.on, cols.on, cols.off) ?? 100,
-    );
+    const bars = autoBars(base, g.view, autoShare(teamIds));
+    const initialOn = bars?.minOn ?? 300;
+    const initialAll = bars?.minAll ?? 100;
     await expect(page.locator(`#${prefix}min_on_poss`)).toHaveValue(
       String(initialOn),
     );

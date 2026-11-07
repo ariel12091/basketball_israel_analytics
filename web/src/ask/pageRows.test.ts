@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import ui from "@/data/shinyUi.json";
 import { lineupAutoMin, lineupTableRows, localLineups } from "@/rules/lineups";
-import { autoMinOn, possCols } from "@/rules/onoff";
-import { pageRows, lowerOnly, withTeamNetRank } from "./pageRows";
+import { autoBars, autoShare, possCols } from "@/rules/onoff";
+import { pageRows, autoBar, withTeamNetRank } from "./pageRows";
 
 const q = (s: string) => new URLSearchParams(s);
 
@@ -36,31 +36,37 @@ describe("pageRows: the rows a freshly opened link shows", () => {
     expect(got.every((r) => Number(r.total_poss) >= min)).toBe(true);
   });
 
-  it("onoff auto minimum only lowers the bar on first load", () => {
-    expect(lowerOnly(300, 120)).toBe(120);
-    expect(lowerOnly(100, 250)).toBe(100);
-    expect(lowerOnly(300, null)).toBe(300);
+  it("onoff auto minimum: a named bar stays, otherwise auto's value up or down", () => {
+    expect(autoBar(null, 300, 120)).toBe(120);
+    expect(autoBar(null, 300, 450)).toBe(450);
+    expect(autoBar(null, 300, null)).toBe(300);
+    expect(autoBar("0", 300, 450)).toBe(0);
   });
 
-  it("onoff: lowered ON bar comes from autoMinOn over the team-filtered base", () => {
+  it("onoff: the bars fit the team-filtered base, raising above the default", () => {
+    // Team 2 holds 10 players on 200..2000 ON possessions; team 3 is light.
     const rows = Array.from({ length: 20 }, (_, i) => ({
       team_id: i % 2 ? 2 : 3,
-      "ON Poss": 50 + i * 10,
-      "OFF Poss": 400,
+      "ON Poss": i % 2 ? (i + 1) * 100 : 20,
+      "OFF Poss": 4000,
     }));
     const cols = possCols("summary");
-    const base = rows.filter((r) => r.team_id === 2);
-    const needed = autoMinOn(base, cols.on);
-    expect(needed).not.toBeNull();
-    // pageRows passes min_on = lowerOnly(300, needed) to onoffTableRows; with
-    // no qualifying ranks the rows carry through, so check the bar it applied.
+    const bars = autoBars(
+      rows.filter((r) => r.team_id === 2),
+      "summary",
+      autoShare([2]),
+    )!;
+    expect(bars.minOn).toBeGreaterThan(300);
+    // pageRows applies those bars to onoffTableRows; with no qualifying ranks
+    // the rows carry through, so check the rows it kept.
     const got = pageRows(
       "onoff",
       "il",
       { rows, league3p: null, meta: { view: "summary", filtered: false } },
       q("teams=2"),
     );
-    expect(got.every((r) => Number(r[cols.on]) >= lowerOnly(300, needed))).toBe(true);
+    expect(got).toHaveLength(8); // ceil(10 x 0.75) top rows
+    expect(got.every((r) => Number(r[cols.on]) >= bars.minOn)).toBe(true);
   });
 
   it("onoff: Player Stats chips filter by the player's own stats, as the page does", () => {
