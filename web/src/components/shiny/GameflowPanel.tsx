@@ -326,7 +326,10 @@ export function GameflowView({
             role="group"
             aria-label="ORtg in the score readout"
           >
-            <span>ORtg</span>
+            <span className="ibpl-gameflow-rtg-title">
+              Offensive rating (ORtg)
+              <small>points per 100 possessions</small>
+            </span>
             {(
               [
                 ["off", "Off"],
