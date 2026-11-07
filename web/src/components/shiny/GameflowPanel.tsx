@@ -545,8 +545,30 @@ function GameflowHoverTip({
     </div>
   );
 }
-type CardStats = { secs: number; pm: string; pf: number | null; pa: number | null };
+type CardStats = {
+  secs: number;
+  pm: string;
+  pf: number | null;
+  pa: number | null;
+  /** Head to head: the score from both sides, in place of +/- and points. */
+  score?: string;
+};
 function StintStats({ d }: { d: CardStats }) {
+  if (d.score != null)
+    return (
+      <dl className="gf-stint-stats">
+        <div>
+          <dt>On the floor together</dt>
+          <dd>{clock(d.secs)}</dd>
+        </div>
+        {d.score !== "" && (
+          <div>
+            <dt>Score</dt>
+            <dd className="is-score">{d.score}</dd>
+          </div>
+        )}
+      </dl>
+    );
   return (
     <dl className="gf-stint-stats">
       <div>
@@ -633,14 +655,31 @@ function GameflowDetails({
       });
     }
     const sides = new Set(selected.map((k) => bars(k)[0]?.side));
-    if (selected.length > 1 && sides.size === 1) {
-      const side = [...sides][0]!;
-      cards.push({
-        key: "together",
-        title: "Together",
-        aria: "Shared minutes detail",
-        stats: windowsSummary(side, sharedWindows(data.bars, selected), data.steps),
-      });
+    if (selected.length > 1) {
+      const shared = sharedWindows(data.bars, selected);
+      if (sides.size === 1) {
+        cards.push({
+          key: "together",
+          title: "Together",
+          aria: "Shared minutes detail",
+          stats: windowsSummary([...sides][0]!, shared, data.steps),
+        });
+      } else {
+        // Both teams: no side to sign a +/- from, so the score from both.
+        const d = windowsSummary("own", shared, data.steps);
+        cards.push({
+          key: "h2h",
+          title: "Head to head",
+          aria: "Head to head detail",
+          stats: {
+            ...d,
+            score:
+              d.pf == null
+                ? ""
+                : `${data.meta.ownTeam} ${d.pf} – ${d.pa} ${data.meta.oppTeam}`,
+          },
+        });
+      }
     }
   }
   return (

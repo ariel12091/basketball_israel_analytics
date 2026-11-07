@@ -503,7 +503,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-player-cards .ibpl-ribbon-detail.is-card { margin: 0; }
 .gf-details .gf-player-cards { flex: 0 0 310px; width: 310px; min-height: 0; overflow-y: auto; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail.is-card { flex: none; padding: 8px 12px; overflow: visible; }
-.gf-details .gf-stint-stats { flex-wrap: nowrap; gap: 14px; }
+.gf-details .gf-stint-stats { flex-wrap: wrap; gap: 6px 14px; }
+/* Team names are long: the head-to-head score may wrap. */
+.gf-details .gf-stint-stats dd.is-score { white-space: normal; }
 .gf-details .gf-stint-stats dd { font-size: 13px; white-space: nowrap; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); margin-bottom: 6px; }
