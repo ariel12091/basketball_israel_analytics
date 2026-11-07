@@ -23,6 +23,7 @@ import {
   sharedWindows,
   windowDetail,
   windowSegments,
+  windowsSummary,
   type Bar,
   type Window,
 } from "@/rules/gameflow";
@@ -198,7 +199,7 @@ export function GameflowView({
       activeWindow.end === data.bounds[data.bounds.length - 1]
     );
   const lanes = new Set(data.bars.map(laneKey)).size,
-    lineupsOpen = showStint || groups.length > 0,
+    lineupsOpen = showStint || selected.length > 0 || groups.length > 0,
     room = space && lineupsRoom(lanes, space),
     // The lineups take only what they fill, up to the room; the chart the rest.
     taken = room != null && lineupsUsed != null ? Math.min(room, lineupsUsed) : room,
@@ -544,18 +545,19 @@ function GameflowHoverTip({
     </div>
   );
 }
-function StintStats({ d }: { d: ReturnType<typeof windowDetail> }) {
+type CardStats = { secs: number; pm: string; pf: number | null; pa: number | null };
+function StintStats({ d }: { d: CardStats }) {
   return (
     <dl className="gf-stint-stats">
       <div>
         <dt>On the floor</dt>
-        <dd>{clock(d.end - d.start)}</dd>
+        <dd>{clock(d.secs)}</dd>
       </div>
       <div>
         <dt>+/-</dt>
         <dd>{d.pm}</dd>
       </div>
-      {d.pf !== "" && (
+      {d.pf != null && (
         <div>
           <dt>Points</dt>
           <dd>
@@ -590,30 +592,74 @@ function GameflowDetails({
   setPreview: (w: Window[] | null) => void;
   detail: React.RefObject<HTMLElement | null>;
 }) {
+  // A card per click (user 2026-11-07): the stint clicked, else each selected
+  // player's whole game, plus the minutes they shared when there are several.
+  const bars = (key: string) => data.bars.filter((b) => laneKey(b) === key);
+  const cards: { key: string; title: string; aria: string; stats: CardStats }[] =
+    [];
+  if (activeWindow && showStint) {
+    const d = windowDetail(
+      data.lanes,
+      data.steps,
+      data.dict,
+      activeWindow.bar,
+      activeWindow.start,
+      activeWindow.end,
+    );
+    cards.push({
+      key: "stint",
+      title: `${activeWindow.bar.player_label} · ${clock(activeWindow.start)}–${clock(activeWindow.end)}`,
+      aria: "Stint detail",
+      stats: {
+        secs: d.end - d.start,
+        pm: d.pm,
+        pf: d.pf === "" ? null : Number(d.pf),
+        pa: d.pa === "" ? null : Number(d.pa),
+      },
+    });
+  } else {
+    for (const key of selected) {
+      const own = bars(key);
+      if (!own.length) continue;
+      cards.push({
+        key,
+        title: `${own[0].player_label} · game`,
+        aria: `${own[0].player_label} game detail`,
+        stats: windowsSummary(
+          own[0].side,
+          own.map((b) => ({ start: b.start_elapsed, end: b.end_elapsed })),
+          data.steps,
+        ),
+      });
+    }
+    const sides = new Set(selected.map((k) => bars(k)[0]?.side));
+    if (selected.length > 1 && sides.size === 1) {
+      const side = [...sides][0]!;
+      cards.push({
+        key: "together",
+        title: "Together",
+        aria: "Shared minutes detail",
+        stats: windowsSummary(side, sharedWindows(data.bars, selected), data.steps),
+      });
+    }
+  }
   return (
     <>
-      {activeWindow && showStint && (
-        <section
-          className="ibpl-ribbon-detail is-card"
-          aria-label="Stint detail"
-        >
-          <div className="ibpl-ribbon-detail-head">
-            {activeWindow.bar.player_label} · {clock(activeWindow.start)}–
-            {clock(activeWindow.end)}
-          </div>
-          {/* Numbers only: the stint's lineups are listed, one per row, just
-              below (user 2026-10-28: the one-paragraph list was unreadable). */}
-          <StintStats
-            d={windowDetail(
-              data.lanes,
-              data.steps,
-              data.dict,
-              activeWindow.bar,
-              activeWindow.start,
-              activeWindow.end,
-            )}
-          />
-        </section>
+      {cards.length > 0 && (
+        <div className="gf-player-cards">
+          {cards.map((c) => (
+            <section
+              className="ibpl-ribbon-detail is-card"
+              aria-label={c.aria}
+              key={c.key}
+            >
+              <div className="ibpl-ribbon-detail-head">{c.title}</div>
+              {/* Numbers only: the lineups are listed, one per row, beside
+                  (user 2026-10-28: the one-paragraph list was unreadable). */}
+              <StintStats d={c.stats} />
+            </section>
+          ))}
+        </div>
       )}
       {groups.length > 0 && (
         <section

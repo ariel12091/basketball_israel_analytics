@@ -218,6 +218,25 @@ export function points(side: Side, start: number, end: number, steps: Score[]) {
     ? { pm: finite(-pm), pf: finite(pa), pa: finite(pf) }
     : { pm: finite(pm), pf: finite(pf), pa: finite(pa) };
 }
+/**
+ * A player card's numbers over any set of windows (one stint, a player's whole
+ * game, or the minutes several players shared): floor time and the score
+ * change from that side's point of view, summed window by window.
+ */
+export function windowsSummary(side: Side, windows: Window[], steps: Score[]) {
+  const parts = windows.map((w) => points(side, w.start, w.end, steps)),
+    sum = (k: "pm" | "pf" | "pa") =>
+      parts.some((p) => p[k] == null)
+        ? null
+        : parts.reduce((s, p) => s + p[k]!, 0);
+  return {
+    secs: windows.reduce((s, w) => s + w.end - w.start, 0),
+    pm: pmLabel(sum("pm")),
+    pf: sum("pf"),
+    pa: sum("pa"),
+  };
+}
+export type WindowsSummary = ReturnType<typeof windowsSummary>;
 export function lineupDictionary(lanes: Lane[]): Dictionary {
   const groups = new Map<string, Lane[]>();
   for (const r of lanes) {
