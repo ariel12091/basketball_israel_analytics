@@ -66,26 +66,13 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-ribbon-score-tooltip { white-space: pre-line; }
 .ibpl-react-gameflow .ibpl-ribbon-quarter-card:focus-within { outline: 1px solid var(--ibpl-accent); }
 .ibpl-react-gameflow .ibpl-ribbon-lane[role="button"]:focus rect { stroke: var(--ibpl-accent); stroke-width: 2; }
-/* Ratings panel under the Gameflow chart (trial, 2026-11-07). Offense takes the
-   team's lane colour, defense (the opponent's scoring) the opponent's. */
-.ibpl-gameflow-ratings { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--ibpl-border); }
-.ibpl-gameflow-ratings-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; }
-.ibpl-gameflow-ratings-title { font-weight: 700; color: var(--ibpl-text); }
-.ibpl-gameflow-ratings-modes { display: inline-flex; border: 1px solid var(--ibpl-border); border-radius: 6px; overflow: hidden; }
-.ibpl-gameflow-ratings-modes button { min-height: 32px; padding: 4px 10px; border: 0; background: transparent; color: var(--ibpl-text-muted); font-size: 12px; }
-.ibpl-gameflow-ratings-modes button.is-on { background: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
-.ibpl-gameflow-ratings-legend { display: inline-flex; flex-wrap: wrap; gap: 12px; color: var(--ibpl-text-muted); }
-.ibpl-gameflow-ratings-legend .is-off::before,
-.ibpl-gameflow-ratings-legend .is-def::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
-.ibpl-gameflow-ratings-legend .is-off::before { background: var(--ibpl-accent); }
-.ibpl-gameflow-ratings-legend .is-def::before { background: var(--ibpl-text-muted); }
-.ibpl-gameflow-ratings-legend b { color: var(--ibpl-text); font-family: var(--ibpl-font-mono, monospace); }
-.ibpl-gameflow-ratings-when { color: var(--ibpl-text); }
-.ibpl-gameflow-ratings-help { margin: 4px 0 0; color: var(--ibpl-text-faint); font-size: 11px; }
-.ibpl-gameflow-rating-line { fill: none; stroke-width: 1.75; }
-.ibpl-gameflow-rating-line.is-off { stroke: var(--ibpl-accent); }
-.ibpl-gameflow-rating-line.is-def { stroke: var(--ibpl-text-muted); }
-.ibpl-gameflow-rating-cursor { stroke: var(--ibpl-text-faint); stroke-dasharray: 3 3; }
+/* Each team's ORtg under its own score in the Gameflow score tooltip, and the
+   toggle that shows it (trial, 2026-11-07). */
+.ibpl-gameflow-score-grid { display: grid; grid-template-columns: auto auto auto; gap: 0 8px; margin-top: 2px; white-space: nowrap; }
+.ibpl-gameflow-score-grid > :nth-child(3n + 1) { text-align: right; }
+.ibpl-gameflow-score-grid .is-rtg { color: var(--ibpl-text-muted); font-size: 11px; }
+.ibpl-gameflow-rtg-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-left: auto; color: var(--ibpl-text-muted); font-size: 12px; cursor: pointer; }
+.ibpl-gameflow-rtg-toggle input { accent-color: var(--ibpl-accent); }
 
 /* Open cue on Compare rows (Shiny's "amber text + chevron", made stronger,
    user 2026-10-29): the name is amber and underlined with a chevron, and the

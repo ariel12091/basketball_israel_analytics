@@ -18,6 +18,8 @@ import {
   lineupsRoom,
   marginPath,
   pmLabel,
+  ratingAt,
+  ratingLabel,
   scoreAt,
   sharedLineups,
   sharedWindows,
@@ -30,7 +32,6 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type BarWindow } from "./GameflowChart";
-import GameflowRatings from "./GameflowRatings";
 import { text as labels } from "@/data/gameflowLayout.json";
 function subscribeNarrow(notify: () => void) {
   const q = matchMedia(NARROW);
@@ -101,7 +102,9 @@ export function GameflowView({
     [preview, setPreview] = useState<Window[] | null>(null),
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
-    [score, setScore] = useState("");
+    [score, setScore] = useState(""),
+    // Each team's ORtg in the score readouts (user 2026-11-07); on by default.
+    [showRatings, setShowRatings] = useState(true);
   const cards = useRef(new Map<number, HTMLElement>()),
     detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
@@ -235,12 +238,8 @@ export function GameflowView({
     stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
     layout,
+    showRatings,
   };
-  const ratings = (
-    <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
-      <GameflowRatings data={data} compact={compact} layout={layout} />
-    </div>
-  );
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
     : selected.length
@@ -318,6 +317,16 @@ export function GameflowView({
         >
           {prompt}
         </div>
+        {data.ratings && (
+          <label className="ibpl-gameflow-rtg-toggle">
+            <input
+              type="checkbox"
+              checked={showRatings}
+              onChange={(e) => setShowRatings(e.target.checked)}
+            />
+            Show ORtg
+          </label>
+        )}
       </div>
       {compact && (
         <>
@@ -365,8 +374,12 @@ export function GameflowView({
                     elapsed =
                       ((e.clientX - r.left) / r.width) *
                       data.margin.at(-1)!.elapsed;
+                  const rtg =
+                    showRatings && data.ratings
+                      ? ratingAt(data.ratings, elapsed)
+                      : null;
                   setScore(
-                    `${clock(elapsed)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}`,
+                    `${clock(elapsed)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
                   );
                 }}
                 onPointerLeave={() => setScore("")}
@@ -428,7 +441,6 @@ export function GameflowView({
             <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
               <GameflowChart {...common} crop="bottom" />
             </div>
-            {ratings}
           </>
         ) : (
           <>
@@ -438,7 +450,6 @@ export function GameflowView({
             >
               <GameflowChart {...common} />
             </div>
-            {ratings}
             {details}
           </>
         )
@@ -469,7 +480,6 @@ export function GameflowView({
               </section>
             ))}
           </div>
-          {ratings}
         </>
       )}
     </div>
