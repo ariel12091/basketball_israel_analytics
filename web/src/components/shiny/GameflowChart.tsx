@@ -8,6 +8,7 @@ import {
   marginScale,
   pmLabel,
   ratingAt,
+  ratingLabel,
   shortLabels,
   scoreAt,
   windowDetail,
@@ -17,7 +18,6 @@ import {
   type Window,
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
-import { rRound } from "@/rules/round";
 export type BarWindow = { bar: Bar; start: number; end: number };
 /** Drawing units between two margin-scale labels (their font is 10 high). */
 const MIN_TICK_GAP = 11;
@@ -35,7 +35,10 @@ export default function GameflowChart({
   lineupIndex,
   crop,
   layout,
+  showRatings = false,
 }: {
+  /** Each team's ORtg under its score in the margin tooltip. */
+  showRatings?: boolean;
   /** Draw only the top team's lanes ("top") or the rest ("bottom"), so the
    * lineup details can sit between them (user 2026-10-28). */
   crop?: "top" | "bottom";
@@ -541,10 +544,34 @@ export default function GameflowChart({
         >
           {(() => {
             const p = data.bounds.findIndex((b) => b > scoreTip.elapsed),
-              period = p < 0 ? data.bounds.length - 1 : p;
-            const r = data.ratings && ratingAt(data.ratings.game, scoreTip.elapsed),
-              f = (v: number | null) => (v == null ? "–" : rRound(v, 1).toFixed(1));
-            return `${period < 4 ? `Q${period + 1}` : `OT${period - 3}`} ${clock(Math.ceil(data.bounds[period] - scoreTip.elapsed))}\n${data.meta.ownTeam} ${scoreAt(data.steps, scoreTip.elapsed, "own")} – ${scoreAt(data.steps, scoreTip.elapsed, "own") - scoreAt(data.steps, scoreTip.elapsed)} ${data.meta.oppTeam}${r ? `\nORtg ${f(r.ortg)} · DRtg ${f(r.drtg)} so far` : ""}`;
+              period = p < 0 ? data.bounds.length - 1 : p,
+              when = `${period < 4 ? `Q${period + 1}` : `OT${period - 3}`} ${clock(Math.ceil(data.bounds[period] - scoreTip.elapsed))}`,
+              own = scoreAt(data.steps, scoreTip.elapsed, "own"),
+              opp = own - scoreAt(data.steps, scoreTip.elapsed),
+              r =
+                showRatings && data.ratings
+                  ? ratingAt(data.ratings, scoreTip.elapsed)
+                  : null;
+            if (!r)
+              return `${when}\n${data.meta.ownTeam} ${own} – ${opp} ${data.meta.oppTeam}`;
+            // Each team's ORtg under its own score: no team is "the" offense.
+            return (
+              <>
+                {when}
+                <span className="ibpl-gameflow-score-grid">
+                  <span>
+                    {data.meta.ownTeam} {own}
+                  </span>
+                  <span>–</span>
+                  <span>
+                    {opp} {data.meta.oppTeam}
+                  </span>
+                  <span className="is-rtg">ORtg {ratingLabel(r.own)}</span>
+                  <span />
+                  <span className="is-rtg">ORtg {ratingLabel(r.opp)}</span>
+                </span>
+              </>
+            );
           })()}
         </div>
       )}

@@ -351,8 +351,9 @@ marg AS (
   WHERE game_id = $1 AND team_id = $2
 ),
 poss AS (
-  -- Possession ends, with the score on their row, for the web Gameflow's
-  -- ratings panel (points per 100 possessions as the game goes on). Counted
+  -- Possession ends, with the score on their row, for each team's ORtg
+  -- (points per 100 possessions since tip-off) in the web Gameflow's score
+  -- tooltip. Counted
   -- as every rating reader counts them: a row with final_end_poss
   -- (docs/shared_definitions.md, Possession). Shiny does not read it.
   SELECT event_elapsed_seconds AS elapsed,
