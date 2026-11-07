@@ -71,8 +71,9 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-gameflow-score-grid { display: grid; grid-template-columns: auto auto auto; gap: 0 8px; margin-top: 2px; white-space: nowrap; }
 .ibpl-gameflow-score-grid > :nth-child(3n + 1) { text-align: right; }
 .ibpl-gameflow-score-grid .is-rtg { color: var(--ibpl-text-muted); font-size: 11px; }
-.ibpl-gameflow-rtg-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-left: auto; color: var(--ibpl-text-muted); font-size: 12px; cursor: pointer; }
-.ibpl-gameflow-rtg-toggle input { accent-color: var(--ibpl-accent); }
+.ibpl-gameflow-rtg-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--ibpl-text-muted); font-size: 12px; }
+.ibpl-gameflow-rtg-toggle button { min-height: 32px; padding: 4px 10px; border: 1px solid var(--ibpl-border); border-radius: 6px; background: transparent; color: var(--ibpl-text-muted); font-size: 12px; }
+.ibpl-gameflow-rtg-toggle button.is-on { border-color: var(--ibpl-accent); background: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
 
 /* Open cue on Compare rows (Shiny's "amber text + chevron", made stronger,
    user 2026-10-29): the name is amber and underlined with a chevron, and the

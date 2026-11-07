@@ -12,6 +12,8 @@ import {
   clock,
   ratingSeries,
   ratingAt,
+  windowSeries,
+  RATING_WINDOW,
   type PossEnd,
   type Score,
   windowDetail,
@@ -166,6 +168,16 @@ describe("ratingSeries", () => {
     const last = s[s.length - 1];
     expect(last.own).toBeCloseTo((100 * 51) / 25, 10);
     expect(last.opp).toBe(100);
+  });
+  it("last N counts each team's latest possessions, from the first", () => {
+    const w = windowSeries(poss);
+    expect(ratingAt(w, 4)).toMatchObject({ own: 200, opp: null });
+    expect(ratingAt(w, 6)).toMatchObject({ own: 200, opp: 100 });
+    const k = RATING_WINDOW + 1;
+    expect(ratingAt(w, 4 * k)).toMatchObject({ own: 200 });
+    expect(ratingAt(w, 4 * k + 2)).toMatchObject({ opp: 100 });
+    // The trailing free throw follows the last end: the window ignores it.
+    expect(w[w.length - 1].own).toBe(200);
   });
   it("is absent from the model when the reader sends no possessions", () => {
     const raw = { lanes: [], margin: [], n_periods: 4 };

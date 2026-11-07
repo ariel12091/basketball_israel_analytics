@@ -273,6 +273,34 @@ export function ratingSeries(poss: PossEnd[], steps: Score[]): RatingPoint[] {
   }
   return out;
 }
+/** "Last N poss" counts each team's latest this many possessions. */
+export const RATING_WINDOW = 20;
+export type RatingMode = "game" | "window";
+/**
+ * Both teams' ORtg over their last RATING_WINDOW possessions, updated at each
+ * of a team's possession ends: the points between the end of its possession
+ * k - N and the end of possession k, each read off the end's own row. Before a
+ * team's Nth possession it covers all of them, so it starts at the first
+ * possession like the running total.
+ */
+export function windowSeries(poss: PossEnd[]): RatingPoint[] {
+  const seen = { own: [] as PossEnd[], opp: [] as PossEnd[] },
+    out: RatingPoint[] = [];
+  let own: number | null = null,
+    opp: number | null = null;
+  for (const p of [...poss].sort(byEvent)) {
+    const list = p.off ? seen.own : seen.opp;
+    list.push(p);
+    const k = list.length,
+      from = k > RATING_WINDOW ? list[k - 1 - RATING_WINDOW] : null,
+      pts = p.off ? p.own - (from?.own ?? 0) : p.opp - (from?.opp ?? 0),
+      value = (100 * pts) / Math.min(k, RATING_WINDOW);
+    if (p.off) own = value;
+    else opp = value;
+    out.push({ elapsed: p.elapsed, own, opp });
+  }
+  return out;
+}
 /** A rating as shown: one decimal, R's rounding; a dash before any possession. */
 export const ratingLabel = (v: number | null) =>
   v == null ? "–" : rRound(v, 1).toFixed(1);
@@ -462,7 +490,9 @@ export function ribbonModel(
     totals,
     details: bars.map((b) => windowDetail(lanes, steps, dict, b)),
     health,
-    ratings: raw.poss?.length ? ratingSeries(raw.poss, steps) : null,
+    ratings: raw.poss?.length
+      ? { game: ratingSeries(raw.poss, steps), window: windowSeries(raw.poss) }
+      : null,
   };
 }
 export type RibbonModel = ReturnType<typeof ribbonModel>;
