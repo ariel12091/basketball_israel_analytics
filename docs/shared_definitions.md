@@ -169,6 +169,7 @@ All are computed from summed counts and shown as percentages to one decimal.
 | Metric | Formula |
 |---|---|
 | Rating (`off_ppp`, `def_ppp`) | `100 x points / possessions`. The column is named `ppp` for history; it is per 100 possessions |
+| Gameflow ORtg (web, since 2026-11-07) | Each team's own rating, the same `100 x points / possessions`, at each moment of one game, in the score tooltip. *Entire game*: every point and possession since tip-off, so it ends on the team-game rating (0 possession mismatches against `team_metrics_by_game_mv` in 170 team-games). *Last 20 poss*: each team's last 20 possessions, the points between the end of its possession k - 20 and of possession k, each read off the possession end's own row (an and-one free throw after the end therefore falls in the next window); before a team's 20th possession, all of them. Both from the first possession; none before a team's first. Israeli league only: EuroLeague possession ends are not in its curated read layer yet. Owner of the possession ends: the `poss` CTE of `RIBBON_SQL_ISRAEL` (`global.R`, exported to `web/src/data/gameflowSql.json`); rates: `ratingSeries()` / `windowSeries()` (`web/src/rules/gameflow.ts`) |
 | Net rating | `off - def` |
 | TS% | `points / (2 x (FGA + free-throw trips))`. **No view uses `0.44 x FTA`** |
 | eFG% | `(FGM + 0.5 x 3PM) / FGA` |
