@@ -2038,7 +2038,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       source("etl/run_data_quality_report.R")
       source("etl/etl_run_report.R")
 
-      dq_result <- run_data_quality_report(fail_on_error = FALSE)
+      dq_result <- run_data_quality_report(fail_on_error = FALSE, run_context = result)
       report_files <- write_etl_run_report(
         result,
         dq_result,
@@ -2048,6 +2048,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       list(
         report_file = report_files$report_path,
         report_latest = report_files$latest_path,
+        data_quality_export = dq_result$structured_path,
+        data_quality_export_error = dq_result$structured_error,
         data_quality_status = dq_result$status,
         report_error = NA_character_
       )

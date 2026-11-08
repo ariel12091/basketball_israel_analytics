@@ -209,6 +209,7 @@ jobs:
             etl/logs/data_quality/data_quality_report_*.md
             etl/logs/data_quality/summary_*.csv
             etl/logs/data_quality/details/*.csv
+            etl/logs/data_quality/dagster/
             etl/logs/reports/etl_report_*.html
             etl/logs/reports/latest_summary.md
           if-no-files-found: warn

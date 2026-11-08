@@ -3021,7 +3021,8 @@ build_checks <- function(con, schema) {
 run_data_quality_report <- function(
   output_dir = Sys.getenv("DQ_OUTPUT_DIR", file.path("etl", "logs", "data_quality")),
   max_detail_rows = as.integer(Sys.getenv("DQ_MAX_DETAIL_ROWS", "50")),
-  fail_on_error = truthy("DQ_FAIL_ON_ERROR")
+  fail_on_error = truthy("DQ_FAIL_ON_ERROR"),
+  run_context = NULL
 ) {
   root <- repo_root()
   env_file <- file.path(root, "etl", ".Renviron")
@@ -3176,6 +3177,20 @@ run_data_quality_report <- function(
     summary_path = summary_path,
     summary = summary_df
   )
+
+  source(file.path(root, "etl", "dq_export.R"), local = TRUE)
+  export_result <- tryCatch(
+    list(path = write_dq_export(result, output_dir, schema, started_at, run_context),
+         error = NA_character_),
+    error = function(e) list(path = NA_character_, error = conditionMessage(e))
+  )
+  result$structured_path <- export_result$path
+  result$structured_error <- export_result$error
+  if (is.na(export_result$error)) {
+    message(sprintf("Data quality structured export: %s", result$structured_path))
+  } else {
+    message(sprintf("Data quality structured export FAILED: %s", export_result$error))
+  }
 
   if (fail_on_error && has_error_rows) {
     quit(status = 2, save = "no")
