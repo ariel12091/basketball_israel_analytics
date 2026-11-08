@@ -17,10 +17,30 @@ on:
         description: "Deployed Shiny app URL for smoke checks"
         required: false
         default: "https://ibpl-stats.shinyapps.io/onoff-shiny/"
+  # The R suite runs only when R code, SQL or a file the tests read changed;
+  # a web- or docs-only change has nothing here to break.
   push:
     branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'api/**'
+      - 'etl/**'
+      - 'sql/**'
+      - 'scripts/**'
+      - 'docs/shared_definitions.md'
+      - 'docs/superpowers/specs/**'
+      - '.github/workflows/r-tests.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'api/**'
+      - 'etl/**'
+      - 'sql/**'
+      - 'scripts/**'
+      - 'docs/shared_definitions.md'
+      - 'docs/superpowers/specs/**'
+      - '.github/workflows/r-tests.yml'
   schedule:
     - cron: '0 3 * * *'
 
@@ -66,12 +86,16 @@ jobs:
           Rscript scripts/test_all.R
 
   nightly-full-tests:
+    permissions:
+      contents: read
+      issues: write
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.run_full == 'true' || github.event.inputs.run_deployed_smoke == 'true')) }}
     runs-on: ubuntu-latest
     env:
       RUN_E2E: ${{ (github.event_name == 'schedule' || github.event.inputs.run_full == 'true') && '1' || '0' }}
       RUN_DB_TESTS: ${{ (github.event_name == 'schedule' || github.event.inputs.run_full == 'true') && '1' || '0' }}
       RUN_DEPLOYED_SMOKE: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_deployed_smoke == 'true') && '1' || '0' }}
+      RUN_GOLDENS: ${{ (github.event_name == 'schedule' || github.event.inputs.run_full == 'true') && '1' || '0' }}
       APP_URL: ${{ github.event.inputs.app_url || 'https://ibpl-stats.shinyapps.io/onoff-shiny/' }}
       PG_HOST: ${{ secrets.PG_HOST }}
       PG_PORT: ${{ secrets.PG_PORT }}
@@ -119,6 +143,7 @@ jobs:
           RUN_E2E: ${{ env.RUN_E2E }}
           RUN_DB_TESTS: ${{ env.RUN_DB_TESTS }}
           RUN_DEPLOYED_SMOKE: ${{ env.RUN_DEPLOYED_SMOKE }}
+          RUN_GOLDENS: ${{ env.RUN_GOLDENS }}
           APP_URL: ${{ env.APP_URL }}
           PG_HOST: ${{ secrets.PG_HOST }}
           PG_PORT: ${{ secrets.PG_PORT }}
@@ -129,3 +154,18 @@ jobs:
           CHROMOTE_CHROME: /usr/bin/google-chrome-stable
         run: |
           Rscript scripts/test_all.R
+
+      # A red nightly run must be seen: open an issue (or comment on the open one).
+      - name: Report nightly failure
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly R tests failing"
+          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The nightly DB + golden run failed: $RUN_URL. Close this issue once it is green again."
+          fi

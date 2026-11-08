@@ -300,7 +300,7 @@ test_that("the SQL twin renders for Postgres without a database", {
 })
 
 test_that("the SQL twin returns exactly the pure helper's anchors on Postgres", {
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   skip_if_not_installed("RPostgres")
   con <- DBI::dbConnect(
@@ -630,7 +630,7 @@ test_that("compute_lineups_lookup() with anchors unioned in plans on Postgres", 
   # The UNION ALL is where NULL typing bites: an untyped NULL in a subquery
   # resolves to text, and "UNION types integer and text cannot be matched"
   # only surfaces on the real engine against the real column types.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   skip_if_not_installed("RPostgres")
   con <- DBI::dbConnect(
