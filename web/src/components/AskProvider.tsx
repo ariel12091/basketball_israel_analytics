@@ -8,22 +8,22 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import type { AskAnswer, HistoryTurn, TurnEvent } from "@/ask/turn";
+import type { HistoryTurn, TurnEvent } from "@/ask/turn";
+import {
+  restoreTurns,
+  turnsReducer,
+  type AskTurnView,
+  type TurnsAction,
+} from "@/ask/turnsState";
 import type { League } from "@/rules/gameLogs";
 import AskPanel from "./shiny/AskPanel";
 
-export type AskTurnView = {
-  id?: string;
-  question: string;
-  status: string[];
-  answer: AskAnswer | null;
-  error: string | null;
-  pending: boolean;
-};
+export type { AskTurnView };
 type Ask = {
   enabled: boolean;
   followups: boolean;
@@ -70,11 +70,10 @@ export default function AskProvider({
   // Only the closed button renders before the panel opens, so reading the
   // saved conversation in the initial state cannot mismatch the server HTML.
   const [saved] = useState(load);
-  const [turns, setTurns] = useState<AskTurnView[]>(() =>
-    // A turn cut off by a reload cannot resume; show it as failed.
-    (saved?.turns ?? []).map((t) =>
-      t.pending ? { ...t, pending: false, error: "Interrupted; ask again" } : t,
-    ),
+  const [turns, dispatch] = useReducer(
+    turnsReducer,
+    saved?.turns,
+    restoreTurns,
   );
   const [open, setOpen] = useState(false);
   const [inlineBoxes, setInlineBoxes] = useState(0);
@@ -118,18 +117,16 @@ export default function AskProvider({
         controller: new AbortController(),
       };
       active.current = request;
-      const patch = (f: (t: AskTurnView) => AskTurnView) => {
+      const id = request.id;
+      // Only the request still on show may change its turn.
+      const send = (action: TurnsAction) => {
         if (active.current !== request || request.controller.signal.aborted)
           return;
-        setTurns((ts) => ts.map((t) => (t.id === request.id ? f(t) : t)));
+        dispatch(action);
       };
       request.timer = setTimeout(() => {
         if (active.current !== request) return;
-        patch((t) => ({
-          ...t,
-          pending: false,
-          error: "The answer timed out; try again",
-        }));
+        send({ type: "fail", id, error: "The answer timed out; try again" });
         request.controller.abort();
         void request.reader?.cancel().catch(() => {});
       }, 45_000);
@@ -141,24 +138,7 @@ export default function AskProvider({
         // back to their results.
         calls: t.answer!.calls ?? t.answer!.results.map((r) => r.call),
       }));
-      const start: AskTurnView = {
-        id: request.id,
-        question,
-        status: [],
-        answer: null,
-        error: null,
-        pending: true,
-      };
-      setTurns((ts) => [
-        ...(keep
-          ? ts.map((t) =>
-              t.pending
-                ? { ...t, pending: false, error: "Interrupted; ask again" }
-                : t,
-            )
-          : []),
-        start,
-      ]);
+      dispatch({ type: "start", id, question, keep });
       try {
         const res = await fetch("/api/v1/ask", {
           signal: request.controller.signal,
@@ -181,7 +161,7 @@ export default function AskProvider({
             res.status === 429
               ? `Too many questions; try again in ${Math.ceil(Number(body.retryAfterSec ?? 60) / 60)} min`
               : String(body.error ?? "The question could not be sent");
-          patch((t) => ({ ...t, pending: false, error: msg }));
+          send({ type: "fail", id, error: msg });
           return;
         }
         const reader = res.body.getReader();
@@ -198,32 +178,19 @@ export default function AskProvider({
             buffer = buffer.slice(cut + 2);
             const e = JSON.parse(chunk) as
               TurnEvent | { type: "error"; error: string };
-            if (e.type === "status")
-              patch((t) => ({ ...t, status: [...t.status, e.text] }));
+            if (e.type === "status") send({ type: "status", id, text: e.text });
             else if (e.type === "final") {
-              patch((t) => ({ ...t, pending: false, answer: e.answer }));
+              send({ type: "final", id, answer: e.answer });
               return;
             } else {
-              patch((t) => ({ ...t, pending: false, error: e.error }));
+              send({ type: "fail", id, error: e.error });
               return;
             }
           }
         }
-        patch((t) =>
-          t.pending
-            ? {
-                ...t,
-                pending: false,
-                error: "The answer was cut off; try again",
-              }
-            : t,
-        );
+        send({ type: "cutOff", id });
       } catch {
-        patch((t) => ({
-          ...t,
-          pending: false,
-          error: "Network error; try again",
-        }));
+        send({ type: "fail", id, error: "Network error; try again" });
       } finally {
         clearTimeout(request.timer);
         request.controller.abort();
@@ -239,7 +206,7 @@ export default function AskProvider({
 
   const reset = useCallback(() => {
     cancelActive();
-    setTurns([]);
+    dispatch({ type: "reset" });
   }, [cancelActive]);
 
   const value = useMemo<Ask>(
