@@ -1,3 +1,6 @@
+# Nightly only: a replay of every preset takes minutes, so PRs skip it (RUN_GOLDENS=1 runs it).
+testthat::skip_if_not(identical(Sys.getenv("RUN_GOLDENS"), "1"), "goldens run nightly (RUN_GOLDENS=1)")
+
 source(repo_file("tests", "goldens", "harness.R"), local = TRUE)
 source(repo_file("tests", "goldens", "presets", "lineups.R"), local = TRUE)
 for (id in names(LINEUPS_PRESETS)) local({

@@ -1093,3 +1093,11 @@ Measured at 1440px (Israeli league, scrollbar present). The right cluster
   symptom of the date inputs being built on 25-26 bounds; unproven. First
   arrival on that tab took ~13-15s locally with a blank table meanwhile.
 - At 1280px the navbar still wraps to two rows (menus work, it is just tall).
+
+## R tests: essential on PRs, the rest nightly (2026-11-08)
+
+- `r-tests.yml` runs only when R code, SQL, `scripts/`, `etl/`, `docs/shared_definitions.md` or the API inventory changed; web/docs-only PRs skip it.
+- PRs and pushes run the essential set (~1-2 min): metric math, data contracts, ETL correctness, security, deploy safety.
+- Nightly (03:00 UTC) adds the `*-db.R` pins (`RUN_DB_TESTS=1`), the golden replays (`RUN_GOLDENS=1`, gated at the top of each `test-golden-*.R`) and e2e. A red nightly run opens or comments on the issue "Nightly R tests failing".
+- 39 Shiny UI-wording/markup/wiring tests were deleted on purpose (they failed often and caught little; Shiny retires at the Vercel cut-over). Do not re-add tests of that kind; a new test must be able to catch a wrong number, a broken pipeline or a security/deploy regression.
+- Gate DB tests with `identical(Sys.getenv("RUN_DB_TESTS"), "1")`, never `nzchar()`: "0" is non-empty, which made two files hit the live DB on every local run.

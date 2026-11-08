@@ -1,3 +1,6 @@
+# Nightly only: a replay of every preset takes minutes, so PRs skip it (RUN_GOLDENS=1 runs it).
+testthat::skip_if_not(identical(Sys.getenv("RUN_GOLDENS"), "1"), "goldens run nightly (RUN_GOLDENS=1)")
+
 # The golden harness replays recorded database answers so the real app server
 # runs offline and deterministically. These tests pin its contract: a recorded
 # query replays exactly, anything unrecorded fails loudly, and the app's own

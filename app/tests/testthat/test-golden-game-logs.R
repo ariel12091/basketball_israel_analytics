@@ -1,3 +1,6 @@
+# Nightly only: a replay of every preset takes minutes, so PRs skip it (RUN_GOLDENS=1 runs it).
+testthat::skip_if_not(identical(Sys.getenv("RUN_GOLDENS"), "1"), "goldens run nightly (RUN_GOLDENS=1)")
+
 # Game Logs goldens: what today's Shiny renders for Israeli Tab 4 and
 # EuroLeague Tab 11, for every preset in tests/goldens/presets/game_logs.R.
 # Each preset replays the recorded database answers through the real app

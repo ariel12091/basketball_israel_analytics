@@ -188,7 +188,7 @@ test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data b
   # own_team_score/opp_team_score from euroleague.action_team_context_actions
   # (the same source the clutch read layer uses, migration 019), which is
   # NULL-free by construction. This is the regression guard.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
   con <- DBI::dbConnect(RPostgres::Postgres(),
@@ -207,7 +207,7 @@ test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data b
 })
 
 test_that("games with no score data are identified dynamically", {
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
   con <- DBI::dbConnect(RPostgres::Postgres(),
@@ -239,7 +239,7 @@ test_that("games with no score data are identified dynamically", {
 # fails outright (not skip) for anyone who runs the suite with app/.Renviron
 # credentials. Do not point this back at the base table.
 test_that("euro segment lineups resolve to one player-id set", {
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
   con <- DBI::dbConnect(RPostgres::Postgres(),
@@ -276,7 +276,7 @@ test_that("euro segment lineups resolve to one player-id set", {
 })
 
 test_that("the ribbon segment count matches type-lineup-absent grouping", {
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
   con <- DBI::dbConnect(RPostgres::Postgres(),
@@ -503,7 +503,7 @@ test_that("ribbon floor time equals the app's published per-game minutes", {
   # (the MV stores 3 decimals). This asserts it, so a change to either
   # minutes path is caught here rather than by a reader noticing two
   # different totals for one player in one app.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -545,7 +545,7 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
   # swaps pf/pa on opp rows so an opponent five reads its own result, not the
   # clicked team's. That is a deliberate design decision, not a regression --
   # see the mirrored opp assertion in the next test below.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -588,7 +588,7 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
 })
 
 test_that("a player's bars sum to their gutter total", {
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -650,7 +650,7 @@ test_that("a lineup key identifies exactly five players, both leagues", {
   # new identifier. The entire justification for that is that they ALREADY
   # partition the floor into fives, so it is asserted here on live data rather
   # than assumed. Restores brief 4 Step 4, which the shelved batch never wrote.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -693,7 +693,7 @@ test_that("segments reconcile with their bar on live data, both leagues", {
   # Deliberately reads the PRE-flip numbers (ribbon_stint_points() straight off
   # merge_adjacent_stints()), because the telescoping identity holds on both
   # sides before ribbon_side_perspective() and the flip is a presentation step.
-  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
