@@ -427,7 +427,6 @@ export default function OnOffClient({
           allStats.length > 0 ||
           (!autoOn && (minAll !== defaults.minAll || minOn !== defaults.minOn)),
         onClearAll: reset,
-        resultLabel: `Show ${rows.length} players`,
         footer: (
           <span className="help-block">
             If rows disappear, reduce the possession minimums above the table or

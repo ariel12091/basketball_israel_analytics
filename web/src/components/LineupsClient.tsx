@@ -385,7 +385,6 @@ export default function LineupsClient({
         // Shiny's always-visible Reset also restored a hand-set minimum.
         resettable: filters.length > 0 || !auto,
         onClearAll: reset,
-        resultLabel: `Show ${rows.filter((r) => r.is_total !== 0).length} lineups`,
         footer: (
           <span className="help-block">
             The possession minimum sits above the table. Higher minimums improve

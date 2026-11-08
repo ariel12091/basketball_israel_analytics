@@ -225,7 +225,6 @@ export default function TeamRatingsClient({
         activeCount,
         resettable: filters.length > 0,
         onClearAll: reset,
-        resultLabel: `Show ${rows.length} teams`,
       }}
       main={
         <>

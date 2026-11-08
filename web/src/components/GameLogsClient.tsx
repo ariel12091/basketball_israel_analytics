@@ -231,7 +231,6 @@ export default function GameLogsClient({
         activeCount,
         resettable: stats.length > 0,
         onClearAll: reset,
-        resultLabel: `Show ${rows.length} games`,
       }}
       main={
         <>
