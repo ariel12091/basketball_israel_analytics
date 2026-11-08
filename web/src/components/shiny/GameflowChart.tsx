@@ -20,7 +20,8 @@ import {
   type Window,
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
-export type BarWindow = { bar: Bar; start: number; end: number };
+import type { BarWindow } from "@/rules/gameflowSelection";
+export type { BarWindow };
 /** Drawing units between two margin-scale labels (their font is 10 high). */
 const MIN_TICK_GAP = 11;
 export default function GameflowChart({
