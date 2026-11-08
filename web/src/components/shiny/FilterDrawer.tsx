@@ -27,7 +27,6 @@ export default function FilterDrawer({
   activeCount,
   resettable = false,
   onClearAll,
-  resultLabel,
 }: {
   /** The Filters button the panel opens under. */
   trigger: ReactNode;
@@ -41,7 +40,6 @@ export default function FilterDrawer({
   /** Something besides the counted filters can be reset (hand-set minimums). */
   resettable?: boolean;
   onClearAll: () => void;
-  resultLabel?: string;
 }) {
   const t = text.drawer;
   return (
@@ -119,11 +117,6 @@ export default function FilterDrawer({
           ))}
         </Accordion.Root>
         {footer && <div className="filter-drawer-footer">{footer}</div>}
-        {resultLabel && (
-          <Popover.Close className="filter-drawer-done">
-            {resultLabel}
-          </Popover.Close>
-        )}
       </Popover.Content>
     </Popover.Root>
   );

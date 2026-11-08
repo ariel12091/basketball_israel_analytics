@@ -62,16 +62,6 @@ test("filters open right under the Filters button and close on Escape", async ({
   await expect(filtersButton(page)).toBeFocused();
 });
 
-test("phone drawer closes from its result button", async ({ page }, info) => {
-  test.skip(info.project.name !== "phone", "phone layout only");
-  await stub(page);
-  await filtersButton(page).click();
-  await drawer(page)
-    .getByRole("button", { name: /^Show \d+ players$/ })
-    .click();
-  await expect(drawer(page)).toBeHidden();
-});
-
 test("Clear all filters shows only when a filter is set", async ({ page }) => {
   const { g } = await stub(page);
   await filtersButton(page).click();

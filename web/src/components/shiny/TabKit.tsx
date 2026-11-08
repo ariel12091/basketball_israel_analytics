@@ -320,7 +320,6 @@ export function TabFrame({
     activeCount: number;
     resettable?: boolean;
     onClearAll: () => void;
-    resultLabel?: string;
   };
 }) {
   const body = useShinyBody(league !== "il");
@@ -409,7 +408,6 @@ export function TabFrame({
             activeCount={drawer.activeCount}
             resettable={drawer.resettable}
             onClearAll={drawer.onClearAll}
-            resultLabel={drawer.resultLabel}
           />
         )
       : undefined,

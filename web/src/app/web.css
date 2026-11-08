@@ -340,8 +340,6 @@ body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: h
 .drawer-subgroup + .drawer-subgroup { margin-top: 12px; }
 .drawer-subtitle { margin-bottom: 6px; font-size: .78rem; font-weight: 600; color: var(--ibpl-text-body); }
 .filter-drawer-footer { margin-top: 12px; font-size: .78rem; color: var(--ibpl-text-dim); }
-.filter-drawer-done { display: none; }
-body.ibpl-collapsed-nav .filter-drawer-done { display: block; position: sticky; bottom: -16px; width: calc(100% + 32px); margin: 12px -16px -16px; padding: 14px; border: 0; border-radius: 0 0 10px 10px; background: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
 .chips-row { align-items: center; }
 /* One-line table key (TableKey.tsx). */
 .table-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 4px 0 6px; font-size: .75rem; color: var(--ibpl-text-dim); }
@@ -434,7 +432,6 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .filter-drawer { padding-top: 0; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
 .filter-drawer-top .filter-drawer-clear { margin-bottom: 12px; }
-body.ibpl-collapsed-nav .filter-drawer-done { z-index: 3; }
 /* Home: the site title above the Ask box (as before the 2026-10-28 overhaul). */
 .home-title { margin-bottom: 14px; text-align: center; }
 .home-title h2 { margin: 0 0 4px; font-weight: 700; color: var(--ibpl-text); }

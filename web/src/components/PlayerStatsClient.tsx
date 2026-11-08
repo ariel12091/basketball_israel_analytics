@@ -216,7 +216,6 @@ export default function PlayerStatsClient({
         activeCount,
         resettable: filters.length > 0,
         onClearAll: reset,
-        resultLabel: `Show ${result.rows.length} players`,
       }}
       main={
         <>
