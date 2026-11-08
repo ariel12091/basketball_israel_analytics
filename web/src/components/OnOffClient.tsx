@@ -270,9 +270,11 @@ export default function OnOffClient({
       stats: kept.length ? JSON.stringify(kept) : null,
     });
   };
+  // Clear all leaves the page as a fresh load does: auto on, whether or not a
+  // filter was set (turning it off here stuck only when no filter changed).
   const reset = () => {
     auto.reset();
-    setAutoOn(false);
+    setAutoOn(true);
     set({
       teams: null,
       start: null,
