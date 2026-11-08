@@ -2,6 +2,7 @@
 import {
   useCallback,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -29,11 +30,17 @@ import {
   windowSegments,
   windowsSummary,
   type Bar,
-  type Window,
 } from "@/rules/gameflow";
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
-import GameflowChart, { type BarWindow } from "./GameflowChart";
+import GameflowChart from "./GameflowChart";
+import {
+  EMPTY_SELECTION,
+  selectionReducer,
+  stintOf,
+  type BarWindow,
+  type SelectionAction,
+} from "@/rules/gameflowSelection";
 import { text as labels } from "@/data/gameflowLayout.json";
 function subscribeNarrow(notify: () => void) {
   const q = matchMedia(NARROW);
@@ -95,13 +102,10 @@ export function GameflowView({
   data: GameflowPayload;
   compact: boolean;
 }) {
-  const [selected, setSelected] = useState<string[]>([]),
-    [active, setActive] = useState<BarWindow | null>(null),
-    [hover, setHover] = useState<BarWindow | null>(null),
-    [hoverBox, setHoverBox] = useState<DOMRect | null>(null),
+  const [selection, dispatch] = useReducer(selectionReducer, EMPTY_SELECTION),
+    { selected, active, hover, hoverBox, focus, preview } = selection,
+    gameEnd = data.bounds[data.bounds.length - 1],
     [lineupsUsed, setLineupsUsed] = useState<number | null>(null),
-    [focus, setFocus] = useState<string | null>(null),
-    [preview, setPreview] = useState<Window[] | null>(null),
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState(""),
@@ -126,12 +130,7 @@ export function GameflowView({
         ? stintLineups(data, active)
         : [];
   // A click on a bar is about that stint, a click on a name the whole game.
-  const stint =
-    selected.length === 1 &&
-    active &&
-    !(active.start === 0 && active.end === data.bounds[data.bounds.length - 1])
-      ? active
-      : null;
+  const stint = stintOf(selection, gameEnd);
   const groupKey = (g: (typeof groups)[number]) => `${g.side}:${g.dictIndex}`;
   const focused = groups.find((g) => groupKey(g) === focus);
   const echo = focused
@@ -156,44 +155,9 @@ export function GameflowView({
           : hover
             ? [{ start: hover.start, end: hover.end }]
             : []);
-  const toggle = (b: Bar, window?: BarWindow) => {
-    const key = laneKey(b),
-      next = selected.includes(key)
-        ? selected.filter((p) => p !== key)
-        : [...selected, key];
-    setFocus(null);
-    setPreview(null);
-    setHover(null);
-    // Another stint of the player on show moves to it, rather than deselecting.
-    if (
-      window &&
-      stint &&
-      laneKey(stint.bar) === key &&
-      stint.start !== window.start
-    ) {
-      setActive(window);
-      return;
-    }
-    setSelected(next);
-    if (next.length === 1) {
-      const bar =
-        next[0] === key ? b : data.bars.find((b) => laneKey(b) === next[0])!;
-      // A name selects the player's whole game (every lineup he was part
-      // of); a bar selects just that stint (user 2026-10-28).
-      setActive(
-        next[0] === key && window
-          ? window
-          : { bar, start: 0, end: data.bounds[data.bounds.length - 1] },
-      );
-    } else setActive(null);
-  };
-  const clear = () => {
-    setSelected([]);
-    setActive(null);
-    setHover(null);
-    setFocus(null);
-    setPreview(null);
-  };
+  const toggle = (bar: Bar, window?: BarWindow) =>
+    dispatch({ type: "toggle", bar, window, bars: data.bars, end: gameEnd });
+  const clear = () => dispatch({ type: "clear" });
   // Wide: hovering moves nothing (it made bars slide out from under the pointer
   // on the way to a click, user 2026-11-04), so it shows a tooltip, and only a
   // click opens the details and shrinks the chart. Narrow keeps its inline card.
@@ -201,10 +165,7 @@ export function GameflowView({
   const showStint =
     !!activeWindow &&
     selected.length < 2 &&
-    !(
-      activeWindow.start === 0 &&
-      activeWindow.end === data.bounds[data.bounds.length - 1]
-    );
+    !(activeWindow.start === 0 && activeWindow.end === gameEnd);
   const lanes = new Set(data.bars.map(laneKey)).size,
     lineupsOpen = showStint || selected.length > 0 || groups.length > 0,
     room = space && lineupsRoom(lanes, space),
@@ -234,8 +195,7 @@ export function GameflowView({
     onHover: (window: BarWindow | null, box: DOMRect | null) => {
       restingOn.current = window && box && { window, box };
       if (window && !pointerMoved.current) return;
-      setHover(window);
-      setHoverBox(box);
+      dispatch({ type: "hover", window, box });
     },
     active: hover ?? active,
     stintBar: stint?.bar,
@@ -262,8 +222,7 @@ export function GameflowView({
       groups={groups}
       groupKey={groupKey}
       focus={focus}
-      setFocus={setFocus}
-      setPreview={setPreview}
+      dispatch={dispatch}
       detail={detail}
     />
   );
@@ -288,8 +247,7 @@ export function GameflowView({
         pointerMoved.current = true;
         // It really is hovering the bar it was resting on, now.
         if (restingOn.current) {
-          setHover(restingOn.current.window);
-          setHoverBox(restingOn.current.box);
+          dispatch({ type: "hover", ...restingOn.current });
         }
       }}
       onKeyDown={() => {
@@ -449,7 +407,7 @@ export function GameflowView({
             aria-expanded={full}
             onClick={() => {
               setFull(!full);
-              setHover(null);
+              dispatch({ type: "hover", window: null, box: null });
             }}
           >
             {full ? labels.quarters : labels.full}
@@ -648,8 +606,7 @@ function GameflowDetails({
   groups,
   groupKey,
   focus,
-  setFocus,
-  setPreview,
+  dispatch,
   detail,
 }: {
   data: GameflowPayload;
@@ -659,8 +616,7 @@ function GameflowDetails({
   groups: ReturnType<typeof aggregateSegments>;
   groupKey: (g: ReturnType<typeof aggregateSegments>[number]) => string;
   focus: string | null;
-  setFocus: (k: string | null) => void;
-  setPreview: (w: Window[] | null) => void;
+  dispatch: (a: SelectionAction) => void;
   detail: React.RefObject<HTMLElement | null>;
 }) {
   // A card per click (user 2026-11-07): the stint clicked, else each selected
@@ -776,11 +732,14 @@ function GameflowDetails({
                         key={groupKey(g)}
                         aria-pressed={focus === groupKey(g)}
                         onClick={() => {
-                          setFocus(focus === groupKey(g) ? null : groupKey(g));
-                          setPreview(null);
+                          dispatch({ type: "focus", key: groupKey(g) });
                         }}
-                        onPointerEnter={() => setPreview(g.windows)}
-                        onPointerLeave={() => setPreview(null)}
+                        onPointerEnter={() =>
+                          dispatch({ type: "preview", windows: g.windows })
+                        }
+                        onPointerLeave={() =>
+                          dispatch({ type: "preview", windows: null })
+                        }
                       >
                         <span className="ibpl-ribbon-detail-members">
                           {data.dict[g.dictIndex]?.members
