@@ -1635,6 +1635,92 @@ build_checks <- function(con, schema) {
     ),
 
     list(
+      id = "N12_unreadable_game_clock",
+      title = "Actions whose game clock is not MM:SS",
+      severity = "warning",
+      purpose = paste(
+        "The provider's MARKERTIME is the only clock for segment times, minutes, clutch",
+        "windows and Gameflow. A value that is not MM:SS cannot be read, so the action's",
+        "elapsed time falls back to the running maximum and its segment's length is",
+        "partly unknown. Seen 2026-11-09: E 2026 games 97-99 carry shot-clock-like values",
+        "('24.?', '22.0') and game 100 control bytes, whose NUL also crashed the",
+        "collector's CSV write on a re-fetch. Period markers (BP, EP, EG) have no clock",
+        "by design and are left out. A source defect: re-fetch once the provider fixes it."
+      ),
+      required_tables = c("actions", "schedule"),
+      problem_count_col = "rows",
+      sql = sprintf(
+        "SELECT s.competition, s.season, s.gamecode, a.game_id,
+                COUNT(*) AS rows,
+                COUNT(*) FILTER (WHERE a.marker_time ~ '[\\x01-\\x1f]') AS control_character_rows,
+                STRING_AGG(DISTINCT a.play_type, ',') AS play_types,
+                STRING_AGG(DISTINCT LEFT(REGEXP_REPLACE(a.marker_time, '[\\x01-\\x1f]', '?', 'g'), 8), ' ')
+                  AS sample_values,
+                MIN(a.parser_version) AS parser_version
+           FROM %s a
+           JOIN %s s ON s.game_id = a.game_id
+          WHERE a.marker_time IS NOT NULL
+            AND a.marker_time !~ '^\\d{1,2}:\\d{2}$'
+          GROUP BY 1, 2, 3, 4
+          ORDER BY 1, 2, 3",
+        act, sch
+      )
+    ),
+
+    list(
+      id = "N13_technical_took_personal_foul_free_throws",
+      title = "A technical, coach or bench foul holds a personal foul's free throws",
+      severity = "error",
+      purpose = paste(
+        "Regression guard for D36. These fouls carry one free throw each and do not end",
+        "the possession. Parser 0.2.2 let one take every free throw of a personal foul",
+        "in the same stoppage when one player shot both, so the personal foul's trip",
+        "ended no possession. The signature: a one-shot special foul whose trip holds two",
+        "or more free throws, next to a personal foul by the same team at the same second",
+        "that received none. Scoped to the newest parser version in the schema, which",
+        "must never produce it; games on older versions were re-derived wherever their",
+        "possession ends changed (replay of 2026-11-10), so a match there does not move",
+        "a possession."
+      ),
+      required_tables = c("actions", "schedule"),
+      sql = sprintf(
+        "WITH newest AS (SELECT MAX(parser_version) AS v FROM %s),
+         ft AS (
+           SELECT a.game_id, a.period, a.synthetic_parent_order AS root, COUNT(*) AS free_throws
+             FROM %s a
+            WHERE a.play_type IN ('FTA', 'FTM')
+            GROUP BY 1, 2, 3
+         ), special AS (
+           SELECT ft.*, x.play_type AS foul_code, x.marker_time, x.team_id AS fouling_team_id,
+                  x.parser_version
+             FROM ft
+             JOIN %s x
+               ON x.game_id = ft.game_id AND x.period = ft.period
+              AND x.source_event_order = ft.root
+            WHERE (x.play_type ~ '^CMT[0-9]?$' OR x.play_type IN ('B', 'C', 'CMTI'))
+              AND ft.free_throws >= 2
+              AND x.parser_version = (SELECT v FROM newest)
+         )
+         SELECT s.competition, s.season, s.gamecode, sp.game_id, sp.period, sp.marker_time,
+                sp.foul_code, sp.free_throws, sp.parser_version
+           FROM special sp
+           JOIN %s s ON s.game_id = sp.game_id
+          WHERE EXISTS (
+                  SELECT 1 FROM %s cm
+                   WHERE cm.game_id = sp.game_id AND cm.period = sp.period
+                     AND cm.play_type = 'CM' AND cm.marker_time = sp.marker_time
+                     AND cm.team_id = sp.fouling_team_id
+                     AND NOT EXISTS (
+                           SELECT 1 FROM %s f
+                            WHERE f.game_id = cm.game_id AND f.period = cm.period
+                              AND f.synthetic_parent_order = cm.source_event_order
+                              AND f.play_type IN ('FTA', 'FTM')))
+          ORDER BY 1, 2, 3, 5",
+        act, act, act, sch, act, act
+      )
+    ),
+
+    list(
       id = "N8_possession_endpoint_vocabulary",
       title = "Possession endpoints carry an unrecognised reason",
       severity = "warning",

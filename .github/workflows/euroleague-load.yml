@@ -40,6 +40,11 @@ on:
         required: false
         type: boolean
         default: true
+      dq_report:
+        description: "Run the data quality report even if nothing was published."
+        required: false
+        type: boolean
+        default: false
 
 # One EuroLeague load at a time: the verifier reads the latest load run, and a
 # second publisher would race it.
@@ -121,6 +126,7 @@ jobs:
           } > ../etl/.Renviron
 
       - name: Load new games
+        id: load
         run: |
           mkdir -p logs
           status=0
@@ -140,7 +146,51 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             [ "$rc" -eq 0 ] || status=1
           done
+          # The data quality report runs only after a load that published a game.
+          if grep -qE "^publication_games=[1-9]" logs/load_*.log 2>/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
           exit $status
+
+      # Data quality report (euroleague/scripts/run_euro_data_quality_report.R)
+      # after every load that published a game, whether or not the load's own
+      # checks passed (or on a manual run with dq_report). Read-only; about 3 minutes. Findings do not fail the run.
+      - uses: r-lib/actions/setup-r@v2
+        if: ${{ always() && (steps.load.outputs.published == 'true' || inputs.dq_report) }}
+        with:
+          r-version: '4.4.2'
+
+      - name: Install report deps (cached)
+        if: ${{ always() && (steps.load.outputs.published == 'true' || inputs.dq_report) }}
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::DBI
+            any::RPostgres
+
+      - name: Data quality report
+        if: ${{ always() && (steps.load.outputs.published == 'true' || inputs.dq_report) }}
+        env:
+          PG_PORT: '5432'
+          DQ_OUTPUT_DIR: logs/data_quality
+        run: |
+          Rscript scripts/run_euro_data_quality_report.R
+          {
+            echo "### Data quality report"
+            sed -n '/^Overall status/p' logs/data_quality/latest.md
+            echo
+            echo "| check | status | rows | title |"
+            echo "| --- | --- | --- | --- |"
+            awk -F' [|] ' '/^\| [A-Z]/ && ($3 == "fail" || $3 == "warning") { print "| " substr($1, 3) " | " $3 " | " $5 " | " $6 " |" }' logs/data_quality/latest.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload data quality report
+        if: ${{ always() && (steps.load.outputs.published == 'true' || inputs.dq_report) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: euroleague-data-quality-${{ github.run_id }}
+          path: euroleague/logs/data_quality/
+          if-no-files-found: ignore
 
       - name: Upload load logs
         if: ${{ always() }}
