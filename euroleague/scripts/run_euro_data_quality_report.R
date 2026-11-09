@@ -1721,6 +1721,72 @@ build_checks <- function(con, schema) {
     ),
 
     list(
+      id = "N14_lineup_minutes_differ_from_box_score",
+      title = "A player's lineup minutes differ from his official minutes by over 90 seconds",
+      severity = "warning",
+      purpose = paste(
+        "The reconstructed lineups give every player floor time; the official box score",
+        "gives his minutes. They normally agree to the second (median gap 0.04 s, 99th",
+        "percentile 60 s on 2026-11-10, where a cluster sits at exactly 60 s: official minutes",
+        "a whole minute out, a box-score quirk), so a gap over 90 s means the lineups put the",
+        "wrong five on the floor for a stretch, or the clock is wrong. R1, X and Z cannot",
+        "see a well-formed lineup with the wrong players; this can. One row per team-game.",
+        "likely_cause: 'unreadable clock' when the game has a clock value N12 flags;",
+        "'time missing from the game' when the team's lineup minutes do not",
+        "add up to its official total (whole segments absent); 'both teams: clock or feed'",
+        "when the opponent is off by a similar amount, since a bad clock moves time for",
+        "both sides; otherwise 'one team: lineup', a wrong five for one side. Seen: U 2025",
+        "32 (one player 15 min off), U 2026 18's stretch (D37), the round-10 clock defects",
+        "of E 2026 97-100 (N12)."
+      ),
+      required_tables = c("full_rosters", "player_four_factors_by_game", "team_four_factors_by_game", "schedule", "teams"),
+      problem_count_col = "players_over_90s",
+      sql = sprintf(
+        "WITH lineup AS (
+           SELECT game_id, team_id, player_id, SUM(onoff_minutes) * 60 AS lineup_seconds
+             FROM %s
+            WHERE is_on_key = 1 AND type_lineup = 'offense'
+            GROUP BY 1, 2, 3
+         ), players AS (
+           SELECT fr.game_id, fr.team_id, fr.player_id, fr.minutes_seconds AS official_seconds,
+                  COALESCE(l.lineup_seconds, 0) AS lineup_seconds
+             FROM %s fr
+             LEFT JOIN lineup l USING (game_id, team_id, player_id)
+            WHERE fr.minutes_seconds > 0
+              AND EXISTS (SELECT 1 FROM %s t WHERE t.game_id = fr.game_id)
+         ), team_gaps AS (
+           SELECT game_id, team_id,
+                  COUNT(*) FILTER (WHERE ABS(lineup_seconds - official_seconds) > 90) AS players_over_90s,
+                  ROUND(MAX(ABS(lineup_seconds - official_seconds))) AS largest_gap_seconds,
+                  ROUND(SUM(ABS(lineup_seconds - official_seconds)) / 60.0, 1) AS total_gap_minutes,
+                  ROUND(SUM(lineup_seconds - official_seconds) / 60.0, 1) AS net_gap_minutes
+             FROM players
+            GROUP BY 1, 2
+         ), teams AS (
+           SELECT g.*,
+                  MIN(g.total_gap_minutes) OVER (PARTITION BY g.game_id) AS smaller_team_gap,
+                  MAX(g.total_gap_minutes) OVER (PARTITION BY g.game_id) AS larger_team_gap
+             FROM team_gaps g
+         )
+         SELECT s.competition, s.season, s.gamecode, t.game_id, tm.provider_team_code AS team,
+                t.players_over_90s, t.largest_gap_seconds, t.total_gap_minutes, t.net_gap_minutes,
+                CASE WHEN EXISTS (SELECT 1 FROM %s a
+                                   WHERE a.game_id = t.game_id AND a.marker_time IS NOT NULL
+                                     AND a.marker_time !~ '^\\d{1,2}:\\d{2}$')
+                       THEN 'unreadable clock (see N12)'
+                     WHEN ABS(t.net_gap_minutes) >= 1 THEN 'time missing from the game'
+                     WHEN t.smaller_team_gap >= 0.8 * t.larger_team_gap THEN 'both teams: clock or feed'
+                     ELSE 'one team: lineup' END AS likely_cause
+           FROM teams t
+           JOIN %s s ON s.game_id = t.game_id
+           JOIN %s tm ON tm.team_id = t.team_id
+          WHERE t.players_over_90s > 0
+          ORDER BY t.largest_gap_seconds DESC",
+        pffg, fr, tffg, act, sch, q("teams")
+      )
+    ),
+
+    list(
       id = "N8_possession_endpoint_vocabulary",
       title = "Possession endpoints carry an unrecognised reason",
       severity = "warning",
