@@ -308,14 +308,170 @@ class RenamedFoulCodesTest(unittest.TestCase):
     def test_foul_family_predicates(self) -> None:
         from euroleague_possessions.parser import is_committed_foul, is_special_foul
 
-        for code in ("CMT", "CMT1", "CMT2", "CMTI", "CMU", "CMU_DI", "CMU_FL", "B", "C"):
+        for code in ("CMT", "CMT1", "CMT2", "CMTI", "CMU", "CMU_DI", "CMU_FL", "B", "C", "CMD"):
             self.assertTrue(is_special_foul(code), code)
-        for code in ("CM", "CMD", "CCH", "OF", "RV", "CMTX", "CMUX", "", None):
+        for code in ("CM", "CCH", "OF", "RV", "CMTX", "CMUX", "", None):
             self.assertFalse(is_special_foul(code), code)
-        for code in ("CM", "OF", "CMT2", "CMU_FL"):
+        for code in ("CM", "OF", "CMT2", "CMU_FL", "CMD"):
             self.assertTrue(is_committed_foul(code), code)
-        for code in ("CMD", "RV", "CCH"):
+        for code in ("RV", "CCH"):
             self.assertFalse(is_committed_foul(code), code)
+
+
+class TechnicalWithPersonalFoulTest(unittest.TestCase):
+    """A technical owns one free throw; the rest belong to the personal foul.
+
+    Shapes from E 2025 games 118 and 405 (same shooter) and the split-shooter
+    variants. Before the cap the technical took the whole trip and the
+    personal foul's possession never ended.
+    """
+
+    @staticmethod
+    def _events(rows):
+        """rows: (play_type, team, player)."""
+        return pd.DataFrame(
+            {
+                "season": 2025,
+                "gamecode": 960,
+                "source_event_order": range(1, len(rows) + 1),
+                "period": 2,
+                "clock": "05:00",
+                "play_type": [r[0] for r in rows],
+                "team_code": [r[1] for r in rows],
+                "player_id": [r[2] for r in rows],
+            }
+        )
+
+    def _ends(self, rows):
+        grouped = group_events(self._events(rows))
+        return grouped, grouped.loc[grouped["final_end_poss"]]
+
+    def _assert_clean(self, grouped):
+        self.assertFalse(grouped["grouping_status"].eq("unresolved").any())
+
+    def test_same_shooter_technical_and_personal_foul(self) -> None:
+        for special in ("C", "B", "CMT", "CMT1"):
+            grouped, ends = self._ends(
+                [
+                    ("3FGA", "A", "a1"),
+                    ("D", "B", "b1"),
+                    ("CM", "A", "a2"),
+                    ("RV", "B", "b1"),
+                    (special, "A", "a3" if special.startswith("CMT") else None),
+                    ("FTM", "B", "b1"),
+                    ("FTM", "B", "b1"),
+                    ("FTM", "B", "b1"),
+                    ("3FGA", "A", "a1"),
+                    ("D", "B", "b2"),
+                ]
+            )
+            self._assert_clean(grouped)
+            self.assertEqual(ends["team_code"].tolist(), ["A", "B", "A"], special)
+            self.assertEqual(ends["source_event_order"].tolist(), [1, 8, 9], special)
+            parents = grouped.loc[grouped["play_type"].eq("FTM"), "synthetic_parent_order"]
+            self.assertEqual(parents.tolist(), [5, 3, 3], special)
+
+    def test_split_shooters_technical_logged_last(self) -> None:
+        grouped, ends = self._ends(
+            [
+                ("3FGA", "A", "a1"),
+                ("D", "B", "b1"),
+                ("CM", "A", "a2"),
+                ("RV", "B", "b1"),
+                ("CMT", "A", "a3"),
+                ("FTM", "B", "b1"),
+                ("FTM", "B", "b1"),
+                ("FTM", "B", "b2"),
+                ("3FGA", "A", "a1"),
+                ("D", "B", "b2"),
+            ]
+        )
+        self._assert_clean(grouped)
+        parents = grouped.loc[grouped["play_type"].eq("FTM"), "synthetic_parent_order"]
+        self.assertEqual(parents.tolist(), [3, 3, 5])
+        self.assertEqual(ends["team_code"].tolist(), ["A", "B", "A"])
+        self.assertEqual(ends["source_event_order"].tolist(), [1, 7, 9])
+
+    def test_split_shooters_technical_logged_first(self) -> None:
+        grouped, ends = self._ends(
+            [
+                ("3FGA", "A", "a1"),
+                ("D", "B", "b1"),
+                ("CM", "A", "a2"),
+                ("RV", "B", "b1"),
+                ("CMT", "A", "a3"),
+                ("FTM", "B", "b2"),
+                ("FTM", "B", "b1"),
+                ("FTM", "B", "b1"),
+                ("3FGA", "A", "a1"),
+                ("D", "B", "b2"),
+            ]
+        )
+        self._assert_clean(grouped)
+        parents = grouped.loc[grouped["play_type"].eq("FTM"), "synthetic_parent_order"]
+        self.assertEqual(parents.tolist(), [5, 3, 3])
+        self.assertEqual(ends["source_event_order"].tolist(), [1, 8, 9])
+
+    def test_technical_alone_still_keeps_the_ball(self) -> None:
+        grouped, ends = self._ends(
+            [
+                ("2FGA", "A", "a1"),
+                ("D", "B", "b1"),
+                ("CMT", "A", "a2"),
+                ("FTM", "B", "b3"),
+                ("2FGM", "B", "b1"),
+            ]
+        )
+        self._assert_clean(grouped)
+        self.assertEqual(ends["source_event_order"].tolist(), [1, 5])
+
+    def test_technical_between_miss_and_rebound(self) -> None:
+        # E 2025 game 249: the miss still ends on the opponent's rebound.
+        for special in ("CMT", "CMT1", "C"):
+            grouped, ends = self._ends(
+                [
+                    ("2FGM", "A", "a1"),
+                    ("3FGA", "B", "b1"),
+                    (special, "B", "b2" if special.startswith("CMT") else None),
+                    ("FTM", "A", "a2"),
+                    ("D", "A", "a3"),
+                    ("2FGM", "A", "a1"),
+                ]
+            )
+            self._assert_clean(grouped)
+            self.assertEqual(ends["team_code"].tolist(), ["A", "B", "A"], special)
+            self.assertEqual(ends["source_event_order"].tolist(), [1, 2, 6], special)
+
+    def test_technical_between_missed_free_throw_and_rebound(self) -> None:
+        grouped, ends = self._ends(
+            [
+                ("CM", "A", "a1"),
+                ("RV", "B", "b1"),
+                ("FTM", "B", "b1"),
+                ("FTA", "B", "b1"),
+                ("CMT", "B", "b2"),
+                ("FTM", "A", "a2"),
+                ("D", "A", "a3"),
+                ("2FGM", "A", "a1"),
+            ]
+        )
+        self._assert_clean(grouped)
+        self.assertEqual(ends["source_event_order"].tolist(), [4, 8])
+
+    def test_disqualifying_foul_keeps_the_ball(self) -> None:
+        # E 2025 game 265: CMD was unknown, so its free throws were unresolved.
+        grouped, ends = self._ends(
+            [
+                ("2FGM", "A", "a1"),
+                ("CMD", "A", "a2"),
+                ("RV", "B", "b1"),
+                ("FTA", "B", "b1"),
+                ("FTM", "B", "b1"),
+                ("2FGM", "B", "b2"),
+            ]
+        )
+        self._assert_clean(grouped)
+        self.assertEqual(ends["source_event_order"].tolist(), [1, 6])
 
 
 if __name__ == "__main__":

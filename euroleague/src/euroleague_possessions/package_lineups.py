@@ -1,22 +1,26 @@
-"""Apply and audit lineups produced by ``euroleague-api``.
+"""Build and audit play-by-play lineups.
 
-This module intentionally delegates lineup construction to the installed
-package.  It only adapts cached box-score payloads and CSV null values so the
-package can be used without making another network request.
+Box scores are normalized through ``euroleague-api`` from cached payloads. The
+lineups were built by the package's ``get_pbp_lineups()`` until 2026-11-10;
+``build_pbp_lineups()`` keeps its contract and fixes its cross-team pairing of
+substitutions (D37).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 from euroleague_api.boxscore_data import BoxScoreData
-from euroleague_api.utils import get_pbp_lineups
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -62,8 +66,9 @@ def cached_boxscore_frame(
 def apply_package_lineups(
     game_events: pd.DataFrame,
     boxscore: pd.DataFrame,
+    competition: str = "E",
 ) -> pd.DataFrame:
-    """Return one game's events enriched by the package lineup function."""
+    """Return one game's events enriched with lineups (``build_pbp_lineups``)."""
 
     required = {
         "Season",
@@ -88,7 +93,156 @@ def apply_package_lineups(
     game["CODETEAM"] = game["CODETEAM"].where(
         game["CODETEAM"].notna(), ""
     )
-    return get_pbp_lineups(game, boxscore, validate=True)
+    return build_pbp_lineups(game, boxscore, competition=competition)
+
+
+# Provider substitution rows that are wrong at source, keyed by
+# (competition, season, gamecode, TRUE_NUMBEROFPLAY). Each entry names the row
+# it expects (play type and player), so a correction whose row no longer looks
+# like that is skipped with a warning instead of editing a different row.
+# "player" replaces the substitution's player for lineup purposes only; None
+# ignores the row. The stored event is never edited. Evidence for every entry
+# is the box-score minutes and the players acting on the floor; see
+# docs/shared_definitions.md D37.
+KNOWN_SUBSTITUTION_CORRECTIONS: dict[
+    tuple[str, int, int, int], tuple[str, str, Optional[str]]
+] = {
+    # Empty on purpose. EuroCup 2026-27 game 18 (Trento's Q1 5:06 block of
+    # eight substitutions, rows 63-70) was investigated and held back by the
+    # user on 2026-11-10: ignoring it removes every duplicate, but about five
+    # minutes still disagree with the box score. See D37.
+}
+
+
+def _substitution_corrections(
+    game: pd.DataFrame, competition: str
+) -> dict[int, Optional[str]]:
+    """Row index -> corrected substitution player (None = ignore the row)."""
+
+    season = int(game["Season"].iloc[0])
+    gamecode = int(game["Gamecode"].iloc[0])
+    corrections: dict[int, Optional[str]] = {}
+    if "TRUE_NUMBEROFPLAY" not in game.columns:
+        return corrections
+    for (comp, corr_season, corr_game, order), (
+        play_type,
+        player,
+        replacement,
+    ) in KNOWN_SUBSTITUTION_CORRECTIONS.items():
+        if (comp, corr_season, corr_game) != (competition, season, gamecode):
+            continue
+        rows = game.index[game["TRUE_NUMBEROFPLAY"].eq(order)]
+        row = game.loc[rows[0]] if len(rows) == 1 else None
+        if row is None or row["PLAYTYPE"] != play_type or row["PLAYER"] != player:
+            logger.warning(
+                "substitution correction %s/%s/%s #%s no longer matches the feed; skipped",
+                comp, corr_season, corr_game, order,
+            )
+            continue
+        corrections[int(rows[0])] = replacement
+    return corrections
+
+
+def build_pbp_lineups(
+    game: pd.DataFrame,
+    boxscore: pd.DataFrame,
+    *,
+    competition: str = "E",
+) -> pd.DataFrame:
+    """Lineups on every row of one game, from the box-score starters and the subs.
+
+    Same contract as ``euroleague_api.utils.get_pbp_lineups(validate=True)``:
+    each IN or OUT row pairs with the next unprocessed row of the opposite type,
+    and the pair swaps the outgoing player for the incoming one. The one change
+    is that the pair must be the SAME TEAM's row. The package pairs across teams,
+    so when both teams substitute at one stoppage and the feed interleaves their
+    rows, it swaps one team's player into the other's lineup or lists a player
+    twice (D37). Known feed errors are corrected first
+    (``KNOWN_SUBSTITUTION_CORRECTIONS``).
+    """
+
+    if game.empty:
+        return game
+    result = game.copy()
+    if result["Gamecode"].nunique() > 1 or result["Season"].nunique() > 1:
+        raise ValueError("lineups are built for one game at a time")
+
+    teams = boxscore[["Home", "Team"]].drop_duplicates()
+    home_team = teams.loc[teams["Home"] == 1, "Team"].values[0]
+    away_team = teams.loc[teams["Home"] == 0, "Team"].values[0]
+
+    def clean(name: str) -> str:
+        return name.replace("  ", " ").replace(" , ", ", ").strip()
+
+    starters = boxscore.loc[boxscore["IsStarter"] == 1, ["Team", "Player"]]
+    five = {
+        team: [clean(player) for player in starters.loc[starters["Team"] == team, "Player"]]
+        for team in (home_team, away_team)
+    }
+    corrections = _substitution_corrections(result, competition)
+    play_types = result["PLAYTYPE"].tolist()
+    team_codes = result["CODETEAM"].tolist()
+    players = [
+        corrections.get(index, player) if index in corrections else player
+        for index, player in zip(result.index, result["PLAYER"].tolist())
+    ]
+    ignored = {position for position, index in enumerate(result.index)
+               if index in corrections and corrections[index] is None}
+
+    processed: set[int] = set()
+    lineup_home: list[list[str]] = []
+    lineup_away: list[list[str]] = []
+    for position, (play_type, team) in enumerate(zip(play_types, team_codes)):
+        if (
+            play_type in ("IN", "OUT")
+            and team in five
+            and position not in processed
+            and position not in ignored
+        ):
+            opposite = "OUT" if play_type == "IN" else "IN"
+            match = next(
+                (
+                    later
+                    for later in range(position + 1, len(play_types))
+                    if later not in processed
+                    and later not in ignored
+                    and play_types[later] == opposite
+                    and team_codes[later] == team
+                ),
+                None,
+            )
+            if match is None:
+                logger.warning(
+                    "no matching %s for %s row %s", opposite, team, position
+                )
+            else:
+                processed.update((position, match))
+                player_in = players[position] if play_type == "IN" else players[match]
+                player_out = players[match] if play_type == "IN" else players[position]
+                current = five[team]
+                if player_in != player_out and player_out in current:
+                    slot = current.index(player_out)
+                    five[team] = current[:slot] + [player_in] + current[slot + 1:]
+        lineup_home.append(list(five[home_team]))
+        lineup_away.append(list(five[away_team]))
+
+    result["Lineup_A"] = lineup_home
+    result["Lineup_B"] = lineup_away
+    if "IsHomeTeam" not in result.columns:
+        result["IsHomeTeam"] = [
+            True if team == home_team else False if team == away_team else None
+            for team in team_codes
+        ]
+    result["validate_on_court_player"] = [
+        player is None or play_type == "OUT" or player in (home + away)
+        for player, play_type, home, away in zip(
+            result["PLAYER"].tolist(), play_types, lineup_home, lineup_away
+        )
+    ]
+    if "TRUE_NUMBEROFPLAY" in result.columns:
+        # The package renumbers the sorted rows; kept for an identical contract.
+        result["TRUE_NUMBEROFPLAY"] = np.arange(len(result))
+    return result
 
 
 def _game_audit(
@@ -144,7 +298,7 @@ def audit_package_lineups(
             boxscore = cached_boxscore_frame(
                 path, season, gamecode, competition=competition
             )
-            enriched = apply_package_lineups(game, boxscore)
+            enriched = apply_package_lineups(game, boxscore, competition=competition)
             audit = _game_audit(enriched, boxscore)
             summaries.append({**base, "status": "ok", "error": "", **audit})
             all_events.append(enriched)

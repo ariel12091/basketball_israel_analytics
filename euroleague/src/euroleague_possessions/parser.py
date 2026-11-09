@@ -43,8 +43,17 @@ def is_unsportsmanlike(code: Optional[str]) -> bool:
 
 
 def is_special_foul(code: Optional[str]) -> bool:
-    """Technical, unsportsmanlike, bench and coach fouls: their free throws keep the ball."""
-    return is_player_technical(code) or is_unsportsmanlike(code) or code in {"B", "C", "CMTI"}
+    """Technical, unsportsmanlike, disqualifying, bench and coach fouls: their free throws keep the ball."""
+    return (
+        is_player_technical(code)
+        or is_unsportsmanlike(code)
+        or code in {"B", "C", "CMTI", "CMD"}
+    )
+
+
+def is_one_shot_special(code: Optional[str]) -> bool:
+    """Technical, bench and coach fouls carry one free throw each."""
+    return is_player_technical(code) or code in {"B", "C", "CMTI"}
 
 
 def is_committed_foul(code: Optional[str]) -> bool:
@@ -451,6 +460,56 @@ class PeriodParser:
             last_ft_index=max(prior_fts) if prior_fts else None,
         )
 
+    def _ft_belongs_to_personal_foul(
+        self,
+        ft_index: int,
+        candidate_indices: list[int],
+        offsetting_technicals: set[int],
+    ) -> bool:
+        """The shooter was fouled and a team-mate shoots in the same stoppage.
+
+        The team-mate's free throw is then the technical's, so this one stays
+        with the personal foul whichever order the feed logged them in.
+        """
+        ft_event = self.events[ft_index]
+        fouled_shooter = any(
+            not is_special_foul(self.events[index].play_type)
+            and index not in offsetting_technicals
+            and self._pending_penalty(index, ft_index).benefit_player is not None
+            and _same(
+                self._pending_penalty(index, ft_index).benefit_player,
+                ft_event.player_id,
+            )
+            for index in candidate_indices
+        )
+        if not fouled_shooter:
+            return False
+        lower = min(candidate_indices)
+        for index in range(lower + 1, len(self.events)):
+            event = self.events[index]
+            if index > ft_index and event.play_type in LIVE_BOUNDARIES | PERIOD_END:
+                break
+            if (
+                event.play_type in FT_TYPES
+                and _same(event.team, ft_event.team)
+                and not _same(event.player_id, ft_event.player_id)
+            ):
+                return True
+        return False
+
+    def _is_special_penalty_event(self, index: int) -> bool:
+        """A special foul, or a free throw it owns: dead-ball play a rebound scan passes over."""
+        event = self.events[index]
+        if is_special_foul(event.play_type):
+            return True
+        if event.play_type not in FT_TYPES:
+            return False
+        root = self.decisions[index].parent_order
+        return any(
+            candidate.source_order == root and is_special_foul(candidate.play_type)
+            for candidate in self.events
+        )
+
     def _assign_free_throws(self, offsetting_technicals: set[int]) -> None:
         ft_indices = [
             index for index, event in enumerate(self.events) if event.play_type in FT_TYPES
@@ -484,6 +543,16 @@ class PeriodParser:
                 if penalty.benefit_team is None or ft_event.team is None:
                     continue
                 if penalty.benefit_team != ft_event.team:
+                    continue
+                if is_one_shot_special(penalty.foul_type) and (
+                    penalty.last_ft_index is not None
+                    or self._ft_belongs_to_personal_foul(
+                        ft_index, candidate_indices, offsetting_technicals
+                    )
+                ):
+                    # A technical owns one free throw. Without this cap its
+                    # priority took a personal foul's whole trip when one
+                    # player shot both, and that trip then ended no possession.
                     continue
 
                 if penalty.last_ft_index is not None:
@@ -671,6 +740,8 @@ class PeriodParser:
                     continue
                 if later.play_type in ADMINISTRATIVE | {"CM", "RV"}:
                     continue
+                if self._is_special_penalty_event(later_index):
+                    continue
                 if later.play_type in REBOUNDS:
                     rebound_team = later.team
                     rebound_type = later.play_type
@@ -793,6 +864,8 @@ class PeriodParser:
             for later_index in self._after(final):
                 later = self.events[later_index]
                 if later.play_type in ADMINISTRATIVE | {"CM", "RV"}:
+                    continue
+                if self._is_special_penalty_event(later_index):
                     continue
                 if later.play_type in REBOUNDS:
                     rebound_team = later.team

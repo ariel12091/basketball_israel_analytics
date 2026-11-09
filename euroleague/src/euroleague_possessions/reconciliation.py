@@ -84,9 +84,16 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
                 "blocks_favour": count("FV"),
                 "blocks_against": count("AG"),
                 # Official FoulsCommited includes player technicals (CMT*/CMTI)
-                # but excludes bench/coach technical rows (B/C).
+                # but excludes bench/coach technical rows (B/C). CMD stays out as
+                # before parser 0.2.3 made it a special foul: the official count
+                # includes it in 3 of the 4 games that have one, so it is an open
+                # question, not settled by this change.
                 "fouls_committed": count(
-                    *(code for code in counts.index if is_committed_foul(code) and code not in {"B", "C"})
+                    *(
+                        code
+                        for code in counts.index
+                        if is_committed_foul(code) and code not in {"B", "C", "CMD"}
+                    )
                 ),
                 "fouls_received": count("RV"),
             }
