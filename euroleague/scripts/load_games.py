@@ -38,12 +38,35 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
-def mixed_parser_versions(rows):
-    """(competition, season, parser_version) rows -> {(competition, season): versions} where a season mixes."""
+# Older parser versions whose stored games are proven to equal a newer one,
+# per (competition, season). Parser 0.2.3 (D36) and the same-team lineup
+# builder (D37) changed possession ends or lineups only in the games an offline
+# replay of every stored game identified on 2026-11-10; those games were
+# re-derived on 0.2.3, and every other game reproduced its stored output
+# exactly. Only the version each season's untouched games carry is listed, so a
+# genuinely different mix (say a 2026-27 game on 0.2.1, before the 2026-27
+# foul codes) still fails.
+EQUIVALENT_PARSER_VERSIONS: dict[tuple[str, int], dict[str, str]] = {
+    ("E", 2025): {"0.2.1": "0.2.3"},
+    ("U", 2025): {"0.2.1": "0.2.3"},
+    ("E", 2026): {"0.2.2": "0.2.3"},
+    ("U", 2026): {"0.2.2": "0.2.3"},
+}
+
+
+def mixed_parser_versions(rows, equivalent=EQUIVALENT_PARSER_VERSIONS):
+    """(competition, season, parser_version) rows -> {(competition, season): versions} where a season mixes.
+
+    A version listed as equivalent for that season counts as the version it
+    equals; the report still names the stored versions.
+    """
     by_season: dict[tuple[str, int], set[str]] = {}
+    stored: dict[tuple[str, int], set[str]] = {}
     for competition, season, version in rows:
-        by_season.setdefault((competition, int(season)), set()).add(version)
-    return {key: sorted(v) for key, v in sorted(by_season.items()) if len(v) > 1}
+        key = (competition, int(season))
+        stored.setdefault(key, set()).add(version)
+        by_season.setdefault(key, set()).add(equivalent.get(key, {}).get(version, version))
+    return {key: sorted(stored[key]) for key, v in sorted(by_season.items()) if len(v) > 1}
 
 sys.path.insert(0, str(REPO / "src"))
 
@@ -147,8 +170,8 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     check("schedule metadata populated", nulls == 0, f"{nulls} rows missing round/phase/tipoff")
 
     # One derivation version per competition and season, or that season's
-    # aggregates mix logic. Seasons may differ: a parser change is not
-    # retroactive (2026-27 is 0.2.2, earlier seasons keep 0.2.1).
+    # aggregates mix logic. Seasons may differ, and a season may keep an older
+    # version for games proven to derive identically (EQUIVALENT_PARSER_VERSIONS).
     mixed = mixed_parser_versions(q(
         "SELECT DISTINCT s.competition, a.season, a.parser_version "
         "FROM euroleague.actions a JOIN euroleague.schedule s ON s.game_id = a.game_id"
