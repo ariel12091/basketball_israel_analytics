@@ -2827,6 +2827,31 @@ build_checks <- function(con, schema) {
       }
     ),
     list(
+      id = "AO_lineup_coverage_dropped_actions",
+      title = "Actions left out of pws because they had no valid lineup",
+      severity = "warning",
+      purpose = paste(
+        "One row per action the ETL's lineup coverage gate dropped in this run",
+        "instead of failing the game: an isolated foul-drawn, deflection, steal,",
+        "block or jump ball (no points, no possession) with no segment or no valid",
+        "five-player lineup. The game is published without it. Usually a stray or",
+        "mis-periodised feed entry (game 462, 2026-11-10). Read from the file the",
+        "ETL writes after each committed game, so it covers the latest run only."
+      ),
+      required_tables = character(),
+      runner = function(con, schema, root) {
+        path <- file.path(root, "etl", "logs", "data_quality", "details",
+                          "lineup_coverage_dropped.csv")
+        if (!file.exists(path)) {
+          return(data.frame(game_id = integer(0), quarter = integer(0),
+                            quarter_time = character(0), team_id = integer(0),
+                            id = integer(0), type = character(0),
+                            reason = character(0), stringsAsFactors = FALSE))
+        }
+        utils::read.csv(path, stringsAsFactors = FALSE)
+      }
+    ),
+    list(
       id = "AN_consecutive_same_team_possessions",
       title = "A team ends two possessions in a row with no opponent possession between",
       severity = "warning",

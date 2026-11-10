@@ -123,6 +123,96 @@ test_that("the rejection records all affected action IDs in the artifact directo
   expect_true(any(grepl("Q3 clock=09:59 team=8 id=100", messages, fixed = TRUE)))
 })
 
+# Game 462 (2026-11-10): one stray foul-drawn with no segment rolled back the
+# whole game. Non-scoring actions are now dropped from pws and reported.
+with_stray <- function(x, type = "foul-drawn", ids = 102L, segment = NA_integer_) {
+  extra <- tibble::tibble(game_id = 1L, id = ids, team_id = 8L, quarter = 2L,
+                          quarter_time = "02:21", type = type)
+  x$actions <- dplyr::bind_rows(x$actions, extra)
+  x$pws <- dplyr::bind_rows(x$pws, dplyr::mutate(extra, segment_id = segment,
+    team_id_defense = NA_integer_, lineup_hash_offense = NA_character_,
+    lineup_hash_defense = NA_character_))
+  x
+}
+
+test_that("an isolated non-scoring action without a lineup is dropped, not fatal", {
+  env <- coverage_functions()
+  x <- with_stray(coverage_example())
+  messages <- character(0)
+  kept <- env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups,
+    log_msg = function(msg, level) messages <<- c(messages, paste(level, msg)))
+  expect_equal(sort(kept$id), c(100L, 101L))
+  dropped <- attr(kept, "lineup_coverage_dropped")
+  expect_equal(dropped$id, 102L)
+  expect_match(dropped$reason, "missing segment")
+  expect_true(any(grepl("^WARN .*dropped from pws.*id=102 type=foul-drawn", messages)))
+  # Clean games carry an empty attribute and an unchanged pws.
+  clean <- coverage_example()
+  kept <- env$assert_gameplay_lineup_coverage(clean$actions, clean$pws, clean$lineups)
+  expect_equal(nrow(attr(kept, "lineup_coverage_dropped")), 0L)
+  expect_equal(kept$id, clean$pws$id)
+})
+
+test_that("fouls, scoring/possession actions, drift and structural faults stay fatal", {
+  env <- coverage_functions()
+  # A foul anchors a free-throw trip's credit lineup.
+  for (type in c("foul", "shot", "assist", "turnover", "rebound")) {
+    x <- with_stray(coverage_example(), type = type)
+    expect_error(env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups),
+                 "id=102", class = "lineup_coverage_error")
+  }
+  # More than LINEUP_COVERAGE_MAX_TOLERATED in one game is a structural fault.
+  x <- with_stray(coverage_example(), ids = 102:105)
+  expect_error(env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups),
+               "4 offending action", class = "lineup_coverage_error")
+  x <- with_stray(coverage_example(), ids = 102:104)
+  expect_equal(nrow(attr(env$assert_gameplay_lineup_coverage(
+    x$actions, x$pws, x$lineups), "lineup_coverage_dropped")), 3L)
+  # One fatal row fails the game and reports the tolerable rows with it.
+  x <- with_stray(coverage_example())
+  x$pws$segment_id[1L] <- NA_integer_
+  error <- tryCatch(env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups),
+                    lineup_coverage_error = identity)
+  expect_setequal(error$failures$id, c(100L, 102L))
+  # A tolerated type with a pipeline fault (period drift, duplicate) is fatal.
+  x <- with_stray(coverage_example())
+  x$pws$quarter[x$pws$id == 102L] <- 3L
+  expect_error(env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups),
+               "staged period/type differs", class = "lineup_coverage_error")
+})
+
+test_that("dropped rows are recorded to one per-run file, appended per game", {
+  env <- coverage_functions()
+  dir <- tempfile("coverage_")
+  x <- with_stray(coverage_example())
+  kept <- env$assert_gameplay_lineup_coverage(x$actions, x$pws, x$lineups)
+  expect_false(env$record_lineup_coverage_dropped(
+    attr(env$assert_gameplay_lineup_coverage(coverage_example()$actions,
+      coverage_example()$pws, coverage_example()$lineups), "lineup_coverage_dropped"), dir))
+  expect_true(env$record_lineup_coverage_dropped(attr(kept, "lineup_coverage_dropped"), dir))
+  expect_true(env$record_lineup_coverage_dropped(attr(kept, "lineup_coverage_dropped"), dir))
+  report <- read.csv(file.path(dir, env$LINEUP_COVERAGE_DROPPED_FILE))
+  expect_equal(report$id, c(102L, 102L))
+  expect_equal(report$type, c("foul-drawn", "foul-drawn"))
+})
+
+test_that("dropped rows are recorded only after commit, and the DQ check reads them", {
+  full <- read_repo_txt("..", "etl", "etl_full.R")
+  pos <- function(text) regexpr(text, full, fixed = TRUE)[[1L]]
+  expect_gt(pos("pws_stage <- assert_gameplay_lineup_coverage("), 0L)
+  expect_gt(pos("record_lineup_coverage_dropped("), pos("DBI::dbCommit(pg)"))
+  expect_lt(pos("unlink(file.path(\"etl\", \"logs\", \"data_quality\", \"details\", LINEUP_COVERAGE_DROPPED_FILE))"),
+            pos("pws_stage <- assert_gameplay_lineup_coverage("))
+  legacy <- read_repo_txt("..", "etl", "etl_onoff.R")
+  expect_gt(regexpr("record_lineup_coverage_dropped(", legacy, fixed = TRUE)[[1L]],
+            regexpr('DBI::dbExecute(pg, "COMMIT;")', legacy, fixed = TRUE)[[1L]])
+  dq <- read_repo_txt("..", "etl", "run_data_quality_report.R")
+  expect_match(dq, 'id = "AO_lineup_coverage_dropped_actions"', fixed = TRUE)
+  expect_match(dq, '"lineup_coverage_dropped.csv"', fixed = TRUE)
+  html <- read_repo_txt("..", "etl", "dq_findings_html.R")
+  expect_match(html, "AO_lineup_coverage_dropped_actions = list(", fixed = TRUE)
+})
+
 test_that("the full ETL guard runs after OT recovery and before the pws insert/commit", {
   full <- read_repo_txt("..", "etl", "etl_full.R")
   pos <- function(text) regexpr(text, full, fixed = TRUE)[[1L]]
