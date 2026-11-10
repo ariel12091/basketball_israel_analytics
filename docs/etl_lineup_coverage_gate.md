@@ -24,6 +24,26 @@ etl_processed_games; the next ordinary run retries it. A failed forced retry
 of an already-published game preserves its previous snapshot and processed
 marker. No quarter labels or players are guessed by this guard.
 
+## Two severities (2026-11-10)
+
+Game 462 showed the gate was too blunt: one stray foul-drawn (Q2 02:21, id
+4620637, its id between Q3 actions and no matching foul) rolled back the whole
+game, the same in the basket.co.il archive and the Segev feed. Since then a
+game fails only when a failing action is a shot, free throw, turnover,
+rebound, assist or foul (fouls anchor a free-throw trip's credit lineup); when
+any failure is a duplicate or a period/type drift; or when more than
+`LINEUP_COVERAGE_MAX_TOLERATED` (3) actions fail in one game, which is a
+structural fault like game 417's.
+
+Otherwise -- an isolated foul-drawn, deflection, steal, block or jump ball
+with no segment or no valid lineup -- the action is left out of pws, logged as
+a WARN, and the game is published. After the game commits, the row is
+appended to `etl/logs/data_quality/details/lineup_coverage_dropped.csv`,
+which the ETL deletes at the start of each run. The data-quality check
+`AO_lineup_coverage_dropped_actions` (warning, medium tier on the findings
+page) reports it. The action stays in actions_clean, so a scoped correction
+plus a `game_ids` rerun can still restore it.
+
 The error log contains representative action IDs, quarters, clocks, teams and
 reasons. A CSV containing every offending action is written under
 etl/logs/data_quality/details/lineup_coverage_game_<id>.csv, which the existing

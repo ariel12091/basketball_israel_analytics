@@ -532,6 +532,18 @@ DQ_FINDING_CATALOG <- list(
     effect = "Offline audits and cold-storage restores only; the live app is unaffected.",
     fix = "Re-export the affected cold-storage tables."
   ),
+  AO_lineup_coverage_dropped_actions = list(
+    headline = "Actions dropped for having no valid lineup",
+    tier = "medium", entity = "game",
+    describe = function(r, ctx) sprintf(
+      "Game %s, %s %s: %s's %s has no valid lineup (%s) and was left out of the lineup data.",
+      r$game_id, dq_period_name(r$quarter), r$quarter_time,
+      dq_team(ctx, r$team_id), r$type, r$reason
+    ),
+    events = function(r) as.character(r$id),
+    effect = "None on points or possessions. The action is missing from per-lineup counts of its type (e.g. fouls drawn) for that game.",
+    fix = "Read the play-by-play at that clock. A stray or mis-periodised entry can get a scoped correction in etl_onoff.R and a game_ids rerun."
+  ),
   AN_consecutive_same_team_possessions = list(
     headline = "Same team ends two possessions in a row",
     tier = "low", entity = "game",

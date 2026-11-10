@@ -5,6 +5,22 @@ LINEUP_COVERAGE_GAMEPLAY_TYPES <- c(
   "turnover", "foul", "foul-drawn", "deflection", "jumpBall"
 )
 
+# Two severities (2026-11-10, game 462: one stray foul-drawn rolled back a
+# whole game). A game still fails on any shot, free throw, turnover, rebound,
+# assist or foul (points, possessions, or a free-throw trip's credit lineup
+# hang off these), on any duplicate or period/type drift (a pipeline fault),
+# and on more than LINEUP_COVERAGE_MAX_TOLERATED failures (a structural fault
+# such as game 417's mislabelled period). Otherwise a failing action that
+# carries no points or possession is left out of pws, logged, and reported by
+# the data-quality check AO_lineup_coverage_dropped_actions.
+LINEUP_COVERAGE_TOLERATED_TYPES <- c("foul-drawn", "deflection", "steal", "block", "jumpBall")
+LINEUP_COVERAGE_TOLERATED_REASONS <- c(
+  "missing segment", "invalid opposing team",
+  "invalid offense lineup", "invalid defense lineup"
+)
+LINEUP_COVERAGE_MAX_TOLERATED <- 3L
+LINEUP_COVERAGE_DROPPED_FILE <- "lineup_coverage_dropped.csv"
+
 lineup_coverage_require_columns <- function(df, columns, label) {
   missing <- setdiff(columns, names(df))
   if (length(missing)) {
@@ -105,11 +121,44 @@ gameplay_lineup_coverage_failures <- function(actions, pws, lineups) {
     dplyr::arrange(game_id, quarter, id, team_id)
 }
 
+# TRUE per failure row that may be dropped: a tolerated type, only lineup
+# reasons, and a game with at most LINEUP_COVERAGE_MAX_TOLERATED failing
+# actions, every one of them tolerable. One fatal row fails its whole game.
+lineup_coverage_tolerable <- function(failures) {
+  if (!nrow(failures)) return(logical(0))
+  reasons_ok <- vapply(strsplit(failures$reason, "; ", fixed = TRUE),
+                       function(r) all(r %in% LINEUP_COVERAGE_TOLERATED_REASONS),
+                       logical(1))
+  row_ok <- failures$type %in% LINEUP_COVERAGE_TOLERATED_TYPES & reasons_ok
+  action_key <- paste(failures$game_id, failures$id, failures$team_id)
+  game_ok <- vapply(split(seq_len(nrow(failures)), failures$game_id), function(i) {
+    all(row_ok[i]) && length(unique(action_key[i])) <= LINEUP_COVERAGE_MAX_TOLERATED
+  }, logical(1))
+  unname(game_ok[as.character(failures$game_id)])
+}
+
+# Returns pws without the tolerated rows (invisibly), with those rows in the
+# "lineup_coverage_dropped" attribute; stops on any fatal failure.
 assert_gameplay_lineup_coverage <- function(actions, pws, lineups,
                                            log_msg = NULL, diagnostic_dir = NULL) {
   failures <- gameplay_lineup_coverage_failures(actions, pws, lineups)
-  if (!nrow(failures)) return(invisible(TRUE))
   log <- if (is.null(log_msg)) function(msg, level = "ERROR") invisible(NULL) else log_msg
+  tolerable <- lineup_coverage_tolerable(failures)
+  dropped <- failures[tolerable, , drop = FALSE]
+  failures <- failures[!tolerable, , drop = FALSE]
+  if (nrow(dropped)) {
+    for (i in seq_len(nrow(dropped))) {
+      row <- dropped[i, , drop = FALSE]
+      log(sprintf(paste0("  lineup coverage: dropped from pws (no points or possession): ",
+                         "game=%s Q%s clock=%s team=%s id=%s type=%s: %s"),
+                  row$game_id, row$quarter, row$quarter_time, row$team_id,
+                  row$id, row$type, row$reason), "WARN")
+    }
+    pws <- dplyr::anti_join(pws, dplyr::distinct(dropped, game_id, id, team_id),
+                            by = c("game_id", "id", "team_id"))
+  }
+  attr(pws, "lineup_coverage_dropped") <- dropped
+  if (!nrow(failures)) return(invisible(pws))
   for (i in seq_len(min(nrow(failures), 20L))) {
     row <- failures[i, , drop = FALSE]
     log(sprintf("  lineup coverage failed: game=%s Q%s clock=%s team=%s id=%s type=%s: %s",
@@ -139,4 +188,17 @@ assert_gameplay_lineup_coverage <- function(actions, pws, lineups,
   )
   stop(structure(list(message = message, call = NULL, failures = failures),
                  class = c("lineup_coverage_error", "error", "condition")))
+}
+
+# Append a committed game's dropped rows to this run's file. Call only after
+# the commit, so the file never names a game that was rolled back; the ETL
+# deletes it when a run starts, so it describes one run.
+record_lineup_coverage_dropped <- function(dropped, diagnostic_dir) {
+  if (is.null(dropped) || !nrow(dropped)) return(invisible(FALSE))
+  dir.create(diagnostic_dir, recursive = TRUE, showWarnings = FALSE)
+  path <- file.path(diagnostic_dir, LINEUP_COVERAGE_DROPPED_FILE)
+  utils::write.table(as.data.frame(dropped), path, sep = ",", row.names = FALSE,
+                     na = "", qmethod = "double", append = file.exists(path),
+                     col.names = !file.exists(path))
+  invisible(TRUE)
 }

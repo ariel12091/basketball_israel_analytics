@@ -1229,7 +1229,7 @@ etl_update <- function() {
     )
   
   
-  assert_gameplay_lineup_coverage(
+  pws_stage <- assert_gameplay_lineup_coverage(
     actions_df, pws_stage, df_lineups_df,
     log_msg = function(msg, level = "ERROR") message(msg),
     diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
@@ -1239,6 +1239,8 @@ etl_update <- function() {
   DBI::dbExecute(pg, "ANALYZE;")
   DBI::dbExecute(pg, "COMMIT;")
   on.exit(NULL, add = FALSE)
+  record_lineup_coverage_dropped(attr(pws_stage, "lineup_coverage_dropped"),
+                                 file.path("etl", "logs", "data_quality", "details"))
   message(sprintf("✅ %s ETL done for games: %s", toupper(APP_ENV), paste(ids, collapse = ", ")))
 }
 
