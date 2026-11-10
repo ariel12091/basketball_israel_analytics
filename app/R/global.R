@@ -365,11 +365,42 @@ poss AS (
   WHERE game_id = $1 AND team_id = $2
     AND final_end_poss IS TRUE
     AND type_lineup IN ('offense', 'defense')
+),
+events AS (
+  -- Gameflow stint ratings and run results (docs/shared_definitions.md,
+  -- Gameflow stint rating): both teams' perspectives, each row carrying the
+  -- five of its CREDITED lineup (R6: events follow credit), as On/Off counts.
+  SELECT team_id, elapsed, order_key, off, players, pts, kind, made, poss_end
+  FROM (
+    SELECT d.team_id,
+           d.event_elapsed_seconds AS elapsed,
+           d.id AS order_key,
+           (d.type_lineup = 'offense') AS off,
+           lp.player_ids AS players,
+           COALESCE(d.team_score, 0)::int AS pts,
+           CASE
+             WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 'fg2'
+             WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 'fg3'
+             WHEN d.type = 'freeThrow' THEN 'ft'
+             WHEN d.type = 'turnover' THEN 'tov'
+             WHEN d.type = 'rebound' AND d.parameters_type = 'offensive' THEN 'oreb'
+           END AS kind,
+           CASE WHEN d.type IN ('shot', 'freeThrow')
+                THEN d.parameters_made = 'made' END AS made,
+           (d.final_end_poss IS TRUE) AS poss_end
+    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    JOIN lineup_players lp
+      ON lp.lineup_hash = d.credit_lineup_hash AND lp.team_id = d.team_id
+    WHERE d.game_id = $1
+      AND d.type_lineup IN ('offense', 'defense')
+  ) e
+  WHERE poss_end OR pts > 0 OR kind IS NOT NULL
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
   (SELECT jsonb_agg(to_jsonb(poss) ORDER BY elapsed, order_key) FROM poss) AS poss,
+  (SELECT jsonb_agg(to_jsonb(events) ORDER BY elapsed, order_key) FROM events) AS events,
   (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
     WHERE game_id = $1) AS n_periods,
   (SELECT COUNT(*) FROM segs s

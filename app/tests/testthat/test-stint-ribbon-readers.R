@@ -118,6 +118,11 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
   poss <- regmatches(sql, regexpr("poss AS \\((.|\n)*?\n\\)", sql, perl = TRUE))
   expect_match(poss, "type_lineup IN \\('offense', 'defense'\\)")
   sql <- sub(poss, "", sql, fixed = TRUE)
+  # So do the events (stint ratings, run results): each row's side.
+  events <- regmatches(sql, regexpr("events AS \\((.|\n)*?\n\\)\nSELECT", sql, perl = TRUE))
+  expect_match(events, "type_lineup IN \\('offense', 'defense'\\)")
+  expect_match(events, "credit_lineup_hash")
+  sql <- sub(events, "SELECT", sql, fixed = TRUE)
   expect_false(grepl("type_lineup\\s*=", sql))
   expect_false(grepl("type_lineup\\s+IS\\s+NOT\\s+NULL", sql, ignore.case = TRUE))
   expect_false(grepl("GROUP BY[^)]*type_lineup", sql, ignore.case = TRUE))
