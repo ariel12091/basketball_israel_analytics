@@ -338,7 +338,8 @@ KNOWN_PERIOD_LABEL_CORRECTIONS <- tibble::tribble(
   402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload",
   406L,     4060239L, 4060417L, 3L,             2L,                 "Provider Q3 is the complete Q2 action stream",
   406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream",
-  417L,     4170541L, 4170550L, 2L,             3L,                 "Q3 opening five-player IN declarations mislabeled as Q2"
+  417L,     4170541L, 4170550L, 2L,             3L,                 "Q3 opening five-player IN declarations mislabeled as Q2",
+  462L,     4620637L, 4620637L, 2L,             3L,                 "Stray foul-drawn at 02:21 numbered between Q3 02:22 and 02:21 actions but labelled Q2"
 )
 
 apply_known_period_label_corrections <- function(df, game_id_val) {
