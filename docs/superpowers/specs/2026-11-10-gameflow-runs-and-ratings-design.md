@@ -28,16 +28,19 @@ follow; it is out of scope here.
 1. **Runs are marked on Gameflow** (user chose mockup A). Each run is a shaded
    band across the margin chart and the player rows below, in the colour of the
    team that made it. A chip above the band names it: team short name and the
-   run's score, e.g. `MTA 29-5 ›`. One run per game is the **defining stretch**,
+   run's score, e.g. `37-5 ›`, in the run team's colour (my call: no team
+   abbreviation, since both Tel Aviv teams share words; the full name is in
+   the tooltip and the chip's accessible label). One run per game is the **defining stretch**,
    the largest swing in net points. It gets the strong colour and the filled
    chip; other runs get a lighter band and an outlined chip.
 2. **Each run explains itself in a tooltip.** It opens on hover of the band or
    chip on pointer devices, and on a tap of the chip on touch. It has four
    parts, in this order (user: lineup first):
    1. The window and the swing: "Q3 3:54 – Q4 4:54 · from down 23 to up 1".
-   2. **Lineup.** Who came in and who went out just before the run started or
-      during it, for **both** teams, and whether the run team's five stayed on
-      for the whole run. Both teams' changes are always shown, so the swing is
+   2. **Lineup.** For **both** teams: the substitution that put the five on the
+      floor at the run's first point, whenever it happened ("this five had been
+      on since Q3 3:54"), any substitutions during the run, and whether the run
+      team's five stayed on for the whole run. Both teams' changes are always shown, so the swing is
       never pinned on one coach when both moved. When neither team changed,
       the line says so ("same five as before the run") and the results carry
       the explanation.
@@ -142,16 +145,20 @@ follow; it is out of scope here.
 
 - **Run definition, starting point** (user: a run need not start or end at a
   substitution or break; sometimes it is simply a run): defined by the score
-  alone. A run is a stretch from one scoring event to another in which one
-  team outscores the other by at least 10 net points while the other team
-  scores little (e.g. 12-2 qualifies, 20-12 does not). It starts at the run
-  team's first point and ends at its last, wherever those fall, and may cross
-  substitutions and period breaks. "Just before" for the lineup line means a
-  substitution within about a minute of game clock before the first point.
-  Mark at most three runs per game (the defining stretch plus the two next
-  largest), so the chart is not a field of bands. The builder tunes the
-  thresholds against a handful of real games and records the final rule in
-  the shared definitions.
+  alone. A run is a stretch from one of the run team's scoring events to
+  another in which it outscores the other team by **at least 10 net points
+  while the other team scores at most 6**. It starts at the run team's first
+  point and ends at its last, wherever those fall, and may cross
+  substitutions and period breaks. Candidates are ranked by net points
+  (shorter first on a tie) and taken greedily without overlap; at most three
+  are marked, the first being the defining stretch. Prototyped 2026-11-10 in
+  R on game 673: Maccabi 37-5 (Q3 2:25 – Q4 2:31, defining), Hapoel 30-4
+  (Q2 2:50 – Q3 4:18), Maccabi 16-6 (Q1 3:45 – Q1 0:48). A ratio rule
+  (opponent at most a third) and time caps were tried and rejected: without
+  an absolute cap on the opponent the window grew to a 14-minute 50-13.
+  Maccabi's first point came 89 s after the Q3 3:54 substitution, which is
+  why the lineup line names the change that put the five on the floor rather
+  than looking within a fixed time before the run.
 - **"Enough attempts":** at least 6 attempts for a shooting split and at least
   8 possessions for a turnover or rating comparison, and the run's rate must
   differ from the rest of the game by a margin the builder sets per metric. If
