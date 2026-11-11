@@ -3,7 +3,12 @@
 // teammates, summed from the readers' credited events (R6: events follow
 // credit, as On/Off counts). Counts come from SQL; only the rates are derived
 // here, unrounded (display rounds with ratingLabel()).
-import type { GameflowEvent, Side, Window } from "./gameflow";
+import { ratingLabel, type GameflowEvent, type Side, type Window } from "./gameflow";
+import { rRound } from "./round";
+
+/** Net as shown: ratingLabel() with a plus sign when positive. */
+export const netLabel = (v: number | null) =>
+  v != null && rRound(v, 1) > 0 ? `+${ratingLabel(v)}` : ratingLabel(v);
 
 export type StintRatings = {
   offPoss: number;

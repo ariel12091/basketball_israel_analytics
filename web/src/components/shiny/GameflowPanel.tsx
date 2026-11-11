@@ -31,6 +31,12 @@ import {
   windowsSummary,
   type Bar,
 } from "@/rules/gameflow";
+import type { Side, Window as Span } from "@/rules/gameflow";
+import {
+  netLabel,
+  stintRatings,
+  type StintRatings,
+} from "@/rules/gameflowRatings";
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart from "./GameflowChart";
@@ -506,6 +512,9 @@ function GameflowHoverTip({
       window.end,
     ),
     lineups = stintLineups(data, window),
+    rtg = data.events.length
+      ? stintRatings(data.events, window.bar.side, [window.bar.player_key], window)
+      : null,
     above = box.top > innerHeight / 2;
   return (
     <div
@@ -530,6 +539,8 @@ function GameflowHoverTip({
       </div>
       <div className="gf-hover-tip-stats">
         {clock(d.end - d.start)} on the floor · +/- {d.pm}
+        {rtg &&
+          ` · Net ${netLabel(rtg.net)} on ${rtg.offPoss + rtg.defPoss} poss`}
         {d.pf !== "" && ` · ${d.pf} for, ${d.pa} against`}
       </div>
       {lineups.slice(0, TIP_ROWS).map((g) => (
@@ -559,7 +570,14 @@ type CardStats = {
   pa: number | null;
   /** Head to head: the score from both sides, in place of +/- and points. */
   score?: string;
+  /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
+  ratings?: StintRatings;
 };
+const RATING_ROWS = [
+  { dt: "Net", value: (r: StintRatings) => netLabel(r.net), poss: (r: StintRatings) => r.offPoss + r.defPoss },
+  { dt: "ORtg", value: (r: StintRatings) => ratingLabel(r.ortg), poss: (r: StintRatings) => r.offPoss },
+  { dt: "DRtg", value: (r: StintRatings) => ratingLabel(r.drtg), poss: (r: StintRatings) => r.defPoss },
+];
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
     return (
@@ -594,9 +612,21 @@ function StintStats({ d }: { d: CardStats }) {
           </dd>
         </div>
       )}
+      {d.ratings &&
+        RATING_ROWS.map((row) => (
+          <div key={row.dt}>
+            <dt>{row.dt}</dt>
+            <dd>
+              {row.value(d.ratings!)} on {row.poss(d.ratings!)} poss
+            </dd>
+          </div>
+        ))}
     </dl>
   );
 }
+// D38: EuroLeague credits a trip to the lineup of its last free throw (D1).
+const ratingsNote = (league: League) =>
+  `Ratings count free throws for ${league === "il" ? "the lineup that drew the foul" : "the lineup on the floor for the last free throw"}, as On/Off does, so they can differ slightly from the +/- beside them.`;
 
 function GameflowDetails({
   data,
@@ -622,6 +652,16 @@ function GameflowDetails({
   // A card per click (user 2026-11-07): the stint clicked, else each selected
   // player's whole game, plus the minutes they shared when there are several.
   const bars = (key: string) => data.bars.filter((b) => laneKey(b) === key);
+  // Credited-lineup ratings, when the reader returned events.
+  const rate = (side: Side, keys: string[], window?: Span) =>
+    data.events.length
+      ? stintRatings(
+          data.events,
+          side,
+          keys.map((k) => k.slice(k.indexOf(":") + 1)),
+          window,
+        )
+      : undefined;
   const cards: { key: string; title: string; aria: string; stats: CardStats }[] =
     [];
   if (activeWindow && showStint) {
@@ -642,6 +682,10 @@ function GameflowDetails({
         pm: d.pm,
         pf: d.pf === "" ? null : Number(d.pf),
         pa: d.pa === "" ? null : Number(d.pa),
+        ratings: rate(activeWindow.bar.side, [laneKey(activeWindow.bar)], {
+          start: activeWindow.start,
+          end: activeWindow.end,
+        }),
       },
     });
   } else {
@@ -652,11 +696,14 @@ function GameflowDetails({
         key,
         title: `${own[0].player_label} · game`,
         aria: `${own[0].player_label} game detail`,
-        stats: windowsSummary(
-          own[0].side,
-          own.map((b) => ({ start: b.start_elapsed, end: b.end_elapsed })),
-          data.steps,
-        ),
+        stats: {
+          ...windowsSummary(
+            own[0].side,
+            own.map((b) => ({ start: b.start_elapsed, end: b.end_elapsed })),
+            data.steps,
+          ),
+          ratings: rate(own[0].side, [key]),
+        },
       });
     }
     const sides = new Set(selected.map((k) => bars(k)[0]?.side));
@@ -667,7 +714,10 @@ function GameflowDetails({
           key: "together",
           title: "Together",
           aria: "Shared minutes detail",
-          stats: windowsSummary([...sides][0]!, shared, data.steps),
+          stats: {
+            ...windowsSummary([...sides][0]!, shared, data.steps),
+            ratings: rate([...sides][0]!, selected),
+          },
         });
       } else {
         // Both teams: no side to sign a +/- from, so the score from both.
@@ -703,6 +753,11 @@ function GameflowDetails({
               <StintStats d={c.stats} />
             </section>
           ))}
+          {cards.some((c) => c.stats.ratings) && (
+            <p className="ibpl-ribbon-detail-meta gf-ratings-note">
+              {ratingsNote(data.meta.league)}
+            </p>
+          )}
         </div>
       )}
       {groups.length > 0 && (

@@ -1,11 +1,19 @@
 import { test, expect } from "@playwright/test";
-import { gameflowFiles, loadGameflow } from "../test/gameflowGoldens";
+import {
+  gameflowFiles,
+  loadGameflow,
+  loadFixture,
+  GAMEFLOW_FIXTURES,
+} from "../test/gameflowGoldens";
 import {
   windowDetail,
   sharedWindows,
   clock,
   laneKey,
+  ratingLabel,
 } from "../src/rules/gameflow";
+import { stintRatings } from "../src/rules/gameflowRatings";
+import { rRound } from "../src/rules/round";
 for (const file of gameflowFiles)
   test(`Gameflow ${file}`, async ({ page }, info) => {
     const { g, answer, url } = loadGameflow(file),
@@ -151,6 +159,93 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       );
     }
   });
+
+// Stint ratings (shared_definitions.md, Gameflow stint rating), from the
+// committed reader fixtures: Net/ORtg/DRtg with possession counts on the card
+// and Net in a bar's hover tip.
+const routeFixture = async (
+  page: import("@playwright/test").Page,
+  game: keyof typeof GAMEFLOW_FIXTURES,
+) => {
+  const f = loadFixture(game);
+  await page.route("**/api/v1/**", (r) =>
+    r.fulfill({
+      json: new URL(r.request().url()).pathname.endsWith("/version")
+        ? { leagues: [{ league: f.league, version: "golden" }] }
+        : f.answer,
+    }),
+  );
+  await page.goto(f.url);
+  return f;
+};
+const signed = (v: number | null) =>
+  v != null && rRound(v, 1) > 0 ? `+${ratingLabel(v)}` : ratingLabel(v);
+test("Gameflow card shows Net, ORtg and DRtg with possessions", async ({
+  page,
+}) => {
+  const { answer } = await routeFixture(page, 673);
+  // A player's row selects his whole game (a bar selects one stint).
+  const lane = (key: string) => {
+    const l = answer.lanes.find((x) => laneKey(x) === key)!;
+    return page
+      .locator("svg.ibpl-ribbon")
+      .getByRole("button", { name: new RegExp(`^${l.player_label},`) })
+      .first();
+  };
+  const dib = answer.lanes.find((l) => l.player_label.includes("DIBARTOLOMEO"))!;
+  const r = stintRatings(answer.events, "own", [dib.player_key]);
+  expect(r.offPoss).toBe(47);
+  await lane(`own:${dib.player_key}`).click();
+  await page.mouse.move(0, 0);
+  const card = page.getByRole("region", { name: `${dib.player_label} game detail` });
+  await expect(card).toContainText(`Net${signed(r.net)} on ${r.offPoss + r.defPoss} poss`);
+  await expect(card).toContainText(`ORtg${ratingLabel(r.ortg)} on ${r.offPoss} poss`);
+  await expect(card).toContainText(`DRtg${ratingLabel(r.drtg)} on ${r.defPoss} poss`);
+  await expect(card).toContainText("+/-");
+  const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
+  await lane(`own:${wallace.player_key}`).click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("region", { name: "Shared minutes detail" })).toContainText("Net");
+  await page.getByRole("button", { name: "Clear players" }).click();
+  const opp = answer.lanes.find((l) => l.side === "opp")!;
+  await lane(`own:${dib.player_key}`).click();
+  // The card opens between the teams and moves the opponent's chart down.
+  // Enter, not a click: with a card open the opponent's name buttons report a
+  // box under the card panel (seen on the stored goldens too, before ratings).
+  await expect(card).toBeVisible();
+  await lane(`opp:${opp.player_key}`).press("Enter");
+  await page.mouse.move(0, 0);
+  const h2h = page.getByRole("region", { name: "Head to head detail" });
+  await expect(h2h).toBeVisible();
+  await expect(h2h).not.toContainText("Net");
+});
+test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "hover tips are pointer-only");
+  const { answer } = await routeFixture(page, 673);
+  const dib = answer.bars.find((b) => b.player_label.includes("DIBARTOLOMEO"))!;
+  const bar = page
+    .locator("svg.ibpl-ribbon:not(.ibpl-gameflow-gutter)")
+    .first()
+    .locator(`.ibpl-ribbon-lane[data-player-key="own:${dib.player_key}"]`)
+    .first();
+  // The tip waits for a real pointer movement (it ignores a bar the pointer
+  // merely rests on after a re-render).
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2 - 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ on \d+ poss/);
+});
+test("EuroLeague Gameflow card shows ratings", async ({ page }) => {
+  const { answer } = await routeFixture(page, 1147);
+  const p = answer.lanes.find((l) => l.side === "own")!;
+  await page
+    .locator("svg.ibpl-ribbon")
+    .getByRole("button", { name: new RegExp(`^${p.player_label},`) })
+    .first()
+    .click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+ on \d+ poss/);
+});
 
 test("Gameflow errors can be retried", async ({ page }) => {
   const { answer, url } = loadGameflow("il_regular.json");

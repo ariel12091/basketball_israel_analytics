@@ -49,6 +49,7 @@ async function read(league: League, game: number, team: number) {
       ...ribbonModel(raw, team, league, game),
       meta: {
         version: await readVersion(q, league),
+        league,
         game,
         team,
         season: String(meta.game_year),
