@@ -389,7 +389,10 @@ events AS (
                 THEN d.parameters_made = 'made' END AS made,
            (d.final_end_poss IS TRUE) AS poss_end
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
-    JOIN lineup_players lp
+    -- LEFT: an event whose credited lineup is not a known five keeps its
+    -- row with NULL players, so the nightly pin fails instead of the event
+    -- vanishing (as euroleague.ribbon_events_v does).
+    LEFT JOIN lineup_players lp
       ON lp.lineup_hash = d.credit_lineup_hash AND lp.team_id = d.team_id
     WHERE d.game_id = $1
       AND d.type_lineup IN ('offense', 'defense')

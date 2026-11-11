@@ -119,10 +119,15 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
   expect_match(poss, "type_lineup IN \\('offense', 'defense'\\)")
   sql <- sub(poss, "", sql, fixed = TRUE)
   # So do the events (stint ratings, run results): each row's side.
-  events <- regmatches(sql, regexpr("events AS \\((.|\n)*?\n\\)\nSELECT", sql, perl = TRUE))
+  # Anchored: substitution_events also ends in "events AS (".
+  events <- regmatches(sql, regexpr("\nevents AS \\((.|\n)*?\n\\)\nSELECT", sql, perl = TRUE))
+  expect_false(grepl("substitution_events", events, fixed = TRUE))
   expect_match(events, "type_lineup IN \\('offense', 'defense'\\)")
   expect_match(events, "credit_lineup_hash")
-  sql <- sub(events, "SELECT", sql, fixed = TRUE)
+  # An event whose credited lineup is not a known five must stay (NULL
+  # players) so the nightly pin can fail on it; an inner join drops it.
+  expect_match(events, "LEFT JOIN lineup_players")
+  sql <- sub(events, "\nSELECT", sql, fixed = TRUE)
   expect_false(grepl("type_lineup\\s*=", sql))
   expect_false(grepl("type_lineup\\s+IS\\s+NOT\\s+NULL", sql, ignore.case = TRUE))
   expect_false(grepl("GROUP BY[^)]*type_lineup", sql, ignore.case = TRUE))

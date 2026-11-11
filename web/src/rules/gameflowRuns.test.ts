@@ -33,7 +33,36 @@ describe("periodClock", () => {
     expect(periodClock(2249, b)).toBe("Q4 2:31");
     expect(periodClock(600, b)).toBe("Q1 0:00");
   });
+  it("reads a moment on a period line as the next period's start when asked", () => {
+    const b = model673.bounds;
+    expect(periodClock(1200, b, true)).toBe("Q3 10:00");
+    expect(periodClock(0, b, true)).toBe("Q1 10:00");
+    expect(periodClock(2400, b, true)).toBe("Q4 0:00");
+  });
 });
+
+// A Q1 run by the opening fives, from hand-built lanes and steps.
+const opening = (() => {
+  const own = ["1", "2", "3", "4", "5"],
+    opp = ["6", "7", "8", "9", "10"];
+  const lane = (side: "own" | "opp", p: string, s: number, e: number) => ({
+    team_id: side === "own" ? 2 : 3,
+    player_id: Number(p),
+    player_label: `P${p}`,
+    start_elapsed: s,
+    end_elapsed: e,
+    lineup_key: side,
+  });
+  const raw = {
+    lanes: [
+      ...own.map((p) => lane("own", p, 0, 600)),
+      ...opp.map((p) => lane("opp", p, 0, 600)),
+    ],
+    margin: steps([[30, 3, 0], [60, 3, 0], [90, 0, 2], [120, 3, 0], [150, 3, 0]]),
+    n_periods: 4,
+  } as unknown as RawRibbon;
+  return ribbonModel(raw, 2, "il", 1);
+})();
 
 describe("detectRuns", () => {
   it("finds game 673's three runs, the defining one first by net", () => {
@@ -131,10 +160,36 @@ describe("runExplanation", () => {
     expect(l[4]).toBe(
       "Hapoel Tel-Aviv 1/6 inside the arc (15/28 the rest of the game)",
     );
+    // Both teams changed shortly before the run: neither is credited.
     expect(l[5]).toBe(
-      "Estimated cause: the lineup change at Q3 3:54 lines up with the run; this is a timing match, not proof.",
+      "Estimated cause: both teams changed lineups shortly before the run (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so the swing is not credited to either; this is a timing match, not proof.",
     );
     expect(l).toHaveLength(6);
+  });
+  it("calls an opening five the starting five, never a substitution", () => {
+    const [run] = detectRuns(opening.steps);
+    expect(run).toMatchObject({ side: "own", pts: 12, oppPts: 2 });
+    const lu = runLineups(opening, run);
+    expect(lu.every((l) => l.cameIn.length === 0 && l.wentOut.length === 0)).toBe(true);
+    const l = runExplanation(opening, run, { own: "A", opp: "B" }, []);
+    expect(l[1]).toBe("A: the starting five; stayed on throughout");
+    expect(l[2]).toBe("B: the starting five; stayed on throughout");
+    expect(l.at(-1)).toBe(
+      "Estimated cause: same fives as before the run; no lineup change is claimed.",
+    );
+  });
+  it("credits only the team whose change came shortly before the run", () => {
+    const d = runs.find((r) => r.defining)!;
+    const lu = runLineups(model673, d);
+    // Move Hapoel's change far back: only Maccabi's 3:54 change is close.
+    const far = lu.map((x) => (x.side === "opp" ? { ...x, onSince: d.start - 400 } : x));
+    expect(runExplanation(model673, d, names, [], far).at(-1)).toBe(
+      "Estimated cause: Maccabi Tel-Aviv's lineup change at Q3 3:54 lines up with the run; this is a timing match, not proof.",
+    );
+    const oppOnly = lu.map((x) => (x.side === "own" ? { ...x, onSince: d.start - 400 } : x));
+    expect(runExplanation(model673, d, names, [], oppOnly).at(-1)).toBe(
+      "Estimated cause: Hapoel Tel-Aviv's lineup change at Q3 3:01 lines up with the run; this is a timing match, not proof.",
+    );
   });
   it("reads the margin from the run team's side", () => {
     const hapoel = runs.find((r) => r.side === "opp")!;

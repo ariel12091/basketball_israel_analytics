@@ -16,6 +16,9 @@ import { rRound } from "./round";
 export const RUN_MIN_NET = 10;
 export const RUN_MAX_OPP = 6;
 export const RUN_MAX = 3;
+/** A lineup change "lines up" with a run when it came at most this many
+ *  seconds before the run's first point. */
+export const CHANGE_WINDOW = 120;
 
 export type Run = {
   side: Side;
@@ -32,9 +35,13 @@ export type Run = {
   toMargin: number;
 };
 
-/** "Q3 2:25": the period and the clock left in it. */
-export function periodClock(elapsed: number, bounds: number[]) {
-  let i = bounds.findIndex((b) => elapsed <= b);
+/**
+ * "Q3 2:25": the period and the clock left in it. A moment exactly on a
+ * period line belongs to the period it ends, unless `opening` (a five that
+ * came on there started the next period: "Q3 10:00", not "Q2 0:00").
+ */
+export function periodClock(elapsed: number, bounds: number[], opening = false) {
+  let i = bounds.findIndex((b) => (opening ? elapsed < b : elapsed <= b));
   if (i < 0) i = bounds.length - 1;
   const left = Math.max(0, Math.round(bounds[i] - elapsed));
   return `${i < 4 ? `Q${i + 1}` : `OT${i - 3}`} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
@@ -149,11 +156,13 @@ export function runLineups(model: RibbonModel, run: Run): RunLineups {
       if (k !== prev) changes++;
       prev = k;
     }
+    // No five before it (tip-off, or a gap in the lanes): nobody came in.
+    const known = before.length > 0;
     return {
       side,
       onSince: Number.isFinite(onSince) ? onSince : run.start,
-      cameIn: label(now, beforeKeys),
-      wentOut: label(before, nowKeys),
+      cameIn: known ? label(now, beforeKeys) : [],
+      wentOut: known ? label(before, nowKeys) : [],
       changesDuring: changes,
       stayedOn: changes === 0,
     };
@@ -281,10 +290,11 @@ export function runExplanation(
   run: Run,
   names: Record<Side, string>,
   standouts: Standout[] = runStandouts(model.events, run),
+  lineups: RunLineups = runLineups(model, run),
 ): string[] {
   const at = (t: number) => periodClock(t, model.bounds),
-    sign = run.side === "own" ? 1 : -1,
-    lineups = runLineups(model, run);
+    since = (t: number) => periodClock(t, model.bounds, true),
+    sign = run.side === "own" ? 1 : -1;
   const lines = [
     `${names[run.side]} ${run.pts}-${run.oppPts} · ${at(run.start)} – ${at(run.end)} · from ${swing(sign * run.fromMargin)} to ${swing(sign * run.toMargin)}`,
     ...lineups.map((l) => {
@@ -294,11 +304,19 @@ export function runExplanation(
       const during = l.changesDuring
         ? `; ${l.changesDuring} change${l.changesDuring === 1 ? "" : "s"} during the run`
         : "; stayed on throughout";
-      return `${names[l.side]}: this five had been on since ${at(l.onSince)}${change}${during}`;
+      const five =
+        !l.cameIn.length && l.onSince <= 0
+          ? "the starting five"
+          : `this five had been on since ${since(l.onSince)}${change}`;
+      return `${names[l.side]}: ${five}${during}`;
     }),
     ...standouts.map((s) => standoutLine(names[s.side], s)),
   ];
-  const mover = lineups[0];
+  // A change "lines up" only when it came shortly before the run's first
+  // point; when both teams changed, neither is credited (spec anti-goal).
+  const close = lineups.filter(
+    (l) => l.cameIn.length && run.start - l.onSince <= CHANGE_WINDOW,
+  );
   if (standouts.length && standouts.every((s) => s.variance)) {
     const hot = standouts.some(
       (s) => s.inRun.made / s.inRun.att > s.rest.made / s.rest.att,
@@ -306,13 +324,19 @@ export function runExplanation(
     lines.push(
       `Estimated cause: ${hot ? "hot" : "cold"} three-point shooting; no lineup effect is claimed.`,
     );
-  } else if (mover.cameIn.length)
+  } else if (close.length === 2)
     lines.push(
-      `Estimated cause: the lineup change at ${at(mover.onSince)} lines up with the run; this is a timing match, not proof.`,
+      `Estimated cause: both teams changed lineups shortly before the run (${close.map((l) => `${names[l.side]} at ${since(l.onSince)}`).join(", ")}), so the swing is not credited to either; this is a timing match, not proof.`,
+    );
+  else if (close.length === 1)
+    lines.push(
+      `Estimated cause: ${names[close[0].side]}'s lineup change at ${since(close[0].onSince)} lines up with the run; this is a timing match, not proof.`,
     );
   else
     lines.push(
-      "Estimated cause: no lineup change lines up with the run; the results above are what stood out.",
+      standouts.length
+        ? "Estimated cause: same fives as before the run; the results above are what stood out."
+        : "Estimated cause: same fives as before the run; no lineup change is claimed.",
     );
   return lines;
 }

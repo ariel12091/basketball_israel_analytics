@@ -86,6 +86,10 @@ check_events_league <- function(con, league) {
     ev <- events_for(con, league, gid, teams[1])
     expect_false(is.null(ev), info = sprintf("%s game %d has events", league, gid))
     if (is.null(ev)) next
+    # Every event carries its credited five (the readers keep unmatched
+    # lineups with NULL players rather than dropping the event).
+    no_five <- sum(vapply(ev, function(e) length(unlist(e$players)) != 5, TRUE))
+    expect_equal(no_five, 0, info = sprintf("%s game %d events without a credited five", league, gid))
     for (k in seq_len(nrow(ff))) {
       got <- events_sums(ev, ff$team_id[k], ff$player_id[k],
                          ff$type_lineup[k] == "offense")
