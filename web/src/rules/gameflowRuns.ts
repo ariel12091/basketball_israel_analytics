@@ -169,12 +169,14 @@ export function runLineups(model: RibbonModel, run: Run): RunLineups {
   });
 }
 
-export type StandoutMetric = EventKind | "rtg";
+/** Rates only: points per possession restates the run, so it is never a
+ *  cause (user 2026-11-11). */
+export type StandoutMetric = EventKind;
 export type Standout = {
   side: Side;
   metric: StandoutMetric;
   /** made/att for shooting; turnovers/possessions; offensive rebounds/own
-   *  missed shots; points/possessions for rating. */
+   *  missed shots. */
   inRun: { made: number; att: number };
   rest: { made: number; att: number };
   /** A three-point streak: shooting variance, never credited to a lineup. */
@@ -187,26 +189,22 @@ const MIN_ATT: Record<StandoutMetric, number> = {
   ft: 6,
   oreb: 6,
   tov: 8,
-  rtg: 8,
 };
-/** Gap needed, in percentage points (per 100 possessions for rating). */
+/** Gap needed, in percentage points. */
 const MIN_GAP: Record<StandoutMetric, number> = {
   fg2: 20,
   fg3: 20,
   ft: 20,
   oreb: 20,
   tov: 20,
-  rtg: 40,
 };
-const METRICS: StandoutMetric[] = ["fg3", "fg2", "ft", "tov", "oreb", "rtg"];
+const METRICS: StandoutMetric[] = ["fg3", "fg2", "ft", "tov", "oreb"];
 
 function count(rows: GameflowEvent[], metric: StandoutMetric) {
   const poss = rows.filter((e) => e.poss_end).length;
   switch (metric) {
     case "tov":
       return { made: rows.filter((e) => e.kind === "tov").length, att: poss };
-    case "rtg":
-      return { made: rows.reduce((s, e) => s + e.pts, 0), att: poss };
     case "oreb":
       return {
         made: rows.filter((e) => e.kind === "oreb").length,
@@ -222,9 +220,7 @@ function count(rows: GameflowEvent[], metric: StandoutMetric) {
 /**
  * At most two results that stand out against the rest of the same game, for
  * either team. At most one is a three-point line (shooting variance), so a
- * run's non-luck cause is not crowded out by both teams' threes. Rating
- * restates the run itself, so it ranks after any other standout and fills a
- * slot only when fewer than two others qualify.
+ * run's non-luck cause is not crowded out by both teams' threes.
  */
 export function runStandouts(events: GameflowEvent[], run: Run): Standout[] {
   const found: (Standout & { score: number })[] = [];
@@ -245,7 +241,7 @@ export function runStandouts(events: GameflowEvent[], run: Run): Standout[] {
         inRun,
         rest,
         variance: metric === "fg3",
-        score: (metric === "rtg" ? 0 : 1000) + gap / MIN_GAP[metric],
+        score: gap / MIN_GAP[metric],
       });
     }
   }
@@ -262,21 +258,22 @@ export function runStandouts(events: GameflowEvent[], run: Run): Standout[] {
 const swing = (m: number) => (m > 0 ? `up ${m}` : m < 0 ? `down ${-m}` : "level");
 const pct = (made: number, att: number) => `${rRound((100 * made) / att, 0)}%`;
 function standoutLine(team: string, s: Standout) {
-  const { made, att } = s.inRun,
-    rest = s.rest;
+  // The rate first, its counts after (user 2026-11-11: percentages, with the
+  // counts that keep a small sample honest).
+  const run = `${pct(s.inRun.made, s.inRun.att)}`,
+    runN = `(${s.inRun.made}/${s.inRun.att})`,
+    rest = `${pct(s.rest.made, s.rest.att)} the rest of the game (${s.rest.made}/${s.rest.att})`;
   switch (s.metric) {
     case "fg3":
-      return `${team} ${made}/${att} from three (${rest.made}/${rest.att} the rest of the game) — shooting variance`;
+      return `${team} ${run} from three ${runN}, ${rest} — shooting variance`;
     case "fg2":
-      return `${team} ${made}/${att} inside the arc (${rest.made}/${rest.att} the rest of the game)`;
+      return `${team} ${run} inside the arc ${runN}, ${rest}`;
     case "ft":
-      return `${team} ${made}/${att} from the line (${rest.made}/${rest.att} the rest of the game)`;
+      return `${team} ${run} from the line ${runN}, ${rest}`;
     case "tov":
-      return `${team} ${made} turnovers in ${att} possessions (${pct(rest.made, rest.att)} otherwise)`;
+      return `${team} turned it over on ${run} of possessions ${runN}, ${rest}`;
     case "oreb":
-      return `${team} ${made} offensive rebounds on ${att} missed shots (${pct(rest.made, rest.att)} otherwise)`;
-    case "rtg":
-      return `${team} ${made} points on ${att} possessions (${rest.made} on ${rest.att} the rest of the game)`;
+      return `${team} rebounded ${run} of its missed shots ${runN}, ${rest}`;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stintRatings } from "./gameflowRatings";
+import { stintRatings, windowsRatings } from "./gameflowRatings";
 import { ribbonModel, type GameflowEvent, type RawRibbon } from "./gameflow";
 import fixture673 from "./__fixtures__/gameflow-673.json";
 
@@ -76,6 +76,29 @@ describe("stintRatings", () => {
     expect(onlyOff.ortg).toBe(200);
     expect(onlyOff.drtg).toBeNull();
     expect(onlyOff.net).toBeNull();
+  });
+});
+
+describe("windowsRatings", () => {
+  it("sums a five's events over all its windows", () => {
+    const events = [
+      ev({ elapsed: 10, pts: 2, order_key: 1 }),
+      ev({ elapsed: 50, pts: 3, order_key: 2 }),
+      ev({ elapsed: 90, off: false, pts: 2, order_key: 3 }),
+      ev({ elapsed: 200, pts: 2, order_key: 4 }),
+    ];
+    const r = windowsRatings(events, "own", FIVE, [
+      { start: 0, end: 60 },
+      { start: 80, end: 100 },
+    ]);
+    expect(r).toMatchObject({ offPoss: 2, offPts: 5, defPoss: 1, defPts: 2, net: 50 });
+  });
+  it("counts an event on a shared window edge once", () => {
+    const r = windowsRatings([ev({ elapsed: 60 })], "own", FIVE, [
+      { start: 0, end: 60 },
+      { start: 60, end: 100 },
+    ]);
+    expect(r.offPoss).toBe(1);
   });
 });
 

@@ -154,11 +154,12 @@ describe("runExplanation", () => {
     expect(l[2]).toBe(
       "Hapoel Tel-Aviv: this five had been on since Q3 3:01 (OZ BLAYZER in for TOMER GINAT); 5 changes during the run",
     );
+    // Percentages lead, counts follow (user 2026-11-11).
     expect(l[3]).toBe(
-      "Maccabi Tel-Aviv 9/12 from three (3/17 the rest of the game) — shooting variance",
+      "Maccabi Tel-Aviv 75% from three (9/12), 18% the rest of the game (3/17) — shooting variance",
     );
     expect(l[4]).toBe(
-      "Hapoel Tel-Aviv 1/6 inside the arc (15/28 the rest of the game)",
+      "Hapoel Tel-Aviv 17% inside the arc (1/6), 54% the rest of the game (15/28)",
     );
     // Both teams changed shortly before the run: neither is credited.
     expect(l[5]).toBe(
@@ -219,9 +220,23 @@ describe("runStandouts", () => {
       { side: "opp", metric: "fg2", inRun: { made: 1, att: 6 }, rest: { made: 15, att: 28 }, variance: false },
     ]);
   });
+  it("never offers points per possession as a cause", () => {
+    for (const r of detectRuns(model673.steps))
+      expect(runStandouts(model673.events, r).map((x) => String(x.metric))).not.toContain("rtg");
+  });
+  it("words turnovers and offensive rebounds as rates with counts", () => {
+    const r = detectRuns(model673.steps).find((x) => x.defining)!;
+    const names = { own: "A", opp: "B" };
+    const l = runExplanation(model673, r, names, [
+      { side: "opp", metric: "tov", inRun: { made: 8, att: 19 }, rest: { made: 8, att: 55 }, variance: false },
+      { side: "own", metric: "oreb", inRun: { made: 4, att: 10 }, rest: { made: 5, att: 20 }, variance: false },
+    ]);
+    expect(l[3]).toBe("B turned it over on 42% of possessions (8/19), 15% the rest of the game (8/55)");
+    expect(l[4]).toBe("A rebounded 40% of its missed shots (4/10), 25% the rest of the game (5/20)");
+  });
   it("rests every number on enough attempts", () => {
     for (const x of s) {
-      const min = x.metric === "tov" || x.metric === "rtg" ? 8 : 6;
+      const min = x.metric === "tov" ? 8 : 6;
       expect(x.inRun.att).toBeGreaterThanOrEqual(min);
       expect(x.rest.att).toBeGreaterThanOrEqual(min);
     }

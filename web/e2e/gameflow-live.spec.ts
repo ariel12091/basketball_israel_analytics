@@ -78,5 +78,5 @@ test("Gameflow 673 shows the defining run and a rated card live", async ({
   }).toPass({ timeout: 20000 });
   await expect(
     page.getByRole("region", { name: /dibartolomeo game detail/i }),
-  ).toContainText(/Net[+-]?[\d.]+ on \d+ poss/);
+  ).toContainText(/Net[+-]?[\d.]+ORtg/);
 });

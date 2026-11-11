@@ -37,6 +37,7 @@ import type { Side, Window as Span } from "@/rules/gameflow";
 import {
   netLabel,
   stintRatings,
+  windowsRatings,
   type StintRatings,
 } from "@/rules/gameflowRatings";
 import { useTabData } from "./TabKit";
@@ -529,7 +530,25 @@ const stintLineups = (data: GameflowPayload, w: BarWindow) =>
     ),
   );
 const TIP_WIDTH = 400,
-  TIP_ROWS = 6;
+  // At most two lineups in a bar's tip (user 2026-11-11); the rest are a
+  // click away.
+  TIP_ROWS = 2;
+/** A listed lineup's Net over its windows, from the five's credited events. */
+function lineupNet(
+  data: GameflowPayload,
+  g: ReturnType<typeof aggregateSegments>[number],
+) {
+  const key = data.dict[g.dictIndex]?.lineup_key;
+  if (!data.events.length || key == null) return null;
+  const five = [
+    ...new Set(
+      data.lanes
+        .filter((l) => l.side === g.side && l.lineup_key === key)
+        .map((l) => l.player_key),
+    ),
+  ];
+  return windowsRatings(data.events, g.side, five, g.windows).net;
+}
 /** What a hovered stint holds, floating clear of its bar: nothing moves. */
 function GameflowHoverTip({
   data,
@@ -576,8 +595,7 @@ function GameflowHoverTip({
       </div>
       <div className="gf-hover-tip-stats">
         {clock(d.end - d.start)} on the floor · +/- {d.pm}
-        {rtg &&
-          ` · Net ${netLabel(rtg.net)} on ${rtg.offPoss + rtg.defPoss} poss`}
+        {rtg && ` · Net ${netLabel(rtg.net)}`}
         {d.pf !== "" && ` · ${d.pf} for, ${d.pa} against`}
       </div>
       {lineups.slice(0, TIP_ROWS).map((g) => (
@@ -649,10 +667,11 @@ type CardStats = {
   /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
   ratings?: StintRatings;
 };
+// Ratings only, no possession count (user 2026-11-11).
 const RATING_ROWS = [
-  { dt: "Net", value: (r: StintRatings) => netLabel(r.net), poss: (r: StintRatings) => r.offPoss + r.defPoss },
-  { dt: "ORtg", value: (r: StintRatings) => ratingLabel(r.ortg), poss: (r: StintRatings) => r.offPoss },
-  { dt: "DRtg", value: (r: StintRatings) => ratingLabel(r.drtg), poss: (r: StintRatings) => r.defPoss },
+  { dt: "Net", value: (r: StintRatings) => netLabel(r.net) },
+  { dt: "ORtg", value: (r: StintRatings) => ratingLabel(r.ortg) },
+  { dt: "DRtg", value: (r: StintRatings) => ratingLabel(r.drtg) },
 ];
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
@@ -692,9 +711,7 @@ function StintStats({ d }: { d: CardStats }) {
         RATING_ROWS.map((row) => (
           <div key={row.dt}>
             <dt>{row.dt}</dt>
-            <dd>
-              {row.value(d.ratings!)} on {row.poss(d.ratings!)} poss
-            </dd>
+            <dd>{row.value(d.ratings!)}</dd>
           </div>
         ))}
     </dl>
@@ -880,7 +897,11 @@ function GameflowDetails({
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}
                           {selected.length > 1 ? "shared" : "total"}
-                          {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""} ·{" "}
+                          {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+                          {data.events.length
+                            ? ` · Net ${netLabel(lineupNet(data, g))}`
+                            : ""}{" "}
+                          ·{" "}
                           {g.windows
                             .map((w) => `${clock(w.start)}–${clock(w.end)}`)
                             .join(", ")}

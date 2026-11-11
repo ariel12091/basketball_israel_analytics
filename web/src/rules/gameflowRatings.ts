@@ -32,13 +32,31 @@ export function stintRatings(
   players: string[],
   window?: Window,
 ): StintRatings {
+  return windowsRatings(events, side, players, window ? [window] : null);
+}
+
+/**
+ * The same over several windows (a lineup's stints): an event counts once
+ * when it falls in any of them, so a shared window edge is not doubled.
+ * `null` means the whole game.
+ */
+export function windowsRatings(
+  events: GameflowEvent[],
+  side: Side,
+  players: string[],
+  windows: Window[] | null,
+): StintRatings {
   let offPoss = 0,
     offPts = 0,
     defPoss = 0,
     defPts = 0;
   for (const e of events) {
     if (e.side !== side) continue;
-    if (window && (e.elapsed < window.start || e.elapsed > window.end)) continue;
+    if (
+      windows &&
+      !windows.some((w) => e.elapsed >= w.start && e.elapsed <= w.end)
+    )
+      continue;
     if (!players.every((p) => e.players.includes(p))) continue;
     if (e.off) {
       offPoss += Number(e.poss_end);

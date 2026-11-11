@@ -161,7 +161,8 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
   });
 
 // Stint ratings (shared_definitions.md, Gameflow stint rating), from the
-// committed reader fixtures: Net/ORtg/DRtg with possession counts on the card
+// committed reader fixtures: Net/ORtg/DRtg on the card (no possession count,
+// user 2026-11-11), Net in a bar's hover tip and on each lineup row
 // and Net in a bar's hover tip.
 const routeFixture = async (
   page: import("@playwright/test").Page,
@@ -180,7 +181,7 @@ const routeFixture = async (
 };
 const signed = (v: number | null) =>
   v != null && rRound(v, 1) > 0 ? `+${ratingLabel(v)}` : ratingLabel(v);
-test("Gameflow card shows Net, ORtg and DRtg with possessions", async ({
+test("Gameflow card shows Net, ORtg and DRtg", async ({
   page,
 }) => {
   const { answer } = await routeFixture(page, 673);
@@ -198,9 +199,11 @@ test("Gameflow card shows Net, ORtg and DRtg with possessions", async ({
   await lane(`own:${dib.player_key}`).click();
   await page.mouse.move(0, 0);
   const card = page.getByRole("region", { name: `${dib.player_label} game detail` });
-  await expect(card).toContainText(`Net${signed(r.net)} on ${r.offPoss + r.defPoss} poss`);
-  await expect(card).toContainText(`ORtg${ratingLabel(r.ortg)} on ${r.offPoss} poss`);
-  await expect(card).toContainText(`DRtg${ratingLabel(r.drtg)} on ${r.defPoss} poss`);
+  await expect(card).toContainText(`Net${signed(r.net)}ORtg${ratingLabel(r.ortg)}DRtg${ratingLabel(r.drtg)}`);
+  await expect(card).not.toContainText("poss");
+  // Each lineup row of his game carries its Net too.
+  const rows = page.getByRole("region", { name: "Stint lineups", exact: true }).getByRole("button");
+  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.]+|· Net –/);
   await expect(card).toContainText("+/-");
   const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
   await lane(`own:${wallace.player_key}`).click();
@@ -233,7 +236,10 @@ test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   const box = (await bar.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2 - 2, box.y + box.height / 2);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ on \d+ poss/);
+  await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
+  await expect(page.getByRole("tooltip")).not.toContainText("poss");
+  // At most two lineups in the tip (user 2026-11-11).
+  expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
 });
 test("EuroLeague Gameflow card shows ratings", async ({ page }) => {
   const { answer } = await routeFixture(page, 1147);
@@ -244,7 +250,7 @@ test("EuroLeague Gameflow card shows ratings", async ({ page }) => {
     .first()
     .click();
   await page.mouse.move(0, 0);
-  await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+ on \d+ poss/);
+  await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+DRtg/);
 });
 
 // Runs (shared_definitions.md, Gameflow run): a band per run over the chart
@@ -275,7 +281,7 @@ test("Gameflow marks game 673's runs and explains the defining one", async ({
   expect(lines[1]).toContain("DIBARTOLOMEO");
   const three = lines.findIndex((l) => l.includes("from three"));
   expect(three).toBeGreaterThan(2);
-  expect(lines[three]).toMatch(/\(\d+\/\d+ the rest of the game\) — shooting variance$/);
+  expect(lines[three]).toMatch(/\d+% from three \(\d+\/\d+\), \d+% the rest of the game \(\d+\/\d+\) — shooting variance$/);
   expect(lines.at(-1)).toMatch(/^Estimated cause/);
   if (info.project.name === "phone") {
     // A second tap closes the pinned tip; so does a tap elsewhere.
