@@ -11,6 +11,7 @@ import type {
   Side,
 } from "./gameflow";
 import { rRound } from "./round";
+import { aggregateSegments, points, type Segment } from "./gameflow";
 
 /** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP. */
 export const RUN_MIN_NET = 10;
@@ -336,4 +337,37 @@ export function runExplanation(
         : "Estimated cause: same fives as before the run; no lineup change is claimed.",
     );
   return lines;
+}
+
+/**
+ * Both teams' lineups during a run (user 2026-11-11: a click on its band),
+ * run team first, each with only its time inside the run's window and the
+ * +/- over that time; each team's lineups longest first.
+ */
+export function runLineupGroups(model: RibbonModel, run: Run) {
+  const order: Side[] = run.side === "own" ? ["own", "opp"] : ["opp", "own"];
+  return order.flatMap((side) => {
+    const seen = new Set<string>(),
+      segments: Segment[] = [];
+    for (const l of model.lanes) {
+      if (l.side !== side || l.end_elapsed <= run.start || l.start_elapsed >= run.end)
+        continue;
+      // A lane row per player per segment: one segment per lineup stretch.
+      const key = `${l.lineup_key}:${l.start_elapsed}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const start = Math.max(run.start, l.start_elapsed),
+        end = Math.min(run.end, l.end_elapsed);
+      segments.push({
+        side,
+        start,
+        end,
+        dictIndex: model.dict.findIndex(
+          (d) => d.side === side && d.lineup_key === l.lineup_key,
+        ),
+        pm: points(side, start, end, model.steps).pm,
+      });
+    }
+    return aggregateSegments(segments).sort((a, b) => b.duration - a.duration);
+  });
 }

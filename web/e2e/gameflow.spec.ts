@@ -368,11 +368,30 @@ test("Phone: Together bar pinned on screen and a short lineup list", async ({
   await bar.click();
   await expect(page.locator(".gf-player-cards")).toBeInViewport();
 });
-test("Run bands open no tip of their own", async ({ page }, info) => {
-  test.skip(info.project.name === "phone", "hover only");
-  await routeFixture(page, 673);
-  const band = page.locator(".gf-run-band.is-defining").first();
-  await expect(band).toHaveCSS("pointer-events", "none");
+test("A run's band lists both teams' lineups inside the run", async ({ page }, info) => {
+  const { answer } = await routeFixture(page, 673);
+  const run = answer.runs.find((r) => r.defining)!;
+  const band = page.locator(`.gf-run-band[data-start="${run.start}"]`).first();
+  await band.scrollIntoViewIfNeeded();
+  // Its top strip, above the first lane row: no bar covers it there.
+  const box = (await band.boundingBox())!;
+  const click = () => page.mouse.click(box.x + box.width / 2, box.y + 4);
+  if (info.project.name === "desktop") {
+    await page.mouse.move(box.x + box.width / 2, box.y + 4);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+  }
+  await click();
+  const list = page.getByRole("region", { name: "Run lineups", exact: true });
+  await expect(list).toBeVisible();
+  await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText("Maccabi Tel-Aviv 37-5");
+  // Both teams, the run team first.
+  await expect(list.locator(".ibpl-ribbon-detail-list")).toHaveCount(2);
+  const heads = await list.locator(".ibpl-ribbon-detail-head").allTextContents();
+  expect(heads.slice(1)).toEqual(["Maccabi Tel-Aviv", "Hapoel Tel-Aviv"]);
+  await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText("in the run");
+  // The same band again closes it.
+  await page.mouse.click(box.x + box.width / 2, box.y + 4);
+  await expect(list).toHaveCount(0);
 });
 test("Gameflow draws no run in a game without one", async ({ page }) => {
   await routeFixture(page, 440);

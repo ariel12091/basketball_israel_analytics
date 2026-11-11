@@ -2,6 +2,7 @@
 // reducer: every transition sets all six fields together, so none can be
 // left stale by a handler that forgot one.
 import { laneKey, type Bar, type Window } from "./gameflow";
+import type { Run } from "./gameflowRuns";
 
 /** A bar's stint, or (start 0 to the game's end) a player's whole game. */
 export type BarWindow = { bar: Bar; start: number; end: number };
@@ -17,6 +18,8 @@ export type Selection = {
   focus: string | null;
   /** The windows of the lineup row under the pointer. */
   preview: Window[] | null;
+  /** The run whose band was clicked: its lineups, both teams. */
+  run: Run | null;
 };
 
 export type SelectionAction =
@@ -26,7 +29,9 @@ export type SelectionAction =
   | { type: "hover"; window: BarWindow | null; box: DOMRect | null }
   /** A shared-lineup row was clicked: focus it, or unfocus it if focused. */
   | { type: "focus"; key: string }
-  | { type: "preview"; windows: Window[] | null };
+  | { type: "preview"; windows: Window[] | null }
+  /** A run's band was clicked: show it, or close it if shown. */
+  | { type: "run"; run: Run };
 
 export const EMPTY_SELECTION: Selection = {
   selected: [],
@@ -35,6 +40,7 @@ export const EMPTY_SELECTION: Selection = {
   hoverBox: null,
   focus: null,
   preview: null,
+  run: null,
 };
 
 const wholeGame = (w: BarWindow, end: number) => w.start === 0 && w.end === end;
@@ -51,7 +57,7 @@ export function selectionReducer(s: Selection, a: SelectionAction): Selection {
   switch (a.type) {
     case "toggle": {
       const key = laneKey(a.bar),
-        cleared = { ...s, focus: null, preview: null, hover: null },
+        cleared = { ...s, focus: null, preview: null, hover: null, run: null },
         stint = stintOf(s, a.end);
       // Another stint of the player on show moves to it, rather than deselecting.
       if (
@@ -88,5 +94,10 @@ export function selectionReducer(s: Selection, a: SelectionAction): Selection {
       return { ...s, focus: s.focus === a.key ? null : a.key, preview: null };
     case "preview":
       return { ...s, preview: a.windows };
+    // A run replaces any player selection; its band again closes it.
+    case "run":
+      return s.run && s.run.start === a.run.start && s.run.side === a.run.side
+        ? EMPTY_SELECTION
+        : { ...EMPTY_SELECTION, run: a.run };
   }
 }

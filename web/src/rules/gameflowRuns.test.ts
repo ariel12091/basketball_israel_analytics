@@ -3,6 +3,7 @@ import {
   detectRuns,
   periodClock,
   runExplanation,
+  runLineupGroups,
   runLineups,
   runStandouts,
 } from "./gameflowRuns";
@@ -243,5 +244,31 @@ describe("runStandouts", () => {
   });
   it("shows nothing on a short stretch", () => {
     expect(runStandouts(model673.events, { ...d, end: d.start + 30 })).toEqual([]);
+  });
+});
+
+describe("runLineupGroups", () => {
+  const d = detectRuns(model673.steps).find((r) => r.defining)!;
+  const groups = runLineupGroups(model673, d);
+  it("lists both teams' lineups, run team first", () => {
+    expect(groups[0].side).toBe("own");
+    expect(new Set(groups.map((g) => g.side))).toEqual(new Set(["own", "opp"]));
+  });
+  it("counts only the time inside the run", () => {
+    for (const side of ["own", "opp"] as const) {
+      const secs = groups.filter((g) => g.side === side).reduce((t, g) => t + g.duration, 0);
+      expect(secs).toBeCloseTo(d.end - d.start, 6);
+    }
+    for (const g of groups)
+      for (const w of g.windows) {
+        expect(w.start).toBeGreaterThanOrEqual(d.start);
+        expect(w.end).toBeLessThanOrEqual(d.end);
+      }
+  });
+  it("orders each team's lineups by time in the run", () => {
+    for (const side of ["own", "opp"] as const) {
+      const t = groups.filter((g) => g.side === side).map((g) => g.duration);
+      expect(t).toEqual([...t].sort((a, b) => b - a));
+    }
   });
 });

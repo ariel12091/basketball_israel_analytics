@@ -48,7 +48,12 @@ export default function GameflowChart({
   runs = [],
   openRun = null,
   onRun,
+  selectedRun = null,
+  onRunSelect,
 }: {
+  /** The run whose band was clicked, and how a band click selects one. */
+  selectedRun?: Run | null;
+  onRunSelect?: (run: Run) => void;
   /** Scoring runs (detectRuns()): a band each, and a chip where it starts. */
   runs?: Run[];
   openRun?: Run | null;
@@ -373,13 +378,16 @@ export default function GameflowChart({
           return (
             <rect
               key={`${r.side}:${r.start}`}
-              className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${same(openRun, r) ? " is-open" : ""}`}
+              className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${same(openRun, r) || same(selectedRun, r) ? " is-open" : ""}`}
               data-start={r.start}
               data-end={r.end}
               x={x(a)}
               y={geometry.padTop}
               width={Math.max(1, (b - a) * scale)}
               height={totalH - geometry.padTop}
+              // A pointer convenience over the empty lanes; the chip is the
+              // keyboard path to the run.
+              onClick={() => onRunSelect?.(r)}
             />
           );
         })}

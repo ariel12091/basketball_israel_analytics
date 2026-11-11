@@ -518,9 +518,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 /* Gameflow runs: a band over the chart and the rows in the run team's colour
    (own = accent, opp = muted, as the lanes), and a chip where it starts. The
    defining stretch is the strong band and the filled chip. */
-/* The band only marks the run: its explanation is the chip's (user
-   2026-11-11: a band-wide tip repeated it and opened off-screen). */
-.gf-run-band { pointer-events: none; fill-opacity: 0.12; }
+/* The band opens no tip (user 2026-11-11: it repeated the chip's and opened
+   off-screen); a click on it lists the run's lineups. Bars sit above it. */
+.gf-run-band { pointer-events: all; cursor: pointer; fill-opacity: 0.12; }
 .gf-run-band.is-own { fill: var(--ibpl-accent); }
 .gf-run-band.is-opp { fill: var(--ibpl-text-muted); }
 .gf-run-band.is-defining { fill-opacity: 0.22; }

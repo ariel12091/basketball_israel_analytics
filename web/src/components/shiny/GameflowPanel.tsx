@@ -42,7 +42,7 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type RunTrigger } from "./GameflowChart";
-import type { Run } from "@/rules/gameflowRuns";
+import { runLineupGroups, type Run } from "@/rules/gameflowRuns";
 import type { ExplainedRun } from "@/rules/gameflowSummary";
 import {
   EMPTY_SELECTION,
@@ -113,7 +113,7 @@ export function GameflowView({
   compact: boolean;
 }) {
   const [selection, dispatch] = useReducer(selectionReducer, EMPTY_SELECTION),
-    { selected, active, hover, hoverBox, focus, preview } = selection,
+    { selected, active, hover, hoverBox, focus, preview, run } = selection,
     gameEnd = data.bounds[data.bounds.length - 1],
     [lineupsUsed, setLineupsUsed] = useState<number | null>(null),
     [full, setFull] = useState(false),
@@ -140,8 +140,10 @@ export function GameflowView({
     restingOn = useRef<{ window: BarWindow; box: DOMRect } | null>(null);
   const windows = sharedWindows(data.bars, selected),
     total = windows.reduce((sum, w) => sum + w.end - w.start, 0);
-  const groups =
-    selected.length > 1
+  // A clicked run's band: both teams' lineups during it (user 2026-11-11).
+  const groups = run
+    ? runLineupGroups(data, run)
+    : selected.length > 1
       ? sharedLineups(data, selected, windows)
       : active
         ? stintLineups(data, active)
@@ -162,10 +164,12 @@ export function GameflowView({
   const highlight =
     preview ??
     (focused
-      ? selected.length > 1
+      ? selected.length > 1 || run
         ? focused.windows
         : echo!
-      : stint
+      : run
+        ? [{ start: run.start, end: run.end }]
+        : stint
         ? [{ start: stint.start, end: stint.end }]
         : selected.length
           ? windows
@@ -233,6 +237,8 @@ export function GameflowView({
     layout,
     ratingMode,
     runs,
+    selectedRun: run,
+    onRunSelect: (r: Run) => dispatch({ type: "run", run: r }),
     openRun: runTip?.run ?? null,
     // The chart hands back the run objects it was given (data.runs).
     onRun: (r: Run | null, box: DOMRect | null, how: RunTrigger) => {
@@ -249,7 +255,9 @@ export function GameflowView({
       });
     },
   };
-  const prompt = stint
+  const prompt = run
+    ? `${(run as ExplainedRun).lines?.[0] ?? "Run"}. Select the run again to close it.`
+    : stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
     : selected.length
       ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
@@ -268,6 +276,7 @@ export function GameflowView({
       groups={groups}
       groupKey={groupKey}
       focus={focus}
+      run={run}
       dispatch={dispatch}
       detail={detail}
       compact={compact}
@@ -786,8 +795,11 @@ function GameflowDetails({
   dispatch,
   detail,
   compact = false,
+  run = null,
 }: {
   compact?: boolean;
+  /** A clicked run: the list holds its lineups. */
+  run?: Run | null;
   data: GameflowPayload;
   activeWindow: BarWindow | null;
   showStint: boolean;
@@ -801,11 +813,18 @@ function GameflowDetails({
   // A card per click (user 2026-11-07): the stint clicked, else each selected
   // player's whole game, plus the minutes they shared when there are several.
   const bars = (key: string) => data.bars.filter((b) => laneKey(b) === key);
-  // Phones list the top LINEUPS_SHORT lineups, the rest one tap away, so the
+  // Phones list each team's top LINEUPS_SHORT lineups, the rest one tap away, so the
   // cards above the chart stay short (user 2026-11-11, minimal scrolling).
   const [showAll, setShowAll] = useState(false),
+    // Per team, so a run's list keeps both teams.
     shown =
-      compact && !showAll ? groups.slice(0, LINEUPS_SHORT) : groups;
+      compact && !showAll
+        ? groups.filter(
+            (g, i) =>
+              groups.slice(0, i).filter((h) => h.side === g.side).length <
+              LINEUPS_SHORT,
+          )
+        : groups;
   // Credited-lineup ratings, when the reader returned events.
   const rate = (side: Side, keys: string[], window?: Span) =>
     data.events.length
@@ -921,14 +940,17 @@ function GameflowDetails({
         <section
           className="ibpl-ribbon-detail ibpl-ribbon-shared-lineups"
           ref={detail}
-          aria-label={selected.length > 1 ? "Shared lineups" : "Stint lineups"}
+          aria-label={run ? "Run lineups" : selected.length > 1 ? "Shared lineups" : "Stint lineups"}
         >
           <div className="ibpl-ribbon-detail-head">
-            {selected.length > 1
+            {run
+              ? "Lineups in the run · time inside it only · select a lineup to highlight it"
+              : selected.length > 1
               ? "Shared lineups · select a lineup to highlight its shared minutes"
               : "Lineups · select a lineup to highlight its minutes"}
           </div>
-          {(["own", "opp"] as const).map(
+          {/* Sides in the groups' order: a run lists its team first. */}
+          {[...new Set(shown.map((g) => g.side))].map(
             (side) =>
               shown.some((g) => g.side === side) && (
                 <FragmentSide
@@ -960,7 +982,7 @@ function GameflowDetails({
                         </span>
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}
-                          {selected.length > 1 ? "shared" : "total"}
+                          {run ? "in the run" : selected.length > 1 ? "shared" : "total"}
                           {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
                           {data.events.length
                             ? ` · Net ${netLabel(lineupNet(data, g))}`
