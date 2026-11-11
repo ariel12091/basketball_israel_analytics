@@ -247,6 +247,63 @@ test("EuroLeague Gameflow card shows ratings", async ({ page }) => {
   await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+ on \d+ poss/);
 });
 
+// Runs (shared_definitions.md, Gameflow run): a band per run over the chart
+// and the rows, a chip naming it, and a tooltip that explains it.
+test("Gameflow marks game 673's runs and explains the defining one", async ({
+  page,
+}, info) => {
+  await routeFixture(page, 673);
+  const chips = page.locator(".gf-run-chip");
+  await expect(chips).toHaveCount(3);
+  const defining = page.getByRole("button", {
+    name: "Maccabi Tel-Aviv 37-5 run, defining stretch",
+  });
+  await expect(defining).toHaveText("37-5 ›");
+  await expect(defining).toHaveClass(/is-defining/);
+  await expect(defining).toHaveClass(/is-own/);
+  // The defining band crosses the Q3/Q4 line (elapsed 1800).
+  const band = page.locator(".gf-run-band.is-defining").first();
+  expect(Number(await band.getAttribute("data-start"))).toBeLessThan(1800);
+  expect(Number(await band.getAttribute("data-end"))).toBeGreaterThan(1800);
+  if (info.project.name === "phone") await defining.click();
+  else await defining.hover();
+  const tip = page.getByRole("tooltip").filter({ hasText: "Estimated cause" });
+  await expect(tip).toBeVisible();
+  const lines = await tip.locator(".gf-run-tip-line").allTextContents();
+  expect(lines[0]).toContain("Maccabi Tel-Aviv 37-5 · Q3 2:25 – Q4 2:31");
+  expect(lines[1]).toContain("since Q3 3:54");
+  expect(lines[1]).toContain("DIBARTOLOMEO");
+  const three = lines.findIndex((l) => l.includes("from three"));
+  expect(three).toBeGreaterThan(2);
+  expect(lines[three]).toMatch(/\(\d+\/\d+ the rest of the game\) — shooting variance$/);
+  expect(lines.at(-1)).toMatch(/^Estimated cause/);
+  if (info.project.name === "phone") {
+    // A second tap closes the pinned tip; so does a tap elsewhere.
+    await defining.click();
+    await expect(tip).toHaveCount(0);
+    await defining.click();
+    await expect(tip).toBeVisible();
+    await page.getByRole("button", { name: "Clear players" }).click();
+    await expect(tip).toHaveCount(0);
+  }
+  // Chips never overlap, at either width.
+  const boxes = await chips.evaluateAll((els) =>
+    els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right, r.top, r.bottom]),
+  );
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      const overlap = a[0] < b[1] && b[0] < a[1] && a[2] < b[3] && b[2] < a[3];
+      expect(overlap).toBe(false);
+    }
+});
+test("Gameflow draws no run in a game without one", async ({ page }) => {
+  await routeFixture(page, 440);
+  await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
+  await expect(page.locator(".gf-run-chip")).toHaveCount(0);
+  await expect(page.locator(".gf-run-band")).toHaveCount(0);
+});
+
 test("Gameflow errors can be retried", async ({ page }) => {
   const { answer, url } = loadGameflow("il_regular.json");
   let failed = true;

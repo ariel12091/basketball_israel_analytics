@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   detectRuns,
   periodClock,
+  runExplanation,
   runLineups,
   runStandouts,
 } from "./gameflowRuns";
@@ -106,6 +107,47 @@ describe("runLineups", () => {
   });
   it("puts the run team first", () => {
     expect(lu[0].side).toBe("own");
+  });
+});
+
+describe("runExplanation", () => {
+  const names = { own: "Maccabi Tel-Aviv", opp: "Hapoel Tel-Aviv" };
+  const runs = detectRuns(model673.steps);
+  const lines = (r: (typeof runs)[number]) => runExplanation(model673, r, names);
+  it("reads window, lineups, results and cause in order", () => {
+    const l = lines(runs.find((r) => r.defining)!);
+    expect(l[0]).toBe(
+      "Maccabi Tel-Aviv 37-5 · Q3 2:25 – Q4 2:31 · from down 20 to up 12",
+    );
+    expect(l[1]).toBe(
+      "Maccabi Tel-Aviv: this five had been on since Q3 3:54 (JOHN DIBARTOLOMEO in for OSHAE BRISSETT); 3 changes during the run",
+    );
+    expect(l[2]).toBe(
+      "Hapoel Tel-Aviv: this five had been on since Q3 3:01 (OZ BLAYZER in for TOMER GINAT); 5 changes during the run",
+    );
+    expect(l[3]).toBe(
+      "Maccabi Tel-Aviv 9/12 from three (3/17 the rest of the game) — shooting variance",
+    );
+    expect(l[4]).toBe(
+      "Hapoel Tel-Aviv 1/6 inside the arc (15/28 the rest of the game)",
+    );
+    expect(l[5]).toBe(
+      "Estimated cause: the lineup change at Q3 3:54 lines up with the run; this is a timing match, not proof.",
+    );
+    expect(l).toHaveLength(6);
+  });
+  it("reads the margin from the run team's side", () => {
+    const hapoel = runs.find((r) => r.side === "opp")!;
+    expect(lines(hapoel)[0]).toMatch(/^Hapoel Tel-Aviv 30-4 · Q2 2:50 – Q3 4:18 · from (down|up|level)/);
+  });
+  it("blames no lineup when only three-point shooting stands out", () => {
+    const r = runs.find((r) => r.defining)!;
+    const only3 = runExplanation(model673, r, names, [
+      { side: "own", metric: "fg3", inRun: { made: 9, att: 12 }, rest: { made: 3, att: 17 }, variance: true },
+    ]);
+    expect(only3.at(-1)).toBe(
+      "Estimated cause: hot three-point shooting; no lineup effect is claimed.",
+    );
   });
 });
 

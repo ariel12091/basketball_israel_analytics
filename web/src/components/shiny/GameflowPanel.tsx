@@ -1,7 +1,9 @@
 "use client";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -39,7 +41,8 @@ import {
 } from "@/rules/gameflowRatings";
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
-import GameflowChart from "./GameflowChart";
+import GameflowChart, { type RunTrigger } from "./GameflowChart";
+import { detectRuns, runExplanation, type Run } from "@/rules/gameflowRuns";
 import {
   EMPTY_SELECTION,
   selectionReducer,
@@ -117,7 +120,14 @@ export function GameflowView({
     [score, setScore] = useState(""),
     // Each team's ORtg in the score readouts (user 2026-11-07): since tip-off
     // by default, or over its last RATING_WINDOW possessions.
-    [ratingMode, setRatingMode] = useState<RatingMode | "off">("game");
+    [ratingMode, setRatingMode] = useState<RatingMode | "off">("game"),
+    // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
+    runs = useMemo(() => detectRuns(data.steps), [data.steps]),
+    [runTip, setRunTip] = useState<{
+      run: Run;
+      box: DOMRect;
+      pinned: boolean;
+    } | null>(null);
   const cards = useRef(new Map<number, HTMLElement>()),
     detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
@@ -186,6 +196,19 @@ export function GameflowView({
           lineupsOpen,
         )
       : undefined;
+  // A tapped run tip is placed once: touching anywhere else (which is also
+  // how a touch scroll starts) closes it. Not on scroll events: layout can
+  // scroll the page right after the tap.
+  const pinnedTip = runTip?.pinned ?? false;
+  useEffect(() => {
+    if (!pinnedTip) return;
+    const close = (e: PointerEvent) => {
+      if ((e.target as Element).closest?.(".gf-run-chip, .gf-run-tip")) return;
+      setRunTip(null);
+    };
+    addEventListener("pointerdown", close);
+    return () => removeEventListener("pointerdown", close);
+  }, [pinnedTip]);
   // Before paint, whenever what is listed can change.
   useLayoutEffect(() => {
     const el = lineupsBox.current;
@@ -208,6 +231,19 @@ export function GameflowView({
     lineupIndex: focused?.dictIndex,
     layout,
     ratingMode,
+    runs,
+    openRun: runTip?.run ?? null,
+    onRun: (run: Run | null, box: DOMRect | null, how: RunTrigger) =>
+      setRunTip((tip) => {
+        // A tap pins the tip (touch has no hover) and a second tap closes it;
+        // a pointer shows it while resting and leaves a pinned one alone.
+        if (how === "tap")
+          return run && !(tip?.pinned && tip.run === run)
+            ? { run, box: box!, pinned: true }
+            : null;
+        if (tip?.pinned) return tip;
+        return run && box ? { run, box, pinned: false } : null;
+      }),
   };
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
@@ -261,9 +297,10 @@ export function GameflowView({
         pointerMoved.current = true;
       }}
     >
-      {!compact && hover && hoverBox && (
+      {!compact && hover && hoverBox && !runTip && (
         <GameflowHoverTip data={data} window={hover} box={hoverBox} />
       )}
+      {runTip && <GameflowRunTip data={data} run={runTip.run} box={runTip.box} />}
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
           {data.health}
@@ -560,6 +597,45 @@ function GameflowHoverTip({
           +{lineups.length - TIP_ROWS} more. Click the bar to see them all.
         </div>
       )}
+    </div>
+  );
+}
+/** A run explained (runExplanation()): window, lineups, results, cause. */
+function GameflowRunTip({
+  data,
+  run,
+  box,
+}: {
+  data: GameflowPayload;
+  run: Run;
+  box: DOMRect;
+}) {
+  const lines = runExplanation(data, run, {
+      own: data.meta.ownTeam,
+      opp: data.meta.oppTeam,
+    }),
+    width = Math.min(TIP_WIDTH, innerWidth - 16),
+    above = box.top > innerHeight / 2;
+  return (
+    <div
+      className="gf-hover-tip gf-run-tip"
+      role="tooltip"
+      style={{
+        left: Math.max(8, Math.min(innerWidth - width - 8, box.left)),
+        width,
+        ...(above
+          ? { bottom: innerHeight - box.top + 6 }
+          : { top: box.bottom + 6 }),
+      }}
+    >
+      {lines.map((line, i) => (
+        <div
+          key={line}
+          className={`gf-run-tip-line${i === 0 ? " ibpl-ribbon-detail-head" : ""}`}
+        >
+          {line}
+        </div>
+      ))}
     </div>
   );
 }

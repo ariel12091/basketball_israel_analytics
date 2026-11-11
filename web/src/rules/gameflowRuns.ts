@@ -10,6 +10,7 @@ import type {
   Score,
   Side,
 } from "./gameflow";
+import { rRound } from "./round";
 
 /** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP. */
 export const RUN_MIN_NET = 10;
@@ -240,10 +241,78 @@ export function runStandouts(events: GameflowEvent[], run: Run): Standout[] {
     }
   }
   const out: Standout[] = [];
-  for (const { score: _score, ...s } of found.sort((a, b) => b.score - a.score)) {
-    if (s.variance && out.some((o) => o.variance)) continue;
-    out.push(s);
+  for (const f of found.sort((a, b) => b.score - a.score)) {
+    if (f.variance && out.some((o) => o.variance)) continue;
+    const { side, metric, inRun, rest, variance } = f;
+    out.push({ side, metric, inRun, rest, variance });
     if (out.length === 2) break;
   }
   return out;
+}
+
+const swing = (m: number) => (m > 0 ? `up ${m}` : m < 0 ? `down ${-m}` : "level");
+const pct = (made: number, att: number) => `${rRound((100 * made) / att, 0)}%`;
+function standoutLine(team: string, s: Standout) {
+  const { made, att } = s.inRun,
+    rest = s.rest;
+  switch (s.metric) {
+    case "fg3":
+      return `${team} ${made}/${att} from three (${rest.made}/${rest.att} the rest of the game) — shooting variance`;
+    case "fg2":
+      return `${team} ${made}/${att} inside the arc (${rest.made}/${rest.att} the rest of the game)`;
+    case "ft":
+      return `${team} ${made}/${att} from the line (${rest.made}/${rest.att} the rest of the game)`;
+    case "tov":
+      return `${team} ${made} turnovers in ${att} possessions (${pct(rest.made, rest.att)} otherwise)`;
+    case "oreb":
+      return `${team} ${made} offensive rebounds on ${att} missed shots (${pct(rest.made, rest.att)} otherwise)`;
+    case "rtg":
+      return `${team} ${made} points on ${att} possessions (${rest.made} on ${rest.att} the rest of the game)`;
+  }
+}
+
+/**
+ * The run's tooltip, line by line (spec: window and swing, then both teams'
+ * lineups with the run team first, then the standouts, then an "Estimated
+ * cause" worded as a timing match). The margin reads from the run team's side.
+ */
+export function runExplanation(
+  model: RibbonModel,
+  run: Run,
+  names: Record<Side, string>,
+  standouts: Standout[] = runStandouts(model.events, run),
+): string[] {
+  const at = (t: number) => periodClock(t, model.bounds),
+    sign = run.side === "own" ? 1 : -1,
+    lineups = runLineups(model, run);
+  const lines = [
+    `${names[run.side]} ${run.pts}-${run.oppPts} · ${at(run.start)} – ${at(run.end)} · from ${swing(sign * run.fromMargin)} to ${swing(sign * run.toMargin)}`,
+    ...lineups.map((l) => {
+      const change = l.cameIn.length
+        ? ` (${l.cameIn.join(", ")} in for ${l.wentOut.join(", ")})`
+        : "";
+      const during = l.changesDuring
+        ? `; ${l.changesDuring} change${l.changesDuring === 1 ? "" : "s"} during the run`
+        : "; stayed on throughout";
+      return `${names[l.side]}: this five had been on since ${at(l.onSince)}${change}${during}`;
+    }),
+    ...standouts.map((s) => standoutLine(names[s.side], s)),
+  ];
+  const mover = lineups[0];
+  if (standouts.length && standouts.every((s) => s.variance)) {
+    const hot = standouts.some(
+      (s) => s.inRun.made / s.inRun.att > s.rest.made / s.rest.att,
+    );
+    lines.push(
+      `Estimated cause: ${hot ? "hot" : "cold"} three-point shooting; no lineup effect is claimed.`,
+    );
+  } else if (mover.cameIn.length)
+    lines.push(
+      `Estimated cause: the lineup change at ${at(mover.onSince)} lines up with the run; this is a timing match, not proof.`,
+    );
+  else
+    lines.push(
+      "Estimated cause: no lineup change lines up with the run; the results above are what stood out.",
+    );
+  return lines;
 }

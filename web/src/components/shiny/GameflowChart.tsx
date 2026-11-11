@@ -21,6 +21,12 @@ import {
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
 import type { BarWindow } from "@/rules/gameflowSelection";
+import type { Run } from "@/rules/gameflowRuns";
+/** How a run's chip or band was reached: a pointer resting on it, or a tap. */
+export type RunTrigger = "hover" | "tap";
+const CHIP_FONT = 10,
+  CHIP_H = 13,
+  CHIP_GAP = 4;
 export type { BarWindow };
 /** Drawing units between two margin-scale labels (their font is 10 high). */
 const MIN_TICK_GAP = 11;
@@ -39,7 +45,14 @@ export default function GameflowChart({
   crop,
   layout,
   ratingMode = "off",
+  runs = [],
+  openRun = null,
+  onRun,
 }: {
+  /** Scoring runs (detectRuns()): a band each, and a chip where it starts. */
+  runs?: Run[];
+  openRun?: Run | null;
+  onRun?: (run: Run | null, box: DOMRect | null, how: RunTrigger) => void;
   /** Each team's ORtg under its score in the margin tooltip, and which one. */
   ratingMode?: RatingMode | "off";
   /** Draw only the top team's lanes ("top") or the rest ("bottom"), so the
@@ -98,6 +111,34 @@ export default function GameflowChart({
     players.map((p) => p.player_label),
     players.map((p) => p.side),
   );
+  // Runs: bands wherever a run overlaps this chart; chips only where a run
+  // starts, on the top row (a bottom crop has none), moved to a second row
+  // when they would touch the one before.
+  const runBands = runs.filter((r) => r.end >= start && r.start <= end),
+    rowRight = [-Infinity, -Infinity],
+    runChips =
+      crop === "bottom"
+        ? []
+        : runs
+            .filter((r) => r.start >= start && r.start < end)
+            .map((r) => {
+              const text = `${r.pts}-${r.oppPts} ›`,
+                w = text.length * CHIP_FONT * geometry.numberAdvance + 10,
+                left = Math.min(x(r.start), width - w - 1),
+                row = left >= rowRight[0] + CHIP_GAP ? 0 : 1;
+              rowRight[row] = left + w;
+              return {
+                run: r,
+                text,
+                w,
+                left,
+                top: row ? geometry.padTop + geometry.header - CHIP_H - 1 : 1,
+              };
+            });
+  const runLabel = (r: Run) =>
+    `${r.side === "own" ? data.meta.ownTeam : data.meta.oppTeam} ${r.pts}-${r.oppPts} run${r.defining ? ", defining stretch" : ""}`;
+  const same = (a: Run | null, b: Run) =>
+    a != null && a.start === b.start && a.side === b.side;
   const scaleInfo = marginScale(data.margin),
     marginY = (v: number) =>
       marginTop +
@@ -326,6 +367,27 @@ export default function GameflowChart({
               height={totalH - geometry.padTop}
             />
           ))}
+        {runBands.map((r) => {
+          const a = Math.max(start, r.start),
+            b = Math.min(end, r.end);
+          return (
+            <rect
+              key={`${r.side}:${r.start}`}
+              className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${same(openRun, r) ? " is-open" : ""}`}
+              data-start={r.start}
+              data-end={r.end}
+              x={x(a)}
+              y={geometry.padTop}
+              width={Math.max(1, (b - a) * scale)}
+              height={totalH - geometry.padTop}
+              onPointerEnter={(e) =>
+                e.pointerType !== "touch" &&
+                onRun?.(r, e.currentTarget.getBoundingClientRect(), "hover")
+              }
+              onPointerLeave={() => onRun?.(null, null, "hover")}
+            />
+          );
+        })}
         {!pinned && gutter}
         <line
           className="ibpl-ribbon-zero"
@@ -538,6 +600,35 @@ export default function GameflowChart({
             onPointerLeave={() => setScoreTip(null)}
           />
         )}
+        {runChips.map((c) => (
+          <g
+            key={`${c.run.side}:${c.run.start}`}
+            className={`gf-run-chip is-${c.run.side}${c.run.defining ? " is-defining" : ""}${same(openRun, c.run) ? " is-open" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-label={runLabel(c.run)}
+            aria-expanded={same(openRun, c.run)}
+            onClick={(e) =>
+              onRun?.(c.run, e.currentTarget.getBoundingClientRect(), "tap")
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onRun?.(c.run, e.currentTarget.getBoundingClientRect(), "tap");
+              } else if (e.key === "Escape") onRun?.(null, null, "tap");
+            }}
+            onPointerEnter={(e) =>
+              e.pointerType !== "touch" &&
+              onRun?.(c.run, e.currentTarget.getBoundingClientRect(), "hover")
+            }
+            onPointerLeave={() => onRun?.(null, null, "hover")}
+          >
+            <rect x={c.left} y={c.top} width={c.w} height={CHIP_H} rx={CHIP_H / 2} />
+            <text x={c.left + c.w / 2} y={c.top + CHIP_H - 3} textAnchor="middle">
+              {c.text}
+            </text>
+          </g>
+        ))}
       </svg>
       {scoreTip && (
         <div
