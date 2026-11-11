@@ -46,11 +46,16 @@ REPO = Path(__file__).resolve().parent.parent
 # exactly. Only the version each season's untouched games carry is listed, so a
 # genuinely different mix (say a 2026-27 game on 0.2.1, before the 2026-27
 # foul codes) still fails.
+# Parser 0.2.4 (D37 rules: wrong outgoing player, phantom substitution pair)
+# changed lineups in five of the 801 stored games on 2026-11-11: U 2025 32 and
+# U 2026 71 were re-derived on 0.2.4; U 2026 10, 18 and 100 are blocked (a
+# duplicated lineup player), so they are in no derived table. Every other game
+# builds identical lineups.
 EQUIVALENT_PARSER_VERSIONS: dict[tuple[str, int], dict[str, str]] = {
-    ("E", 2025): {"0.2.1": "0.2.3"},
-    ("U", 2025): {"0.2.1": "0.2.3"},
-    ("E", 2026): {"0.2.2": "0.2.3"},
-    ("U", 2026): {"0.2.2": "0.2.3"},
+    ("E", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},
+    ("U", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},
+    ("E", 2026): {"0.2.2": "0.2.4", "0.2.3": "0.2.4"},
+    ("U", 2026): {"0.2.2": "0.2.4", "0.2.3": "0.2.4"},
 }
 
 

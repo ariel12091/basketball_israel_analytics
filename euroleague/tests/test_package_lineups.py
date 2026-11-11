@@ -169,5 +169,97 @@ class SubstitutionCorrectionTest(unittest.TestCase):
         self.assertIn("A6", enriched.iloc[-1]["Lineup_A"])
 
 
+def _bench_boxscore() -> pd.DataFrame:
+    bench = pd.DataFrame({"Home": [1], "Team": ["AAA"], "Player": ["A7"], "IsStarter": [0]})
+    return pd.concat([_boxscore(), bench], ignore_index=True)
+
+
+def _rows(spec) -> pd.DataFrame:
+    """spec: (play_type, player, clock) rows for team AAA after a BP row."""
+    rows = [("BP", None, None, "10:00")] + [(t, p, "AAA", c) for t, p, c in spec]
+    return pd.DataFrame(
+        {
+            "Season": [2025] * len(rows),
+            "Gamecode": [3] * len(rows),
+            "TRUE_NUMBEROFPLAY": list(range(len(rows))),
+            "PLAYTYPE": [r[0] for r in rows],
+            "PLAYER": [r[1] for r in rows],
+            "CODETEAM": [r[2] for r in rows],
+            "MARKERTIME": [r[3] for r in rows],
+        }
+    )
+
+
+class InferredRepairTest(unittest.TestCase):
+    """D37 rules: substitutions alternate IN/OUT and players act only on the floor."""
+
+    def _build(self, events, infer=True):
+        from unittest import mock
+
+        from euroleague_possessions import package_lineups
+
+        with mock.patch.object(package_lineups, "INFER_SUBSTITUTION_REPAIRS", infer):
+            return apply_package_lineups(events, _bench_boxscore())
+
+    def test_wrong_outgoing_player_is_the_one_next_seen_coming_in(self) -> None:
+        # Shape of EuroCup 2025-26 game 32: the OUT row names a player on the
+        # bench (A6); A2 is the one who left, since he next comes IN.
+        events = _rows([
+            ("2FGM", "A1", "09:40"),
+            ("OUT", "A6", "08:00"), ("IN", "A7", "08:00"),
+            ("2FGM", "A7", "07:30"),
+            ("IN", "A2", "06:00"), ("OUT", "A7", "06:00"),
+            ("2FGM", "A2", "05:30"),
+        ])
+        stored = self._build(events, infer=False)
+        self.assertFalse(stored["validate_on_court_player"].all())
+
+        enriched = self._build(events)
+        self.assertEqual(sorted(enriched.iloc[3]["Lineup_A"]), ["A1", "A3", "A4", "A5", "A7"])
+        self.assertEqual(sorted(enriched.iloc[-1]["Lineup_A"]), ["A1", "A2", "A3", "A4", "A5"])
+        self.assertTrue(enriched["validate_on_court_player"].all())
+
+    def test_wrong_outgoing_player_is_left_alone_when_ambiguous(self) -> None:
+        events = _rows([
+            ("OUT", "A6", "08:00"), ("IN", "A7", "08:00"),
+            ("IN", "A2", "06:00"), ("OUT", "A7", "06:00"),
+            ("IN", "A3", "05:00"), ("OUT", "A1", "05:00"),
+        ])
+        self.assertEqual(
+            self._build(events)["Lineup_A"].tolist(),
+            self._build(events, infer=False)["Lineup_A"].tolist(),
+        )
+
+    def test_phantom_pair_is_ignored(self) -> None:
+        # Shape of EuroCup 2026-27 game 71: OUT A1 / IN A6 logged early; A1
+        # keeps acting and the same swap is logged again later.
+        events = _rows([
+            ("OUT", "A1", "09:00"), ("IN", "A6", "09:00"),
+            ("2FGM", "A1", "08:30"),
+            ("OUT", "A1", "08:00"), ("IN", "A6", "08:00"),
+            ("2FGM", "A6", "07:30"),
+        ])
+        self.assertFalse(self._build(events, infer=False)["validate_on_court_player"].all())
+
+        enriched = self._build(events)
+        self.assertIn("A1", enriched.iloc[3]["Lineup_A"])
+        self.assertEqual(sorted(enriched.iloc[-1]["Lineup_A"]), ["A2", "A3", "A4", "A5", "A6"])
+        # Only the phantom IN row itself still names a player not on the floor.
+        invalid = enriched.index[~enriched["validate_on_court_player"].astype(bool)].tolist()
+        self.assertEqual(invalid, [2])
+
+    def test_consistent_substitutions_are_unchanged(self) -> None:
+        events = _rows([
+            ("OUT", "A1", "09:00"), ("IN", "A6", "09:00"),
+            ("2FGM", "A6", "08:30"),
+            ("IN", "A1", "08:00"), ("OUT", "A6", "08:00"),
+            ("2FGM", "A1", "07:30"),
+        ])
+        self.assertEqual(
+            self._build(events)["Lineup_A"].tolist(),
+            self._build(events, infer=False)["Lineup_A"].tolist(),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
