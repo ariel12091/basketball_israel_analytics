@@ -389,8 +389,33 @@ test("A run's band lists both teams' lineups inside the run", async ({ page }, i
   const heads = await list.locator(".ibpl-ribbon-detail-head").allTextContents();
   expect(heads.slice(1)).toEqual(["Maccabi Tel-Aviv", "Hapoel Tel-Aviv"]);
   await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText("in the run");
-  // The same band again closes it.
-  await page.mouse.click(box.x + box.width / 2, box.y + 4);
+  // The chart holding the run (a phone's quarter card, or the one chart).
+  const chart = page
+    .locator("svg.ibpl-ribbon:not(.ibpl-gameflow-gutter)")
+    .filter({ has: page.locator(`.gf-run-band[data-start="${run.start}"]`) })
+    .first();
+  // The score line shows the run's stretch picked out from the rest.
+  await expect(chart).toHaveClass(/is-run-focused/);
+  await expect(chart.locator(".ibpl-ribbon-margin-focus").first()).toHaveAttribute("clip-path", /url\(/);
+  // A lineup clicked in the list is marked only inside the run.
+  await list.locator(".ibpl-ribbon-shared-lineup").first().click();
+  const marks = await chart.locator(".ibpl-ribbon-lineup-mark").evaluateAll((els) =>
+    els.map((e) => [Number(e.getAttribute("x")), Number(e.getAttribute("width"))]),
+  );
+  expect(marks.length).toBeGreaterThan(0);
+  const runBox = await chart.locator(`.gf-run-band[data-start="${run.start}"]`).first().evaluate((e) => [
+    Number(e.getAttribute("x")),
+    Number(e.getAttribute("width")),
+  ]);
+  for (const [x, w] of marks) {
+    expect(x).toBeGreaterThanOrEqual(runBox[0] - 0.5);
+    expect(x + w).toBeLessThanOrEqual(runBox[0] + runBox[1] + 0.5);
+  }
+  await list.locator(".ibpl-ribbon-shared-lineup").first().click();
+  // The same band again closes it (measured afresh: the page may have moved).
+  await band.scrollIntoViewIfNeeded();
+  const again = (await band.boundingBox())!;
+  await page.mouse.click(again.x + again.width / 2, again.y + 4);
   await expect(list).toHaveCount(0);
 });
 test("Gameflow draws no run in a game without one", async ({ page }) => {

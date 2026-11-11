@@ -529,6 +529,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
    lanes (user 2026-11-11). Dashed for runs other than the defining one. */
 /* Translucent, so the edges mark the run without drowning the bars (user
    2026-11-11: fully solid made the runs all you could see). */
+/* A clicked run: its stretch of the score line in full colour, the rest
+   faded, as a player selection shows his minutes. */
+.ibpl-ribbon.is-run-focused .ibpl-ribbon-margin-focus { opacity: 1; }
 .gf-run-edge { pointer-events: none; stroke-width: 1; stroke-dasharray: 3 3; stroke-opacity: 0.25; }
 .gf-run-edge.is-defining { stroke-dasharray: none; stroke-opacity: 0.35; }
 /* Quarter lines stay the strongest vertical lines on the chart, above the

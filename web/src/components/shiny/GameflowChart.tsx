@@ -200,7 +200,9 @@ export default function GameflowChart({
         ? [{ start: Math.max(start, w.start), end: Math.min(end, w.end) }]
         : [],
     );
-  const focused = selected.length > 0 || active != null;
+  // A clicked run counts too: its stretch (or a lineup's part of it) is
+  // picked out of the score line (user 2026-11-11).
+  const focused = selected.length > 0 || active != null || selectedRun != null;
   const pinned = compact && !range;
   const gutter = (
     <>
@@ -339,7 +341,7 @@ export default function GameflowChart({
         </svg>
       )}
       <svg
-        className={`ibpl-ribbon${compact ? " is-compact" : ""}${selected.length ? " is-pair-focused" : active ? " is-focused" : ""}${lineupIndex != null ? " is-lineup-focused" : ""}`}
+        className={`ibpl-ribbon${compact ? " is-compact" : ""}${selected.length ? " is-pair-focused" : active ? " is-focused" : ""}${lineupIndex != null ? " is-lineup-focused" : ""}${selectedRun && !selected.length && !active ? " is-run-focused" : ""}`}
         viewBox={`0 ${y0} ${width} ${height}`}
         // A cropped half must not paint (or take clicks) outside its box.
         overflow="hidden"
@@ -431,16 +433,20 @@ export default function GameflowChart({
             key = laneKey(b),
             chosen = stintBar ? stintBar === b : selected.includes(key),
             window = { bar: b, start: from, end: to };
+          // With a run open, a lineup is marked only inside the run.
+          const segFrom = selectedRun ? Math.max(from, selectedRun.start) : from,
+            segTo = selectedRun ? Math.min(to, selectedRun.end) : to;
           const segments =
-            chosen || active?.bar === b || lineupIndex != null
+            (chosen || active?.bar === b || lineupIndex != null) &&
+            segTo > segFrom
               ? windowSegments(
                   data.lanes,
                   data.steps,
                   data.dict,
                   b.side,
                   b.player_key,
-                  from,
-                  to,
+                  segFrom,
+                  segTo,
                 )
               : [];
           return (
