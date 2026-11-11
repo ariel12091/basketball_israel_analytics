@@ -20,7 +20,7 @@ const flow: ToolResult = {
   ...lineups,
   id: "r2",
   call: { tool: "gameflow", league: "il", query: {} },
-  rows: [{ id: "row1", cells: { x: 1 } }],
+  rows: [{ id: "row1", cells: { x: 1, section: "player", net: 54.36 } }],
   total: null,
 };
 const fill = (t: string, q = "top lineups", results = [lineups, flow]) =>
@@ -279,8 +279,10 @@ describe("fillAndVerify", () => {
       expect(fill(t).ok, t).toBe(false);
   });
 
-  it("rejects markers into gameflow", () => {
+  it("fills gameflow's quotable columns and rejects the rest", () => {
     expect(fill("{{r2.row1.x}}").ok).toBe(false);
+    const f = fill("Net {{r2.row1.net}}");
+    expect(f.ok && f.text).toBe("Net +54.4");
   });
 
   it("rejects malformed braces", () => {

@@ -515,7 +515,61 @@ a.ibpl-gameflow-back { text-decoration: none; }
 /* Team names are long: the head-to-head score may wrap. */
 .gf-details .gf-stint-stats dd.is-score { white-space: normal; }
 .gf-details .gf-stint-stats dd { font-size: 13px; white-space: nowrap; }
-.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; }
+/* Gameflow runs: a band over the chart and the rows in the run team's colour
+   (own = accent, opp = muted, as the lanes), and a chip where it starts. The
+   defining stretch is the strong band and the filled chip. */
+/* The band only marks the run: its explanation is the chip's (user
+   2026-11-11: a band-wide tip repeated it and opened off-screen). */
+.gf-run-band { pointer-events: none; fill-opacity: 0.12; }
+.gf-run-band.is-own { fill: var(--ibpl-accent); }
+.gf-run-band.is-opp { fill: var(--ibpl-text-muted); }
+.gf-run-band.is-defining { fill-opacity: 0.22; }
+.gf-run-band.is-open { fill-opacity: 0.3; }
+/* The run's ends, drawn over the bars: the fill alone is lost between dark
+   lanes (user 2026-11-11). Dashed for runs other than the defining one. */
+/* Translucent, so the edges mark the run without drowning the bars (user
+   2026-11-11: fully solid made the runs all you could see). */
+.gf-run-edge { pointer-events: none; stroke-width: 1; stroke-dasharray: 3 3; stroke-opacity: 0.25; }
+.gf-run-edge.is-defining { stroke-dasharray: none; stroke-opacity: 0.35; }
+/* Quarter lines stay the strongest vertical lines on the chart, above the
+   run edges (user 2026-11-11). */
+.ibpl-react-gameflow .ibpl-ribbon-period { stroke: var(--ibpl-text-muted); opacity: 0.9; }
+.gf-run-edge.is-own { stroke: var(--ibpl-accent); }
+.gf-run-edge.is-opp { stroke: var(--ibpl-text); }
+.gf-run-chip { cursor: pointer; }
+.gf-run-chip rect { fill: var(--ibpl-bg); stroke-width: 1; }
+.gf-run-chip.is-own rect { stroke: var(--ibpl-accent); }
+.gf-run-chip.is-opp rect { stroke: var(--ibpl-text-muted); }
+.gf-run-chip text { font-size: 10px; font-weight: 700; }
+.gf-run-chip.is-own text { fill: var(--ibpl-accent); }
+.gf-run-chip.is-opp text { fill: var(--ibpl-text-muted); }
+.gf-run-chip.is-defining.is-own rect { fill: var(--ibpl-accent); }
+.gf-run-chip.is-defining.is-opp rect { fill: var(--ibpl-text-muted); }
+.gf-run-chip.is-defining text { fill: var(--ibpl-bg); }
+.gf-run-chip:focus { outline: none; }
+.gf-run-chip:focus rect, .gf-run-chip.is-open rect { stroke-width: 2; }
+.gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }
+.gf-run-tip .gf-run-tip-line:last-child { font-style: italic; }
+/* Phones: the Together summary pinned to the bottom of the screen. */
+.gf-together-bar {
+  position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 1040;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 8px; border: 1px solid var(--ibpl-accent);
+  background: var(--ibpl-surface-2, var(--ibpl-bg)); color: var(--ibpl-text);
+  font-size: 13px; font-weight: 600; text-align: left;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.gf-together-bar > span:last-child { color: var(--ibpl-accent); font-size: 18px; }
+.gf-lineups-more { margin-top: 6px; width: 100%; }
+/* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
+.gf-ratings-note { margin: 0; font-size: 12px; line-height: 1.4; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }
+/* Several cards (Together first): a wider column with each card's numbers
+   on one line, so all of them fit without scrolling (user 2026-11-11). */
+.gf-details .gf-player-cards.is-multi { flex-basis: 470px; width: 470px; }
+.gf-player-cards.is-multi .gf-stint-stats { flex-wrap: nowrap; gap: 4px 12px; }
+.gf-player-cards.is-multi .ibpl-ribbon-detail.is-card { padding: 6px 10px; }
+.gf-player-cards.is-multi .ibpl-ribbon-detail-head { margin-bottom: 2px; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); margin-bottom: 6px; }
 .gf-details .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 3px 6px; }
 /* Team Ratings Traditional controls in the toolbar; Player Stats bar. */

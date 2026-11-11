@@ -3,6 +3,8 @@
 import { homeDashboard, type HomeFrames } from "@/rules/home";
 import type { League } from "@/rules/gameLogs";
 import { pageRows } from "./pageRows";
+import type { ExplainedRun, PlayerRating } from "@/rules/gameflowSummary";
+import { periodClock } from "@/rules/gameflowRuns";
 import type { ToolName } from "./registry";
 
 type Cells = Record<string, unknown>;
@@ -15,7 +17,7 @@ export function flatten(
   query: URLSearchParams,
 ): Flat {
   const p = (payload ?? {}) as { rows?: Cells[]; frames?: HomeFrames };
-  if (tool === "gameflow") return { rows: [], total: null };
+  if (tool === "gameflow") return { rows: gameflowRows(payload), total: null };
   if (tool === "team_overview")
     return { rows: overview(p.frames, query.get("team_id") ?? ""), total: null };
   const rows: Cells[] = pageRows(tool, league, payload, query);
@@ -31,6 +33,42 @@ export function flatten(
     return { rows: rows.filter((r) => String(r.team_id) === team), total: null };
   }
   return { rows, total: null };
+}
+
+/** Gameflow: one row per run (the page's chip and tooltip) and one per
+ * player (the card's whole-game ratings), from the answer's own summary
+ * (rules/gameflowSummary.ts). */
+function gameflowRows(payload: unknown): Cells[] {
+  const p = (payload ?? {}) as {
+    runs?: ExplainedRun[];
+    players?: PlayerRating[];
+    bounds?: number[];
+    meta?: { ownTeam?: string; oppTeam?: string };
+  };
+  const bounds = p.bounds ?? [];
+  const runs = (p.runs ?? []).map((r) => ({
+    section: "run",
+    team: r.side === "own" ? p.meta?.ownTeam : p.meta?.oppTeam,
+    run_score: `${r.pts}-${r.oppPts}`,
+    window: `${periodClock(r.start, bounds)} – ${periodClock(r.end, bounds)}`,
+    defining: r.defining ? "yes" : "no",
+    explanation: r.lines.join(" | "),
+  }));
+  const players = [...(p.players ?? [])]
+    .sort((a, b) => b.secs - a.secs)
+    .map((x) => ({
+      section: "player",
+      team: x.team,
+      player: x.player,
+      secs: x.secs,
+      pm: x.pm,
+      net: x.net,
+      ortg: x.ortg,
+      drtg: x.drtg,
+      off_poss: x.off_poss,
+      def_poss: x.def_poss,
+    }));
+  return [...runs, ...players];
 }
 
 /** The Home hub's sections (homeDashboard) as one row each. */

@@ -10,6 +10,8 @@ import { homeFixed, homeOrdinal } from "@/rules/home";
 import { FF_METRIC_MAP, FF_RTG_MAP, SP_LABELS, SP_SUFFIX, SUMMARY_SHOT_MAP } from "@/rules/onoff";
 import { PLAYER_LABELS } from "@/rules/playerStatsTable";
 import { rRound } from "@/rules/round";
+import { clock, pmLabel, ratingLabel } from "@/rules/gameflow";
+import { netLabel } from "@/rules/gameflowRatings";
 import type { ToolName } from "./registry";
 import type { AskRow } from "./run";
 
@@ -395,6 +397,25 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
     // The lineup filter's player picker shows the name only.
     case "lineup_roster":
       return spec([["name", "Player", text], ["name_he", "Player (Hebrew)", text, "chat"]]);
+    // GameflowPanel: the run chip/tooltip and the player card's ratings,
+    // formatted as the page shows them.
+    case "gameflow":
+      return spec([
+        ["section", "Section", text],
+        ["team", "Team", text],
+        ["run_score", "Run", text],
+        ["window", "Window", text],
+        ["defining", "Defining stretch", text],
+        ["explanation", "Explanation", text],
+        ["player", "Player", text],
+        ["secs", "On the floor", (v) => clock(Number(v))],
+        ["pm", "+/-", (v) => pmLabel(num(v))],
+        ["net", "Net", (v) => netLabel(num(v))],
+        ["ortg", "ORtg", (v) => ratingLabel(num(v))],
+        ["drtg", "DRtg", (v) => ratingLabel(num(v))],
+        ["off_poss", "Off poss", text],
+        ["def_poss", "Def poss", text],
+      ]);
     case "team_overview":
       return spec([
         ["section", "Section", text],

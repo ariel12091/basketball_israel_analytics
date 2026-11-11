@@ -1,6 +1,7 @@
 "use client";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -31,9 +32,18 @@ import {
   windowsSummary,
   type Bar,
 } from "@/rules/gameflow";
+import type { Side, Window as Span } from "@/rules/gameflow";
+import {
+  netLabel,
+  stintRatings,
+  windowsRatings,
+  type StintRatings,
+} from "@/rules/gameflowRatings";
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
-import GameflowChart from "./GameflowChart";
+import GameflowChart, { type RunTrigger } from "./GameflowChart";
+import type { Run } from "@/rules/gameflowRuns";
+import type { ExplainedRun } from "@/rules/gameflowSummary";
 import {
   EMPTY_SELECTION,
   selectionReducer,
@@ -111,7 +121,14 @@ export function GameflowView({
     [score, setScore] = useState(""),
     // Each team's ORtg in the score readouts (user 2026-11-07): since tip-off
     // by default, or over its last RATING_WINDOW possessions.
-    [ratingMode, setRatingMode] = useState<RatingMode | "off">("game");
+    [ratingMode, setRatingMode] = useState<RatingMode | "off">("game"),
+    // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
+    runs = data.runs,
+    [runTip, setRunTip] = useState<{
+      run: ExplainedRun;
+      box: DOMRect;
+      pinned: boolean;
+    } | null>(null);
   const cards = useRef(new Map<number, HTMLElement>()),
     detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
@@ -180,6 +197,19 @@ export function GameflowView({
           lineupsOpen,
         )
       : undefined;
+  // A tapped run tip is placed once: touching anywhere else (which is also
+  // how a touch scroll starts) closes it. Not on scroll events: layout can
+  // scroll the page right after the tap.
+  const pinnedTip = runTip?.pinned ?? false;
+  useEffect(() => {
+    if (!pinnedTip) return;
+    const close = (e: PointerEvent) => {
+      if ((e.target as Element).closest?.(".gf-run-chip, .gf-run-tip")) return;
+      setRunTip(null);
+    };
+    addEventListener("pointerdown", close);
+    return () => removeEventListener("pointerdown", close);
+  }, [pinnedTip]);
   // Before paint, whenever what is listed can change.
   useLayoutEffect(() => {
     const el = lineupsBox.current;
@@ -202,6 +232,22 @@ export function GameflowView({
     lineupIndex: focused?.dictIndex,
     layout,
     ratingMode,
+    runs,
+    openRun: runTip?.run ?? null,
+    // The chart hands back the run objects it was given (data.runs).
+    onRun: (r: Run | null, box: DOMRect | null, how: RunTrigger) => {
+      const run = r as ExplainedRun | null;
+      setRunTip((tip) => {
+        // A tap pins the tip (touch has no hover) and a second tap closes it;
+        // a pointer shows it while resting and leaves a pinned one alone.
+        if (how === "tap")
+          return run && !(tip?.pinned && tip.run === run)
+            ? { run, box: box!, pinned: true }
+            : null;
+        if (tip?.pinned) return tip;
+        return run && box ? { run, box, pinned: false } : null;
+      });
+    },
   };
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
@@ -224,6 +270,7 @@ export function GameflowView({
       focus={focus}
       dispatch={dispatch}
       detail={detail}
+      compact={compact}
     />
   );
   // The margins are part of the room the chart gave up.
@@ -255,9 +302,13 @@ export function GameflowView({
         pointerMoved.current = true;
       }}
     >
-      {!compact && hover && hoverBox && (
+      {compact && selected.length > 1 && (
+        <TogetherBar data={data} selected={selected} windows={windows} />
+      )}
+      {!compact && hover && hoverBox && !runTip && (
         <GameflowHoverTip data={data} window={hover} box={hoverBox} />
       )}
+      {runTip && <GameflowRunTip run={runTip.run} box={runTip.box} />}
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
           {data.health}
@@ -486,7 +537,76 @@ const stintLineups = (data: GameflowPayload, w: BarWindow) =>
     ),
   );
 const TIP_WIDTH = 400,
-  TIP_ROWS = 6;
+  // At most two lineups in a bar's tip (user 2026-11-11); the rest are a
+  // click away.
+  TIP_ROWS = 2;
+const LINEUPS_SHORT = 3;
+/**
+ * Phones: what the selected players did together, pinned to the bottom of the
+ * screen while two or more are selected, so it never needs a scroll (user
+ * 2026-11-11). A tap brings the full cards into view.
+ */
+function TogetherBar({
+  data,
+  selected,
+  windows,
+}: {
+  data: GameflowPayload;
+  selected: string[];
+  windows: Span[];
+}) {
+  const sides = [
+    ...new Set(
+      selected.map((k) => data.bars.find((b) => laneKey(b) === k)?.side),
+    ),
+  ].filter((s): s is Side => s != null);
+  const secs = windows.reduce((t, w) => t + w.end - w.start, 0);
+  let text: string;
+  if (sides.length === 1) {
+    const d = windowsSummary(sides[0], windows, data.steps),
+      r = data.events.length
+        ? stintRatings(
+            data.events,
+            sides[0],
+            selected.map((k) => k.slice(k.indexOf(":") + 1)),
+          )
+        : null;
+    text = `Together ${clock(secs)} · +/- ${d.pm}${r ? ` · Net ${netLabel(r.net)}` : ""}`;
+  } else {
+    const d = windowsSummary("own", windows, data.steps);
+    text = `Head to head ${clock(secs)}${d.pf == null ? "" : ` · ${data.meta.ownTeam} ${d.pf} – ${d.pa} ${data.meta.oppTeam}`}`;
+  }
+  return (
+    <button
+      type="button"
+      className="gf-together-bar"
+      onClick={() =>
+        document
+          .querySelector(".gf-player-cards")
+          ?.scrollIntoView({ block: "start", behavior: "smooth" })
+      }
+    >
+      <span>{text}</span>
+      <span aria-hidden="true">›</span>
+    </button>
+  );
+}
+/** A listed lineup's Net over its windows, from the five's credited events. */
+function lineupNet(
+  data: GameflowPayload,
+  g: ReturnType<typeof aggregateSegments>[number],
+) {
+  const key = data.dict[g.dictIndex]?.lineup_key;
+  if (!data.events.length || key == null) return null;
+  const five = [
+    ...new Set(
+      data.lanes
+        .filter((l) => l.side === g.side && l.lineup_key === key)
+        .map((l) => l.player_key),
+    ),
+  ];
+  return windowsRatings(data.events, g.side, five, g.windows).net;
+}
 /** What a hovered stint holds, floating clear of its bar: nothing moves. */
 function GameflowHoverTip({
   data,
@@ -506,6 +626,9 @@ function GameflowHoverTip({
       window.end,
     ),
     lineups = stintLineups(data, window),
+    rtg = data.events.length
+      ? stintRatings(data.events, window.bar.side, [window.bar.player_key], window)
+      : null,
     above = box.top > innerHeight / 2;
   return (
     <div
@@ -530,6 +653,7 @@ function GameflowHoverTip({
       </div>
       <div className="gf-hover-tip-stats">
         {clock(d.end - d.start)} on the floor · +/- {d.pm}
+        {rtg && ` · Net ${netLabel(rtg.net)}`}
         {d.pf !== "" && ` · ${d.pf} for, ${d.pa} against`}
       </div>
       {lineups.slice(0, TIP_ROWS).map((g) => (
@@ -552,6 +676,41 @@ function GameflowHoverTip({
     </div>
   );
 }
+/** A run explained (the answer's runs[].lines): window, lineups, results,
+ * cause. */
+function GameflowRunTip({
+  run,
+  box,
+}: {
+  run: ExplainedRun;
+  box: DOMRect;
+}) {
+  const lines = run.lines,
+    width = Math.min(TIP_WIDTH, innerWidth - 16),
+    above = box.top > innerHeight / 2;
+  return (
+    <div
+      className="gf-hover-tip gf-run-tip"
+      role="tooltip"
+      style={{
+        left: Math.max(8, Math.min(innerWidth - width - 8, box.left)),
+        width,
+        ...(above
+          ? { bottom: innerHeight - box.top + 6 }
+          : { top: box.bottom + 6 }),
+      }}
+    >
+      {lines.map((line, i) => (
+        <div
+          key={line}
+          className={`gf-run-tip-line${i === 0 ? " ibpl-ribbon-detail-head" : ""}`}
+        >
+          {line}
+        </div>
+      ))}
+    </div>
+  );
+}
 type CardStats = {
   secs: number;
   pm: string;
@@ -559,7 +718,15 @@ type CardStats = {
   pa: number | null;
   /** Head to head: the score from both sides, in place of +/- and points. */
   score?: string;
+  /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
+  ratings?: StintRatings;
 };
+// Ratings only, no possession count (user 2026-11-11).
+const RATING_ROWS = [
+  { dt: "Net", value: (r: StintRatings) => netLabel(r.net) },
+  { dt: "ORtg", value: (r: StintRatings) => ratingLabel(r.ortg) },
+  { dt: "DRtg", value: (r: StintRatings) => ratingLabel(r.drtg) },
+];
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
     return (
@@ -594,9 +761,19 @@ function StintStats({ d }: { d: CardStats }) {
           </dd>
         </div>
       )}
+      {d.ratings &&
+        RATING_ROWS.map((row) => (
+          <div key={row.dt}>
+            <dt>{row.dt}</dt>
+            <dd>{row.value(d.ratings!)}</dd>
+          </div>
+        ))}
     </dl>
   );
 }
+// D39: EuroLeague credits a trip to the lineup of its last free throw (D1).
+const ratingsNote = (league: League) =>
+  `Ratings count free throws for ${league === "il" ? "the lineup that drew the foul" : "the lineup on the floor for the last free throw"}, as On/Off does, so they can differ slightly from the +/- beside them.`;
 
 function GameflowDetails({
   data,
@@ -608,7 +785,9 @@ function GameflowDetails({
   focus,
   dispatch,
   detail,
+  compact = false,
 }: {
+  compact?: boolean;
   data: GameflowPayload;
   activeWindow: BarWindow | null;
   showStint: boolean;
@@ -622,6 +801,21 @@ function GameflowDetails({
   // A card per click (user 2026-11-07): the stint clicked, else each selected
   // player's whole game, plus the minutes they shared when there are several.
   const bars = (key: string) => data.bars.filter((b) => laneKey(b) === key);
+  // Phones list the top LINEUPS_SHORT lineups, the rest one tap away, so the
+  // cards above the chart stay short (user 2026-11-11, minimal scrolling).
+  const [showAll, setShowAll] = useState(false),
+    shown =
+      compact && !showAll ? groups.slice(0, LINEUPS_SHORT) : groups;
+  // Credited-lineup ratings, when the reader returned events.
+  const rate = (side: Side, keys: string[], window?: Span) =>
+    data.events.length
+      ? stintRatings(
+          data.events,
+          side,
+          keys.map((k) => k.slice(k.indexOf(":") + 1)),
+          window,
+        )
+      : undefined;
   const cards: { key: string; title: string; aria: string; stats: CardStats }[] =
     [];
   if (activeWindow && showStint) {
@@ -642,6 +836,10 @@ function GameflowDetails({
         pm: d.pm,
         pf: d.pf === "" ? null : Number(d.pf),
         pa: d.pa === "" ? null : Number(d.pa),
+        ratings: rate(activeWindow.bar.side, [laneKey(activeWindow.bar)], {
+          start: activeWindow.start,
+          end: activeWindow.end,
+        }),
       },
     });
   } else {
@@ -652,11 +850,14 @@ function GameflowDetails({
         key,
         title: `${own[0].player_label} · game`,
         aria: `${own[0].player_label} game detail`,
-        stats: windowsSummary(
-          own[0].side,
-          own.map((b) => ({ start: b.start_elapsed, end: b.end_elapsed })),
-          data.steps,
-        ),
+        stats: {
+          ...windowsSummary(
+            own[0].side,
+            own.map((b) => ({ start: b.start_elapsed, end: b.end_elapsed })),
+            data.steps,
+          ),
+          ratings: rate(own[0].side, [key]),
+        },
       });
     }
     const sides = new Set(selected.map((k) => bars(k)[0]?.side));
@@ -667,7 +868,10 @@ function GameflowDetails({
           key: "together",
           title: "Together",
           aria: "Shared minutes detail",
-          stats: windowsSummary([...sides][0]!, shared, data.steps),
+          stats: {
+            ...windowsSummary([...sides][0]!, shared, data.steps),
+            ratings: rate([...sides][0]!, selected),
+          },
         });
       } else {
         // Both teams: no side to sign a +/- from, so the score from both.
@@ -685,12 +889,15 @@ function GameflowDetails({
           },
         });
       }
+      // What the players did together is the point of selecting several
+      // (user 2026-11-11): its card leads, the single-player cards follow.
+      cards.unshift(cards.pop()!);
     }
   }
   return (
     <>
       {cards.length > 0 && (
-        <div className="gf-player-cards">
+        <div className={`gf-player-cards${cards.length > 1 ? " is-multi" : ""}`}>
           {cards.map((c) => (
             <section
               className="ibpl-ribbon-detail is-card"
@@ -703,6 +910,11 @@ function GameflowDetails({
               <StintStats d={c.stats} />
             </section>
           ))}
+          {cards.some((c) => c.stats.ratings) && (
+            <p className="ibpl-ribbon-detail-meta gf-ratings-note">
+              {ratingsNote(data.meta.league)}
+            </p>
+          )}
         </div>
       )}
       {groups.length > 0 && (
@@ -718,12 +930,12 @@ function GameflowDetails({
           </div>
           {(["own", "opp"] as const).map(
             (side) =>
-              groups.some((g) => g.side === side) && (
+              shown.some((g) => g.side === side) && (
                 <FragmentSide
                   key={side}
                   title={side === "own" ? data.meta.ownTeam : data.meta.oppTeam}
                 >
-                  {groups
+                  {shown
                     .filter((g) => g.side === side)
                     .map((g) => (
                       <button
@@ -749,7 +961,11 @@ function GameflowDetails({
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}
                           {selected.length > 1 ? "shared" : "total"}
-                          {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""} ·{" "}
+                          {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+                          {data.events.length
+                            ? ` · Net ${netLabel(lineupNet(data, g))}`
+                            : ""}{" "}
+                          ·{" "}
                           {g.windows
                             .map((w) => `${clock(w.start)}–${clock(w.end)}`)
                             .join(", ")}
@@ -758,6 +974,15 @@ function GameflowDetails({
                     ))}
                 </FragmentSide>
               ),
+          )}
+          {shown.length < groups.length && (
+            <button
+              type="button"
+              className="btn btn-default btn-sm gf-lineups-more"
+              onClick={() => setShowAll(true)}
+            >
+              Show all {groups.length} lineups
+            </button>
           )}
         </section>
       )}

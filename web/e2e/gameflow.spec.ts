@@ -1,11 +1,19 @@
 import { test, expect } from "@playwright/test";
-import { gameflowFiles, loadGameflow } from "../test/gameflowGoldens";
+import {
+  gameflowFiles,
+  loadGameflow,
+  loadFixture,
+  GAMEFLOW_FIXTURES,
+} from "../test/gameflowGoldens";
 import {
   windowDetail,
   sharedWindows,
   clock,
   laneKey,
+  ratingLabel,
 } from "../src/rules/gameflow";
+import { stintRatings } from "../src/rules/gameflowRatings";
+import { rRound } from "../src/rules/round";
 for (const file of gameflowFiles)
   test(`Gameflow ${file}`, async ({ page }, info) => {
     const { g, answer, url } = loadGameflow(file),
@@ -151,6 +159,227 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       );
     }
   });
+
+// Stint ratings (shared_definitions.md, Gameflow stint rating), from the
+// committed reader fixtures: Net/ORtg/DRtg on the card (no possession count,
+// user 2026-11-11), Net in a bar's hover tip and on each lineup row
+// and Net in a bar's hover tip.
+const routeFixture = async (
+  page: import("@playwright/test").Page,
+  game: keyof typeof GAMEFLOW_FIXTURES,
+) => {
+  const f = loadFixture(game);
+  await page.route("**/api/v1/**", (r) =>
+    r.fulfill({
+      json: new URL(r.request().url()).pathname.endsWith("/version")
+        ? { leagues: [{ league: f.league, version: "golden" }] }
+        : f.answer,
+    }),
+  );
+  await page.goto(f.url);
+  return f;
+};
+const signed = (v: number | null) =>
+  v != null && rRound(v, 1) > 0 ? `+${ratingLabel(v)}` : ratingLabel(v);
+test("Gameflow card shows Net, ORtg and DRtg", async ({
+  page,
+}) => {
+  const { answer } = await routeFixture(page, 673);
+  // A player's row selects his whole game (a bar selects one stint).
+  const lane = (key: string) => {
+    const l = answer.lanes.find((x) => laneKey(x) === key)!;
+    return page
+      .locator("svg.ibpl-ribbon")
+      .getByRole("button", { name: new RegExp(`^${l.player_label},`) })
+      .first();
+  };
+  const dib = answer.lanes.find((l) => l.player_label.includes("DIBARTOLOMEO"))!;
+  const r = stintRatings(answer.events, "own", [dib.player_key]);
+  expect(r.offPoss).toBe(47);
+  await lane(`own:${dib.player_key}`).click();
+  await page.mouse.move(0, 0);
+  const card = page.getByRole("region", { name: `${dib.player_label} game detail` });
+  await expect(card).toContainText(`Net${signed(r.net)}ORtg${ratingLabel(r.ortg)}DRtg${ratingLabel(r.drtg)}`);
+  await expect(card).not.toContainText("poss");
+  // Each lineup row of his game carries its Net too.
+  const rows = page.getByRole("region", { name: "Stint lineups", exact: true }).getByRole("button");
+  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.]+|· Net –/);
+  await expect(card).toContainText("+/-");
+  const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
+  await lane(`own:${wallace.player_key}`).click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("region", { name: "Shared minutes detail" })).toContainText("Net");
+  await page.getByRole("button", { name: "Clear players" }).click();
+  const opp = answer.lanes.find((l) => l.side === "opp")!;
+  await lane(`own:${dib.player_key}`).click();
+  // The card opens between the teams and moves the opponent's chart down.
+  // Enter, not a click: with a card open the opponent's name buttons report a
+  // box under the card panel (seen on the stored goldens too, before ratings).
+  await expect(card).toBeVisible();
+  await lane(`opp:${opp.player_key}`).press("Enter");
+  await page.mouse.move(0, 0);
+  const h2h = page.getByRole("region", { name: "Head to head detail" });
+  await expect(h2h).toBeVisible();
+  await expect(h2h).not.toContainText("Net");
+});
+test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "hover tips are pointer-only");
+  const { answer } = await routeFixture(page, 673);
+  const dib = answer.bars.find((b) => b.player_label.includes("DIBARTOLOMEO"))!;
+  const bar = page
+    .locator("svg.ibpl-ribbon:not(.ibpl-gameflow-gutter)")
+    .first()
+    .locator(`.ibpl-ribbon-lane[data-player-key="own:${dib.player_key}"]`)
+    .first();
+  // The tip waits for a real pointer movement (it ignores a bar the pointer
+  // merely rests on after a re-render).
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2 - 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
+  await expect(page.getByRole("tooltip")).not.toContainText("poss");
+  // At most two lineups in the tip (user 2026-11-11).
+  expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
+});
+test("EuroLeague Gameflow card shows ratings", async ({ page }) => {
+  const { answer } = await routeFixture(page, 1147);
+  const p = answer.lanes.find((l) => l.side === "own")!;
+  await page
+    .locator("svg.ibpl-ribbon")
+    .getByRole("button", { name: new RegExp(`^${p.player_label},`) })
+    .first()
+    .click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+DRtg/);
+});
+
+// Runs (shared_definitions.md, Gameflow run): a band per run over the chart
+// and the rows, a chip naming it, and a tooltip that explains it.
+test("Gameflow marks game 673's runs and explains the defining one", async ({
+  page,
+}, info) => {
+  await routeFixture(page, 673);
+  const chips = page.locator(".gf-run-chip");
+  await expect(chips).toHaveCount(3);
+  const defining = page.getByRole("button", {
+    name: "Maccabi Tel-Aviv 37-5 run, defining stretch",
+  });
+  await expect(defining).toHaveText("37-5 ›");
+  await expect(defining).toHaveClass(/is-defining/);
+  await expect(defining).toHaveClass(/is-own/);
+  // The defining band crosses the Q3/Q4 line (elapsed 1800).
+  const band = page.locator(".gf-run-band.is-defining").first();
+  expect(Number(await band.getAttribute("data-start"))).toBeLessThan(1800);
+  expect(Number(await band.getAttribute("data-end"))).toBeGreaterThan(1800);
+  if (info.project.name === "phone") await defining.click();
+  else await defining.hover();
+  const tip = page.getByRole("tooltip").filter({ hasText: "Estimated cause" });
+  await expect(tip).toBeVisible();
+  const lines = await tip.locator(".gf-run-tip-line").allTextContents();
+  expect(lines[0]).toContain("Maccabi Tel-Aviv 37-5 · Q3 2:25 – Q4 2:31");
+  expect(lines[1]).toContain("since Q3 3:54");
+  expect(lines[1]).toContain("DIBARTOLOMEO");
+  const three = lines.findIndex((l) => l.includes("from three"));
+  expect(three).toBeGreaterThan(2);
+  expect(lines[three]).toMatch(/\d+% from three \(\d+\/\d+\), \d+% the rest of the game \(\d+\/\d+\) — shooting variance$/);
+  expect(lines.at(-1)).toMatch(/^Estimated cause/);
+  if (info.project.name === "phone") {
+    // A second tap closes the pinned tip; so does a tap elsewhere.
+    await defining.click();
+    await expect(tip).toHaveCount(0);
+    await defining.click();
+    await expect(tip).toBeVisible();
+    await page.getByRole("button", { name: "Clear players" }).click();
+    await expect(tip).toHaveCount(0);
+  }
+  // Chips never overlap, at either width.
+  const boxes = await chips.evaluateAll((els) =>
+    els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right, r.top, r.bottom]),
+  );
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      const overlap = a[0] < b[1] && b[0] < a[1] && a[2] < b[3] && b[2] < a[3];
+      expect(overlap).toBe(false);
+    }
+});
+test("Gameflow run edges are drawn over the bars", async ({ page }, info) => {
+  await routeFixture(page, 673);
+  // Solid edges where a run starts and ends, so it reads against the dark
+  // lanes. A quarter card only shows the edges that fall inside it.
+  await expect(page.locator(".gf-run-band").first()).toBeAttached();
+  const bands = await page.locator(".gf-run-band").count(),
+    edges = await page.locator(".gf-run-edge").count();
+  if (info.project.name === "desktop") expect(edges).toBe(2 * bands);
+  else expect(edges).toBeGreaterThanOrEqual(6);
+});
+test("Together comes first and every card fits without scrolling", async ({
+  page,
+}, info) => {
+  const { answer } = await routeFixture(page, 673);
+  const row = (label: string) =>
+    page
+      .locator("svg.ibpl-ribbon")
+      .getByRole("button", { name: new RegExp(`^${label},`) })
+      .first();
+  for (const l of ["JOHN DIBARTOLOMEO", "KEATON WALLACE"]) {
+    await row(l).click();
+    await page.mouse.move(0, 0);
+  }
+  const cards = page.locator(".gf-player-cards > section");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.first()).toHaveAttribute("aria-label", "Shared minutes detail");
+  // The card column never hides a card behind its own scroll.
+  const [scroll, client] = await page
+    .locator(".gf-player-cards")
+    .evaluate((el) => [el.scrollHeight, el.clientHeight]);
+  expect(scroll).toBeLessThanOrEqual(client + 1);
+  if (info.project.name === "desktop") {
+    // No empty frame under the lineups: the box hugs its rows.
+    const box = page.getByRole("region", { name: "Shared lineups", exact: true });
+    const last = box.getByRole("button").last();
+    const [b, l] = [(await box.boundingBox())!, (await last.boundingBox())!];
+    expect(b.y + b.height - (l.y + l.height)).toBeLessThan(24);
+    // And Together is on screen without scrolling the page.
+    const t = (await cards.first().boundingBox())!;
+    expect(t.y + t.height).toBeLessThanOrEqual(900);
+  }
+  void answer;
+});
+test("Phone: Together bar pinned on screen and a short lineup list", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "phone", "phone layout only");
+  await routeFixture(page, 673);
+  const row = (label: string) =>
+    page.locator("svg.ibpl-ribbon").getByRole("button", { name: new RegExp(`^${label},`) }).first();
+  await row("JOHN DIBARTOLOMEO").click();
+  const bar = page.locator(".gf-together-bar");
+  await expect(bar).toHaveCount(0);
+  await row("KEATON WALLACE").click();
+  await expect(bar).toContainText(/^Together \d+:\d\d · \+\/- [+-]?\d+ · Net /);
+  const b = (await bar.boundingBox())!;
+  expect(b.y + b.height).toBeLessThanOrEqual(844);
+  expect(b.y).toBeGreaterThan(700);
+  const list = page.getByRole("region", { name: "Shared lineups", exact: true });
+  await expect(list.locator(".ibpl-ribbon-shared-lineup")).toHaveCount(3);
+  await list.getByRole("button", { name: /^Show all \d+ lineups$/ }).click();
+  expect(await list.locator(".ibpl-ribbon-shared-lineup").count()).toBeGreaterThan(3);
+  await bar.click();
+  await expect(page.locator(".gf-player-cards")).toBeInViewport();
+});
+test("Run bands open no tip of their own", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "hover only");
+  await routeFixture(page, 673);
+  const band = page.locator(".gf-run-band.is-defining").first();
+  await expect(band).toHaveCSS("pointer-events", "none");
+});
+test("Gameflow draws no run in a game without one", async ({ page }) => {
+  await routeFixture(page, 440);
+  await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
+  await expect(page.locator(".gf-run-chip")).toHaveCount(0);
+  await expect(page.locator(".gf-run-band")).toHaveCount(0);
+});
 
 test("Gameflow errors can be retried", async ({ page }) => {
   const { answer, url } = loadGameflow("il_regular.json");

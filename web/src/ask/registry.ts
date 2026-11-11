@@ -55,8 +55,8 @@ export type ToolEntry = {
   leagues: League[];
   /** Feature inventory IDs (2026-10-19-api-mcp-feature-inventory.md). */
   inventory: string[];
-  /** false: no markers to quote (gameflow is link-only; guide is text whose
-   * own numbers may be repeated, see markers.ts). */
+  /** false: no markers to quote (guide is text whose own numbers may be
+   * repeated, see markers.ts). */
   numbers: boolean;
   /** The page link when it depends on the query (guide: the topic's tab). */
   link?: (league: League, query: Record<string, string>) => string | null;
@@ -225,7 +225,7 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     async (l, s) => gameflowAnswer(l, s),
     "gameflow",
     ids("GF", 1, 6),
-    { numbers: false, keys: ["game_id", "team_id"] },
+    { keys: ["game_id", "team_id"] },
   ),
   guide: tool(
     "guide",
