@@ -59,13 +59,22 @@ EVENTS_LEAGUES <- list(
       SELECT DISTINCT ON (competition) game_id
       FROM euroleague.final_schedule_mv
       ORDER BY competition, game_date DESC, game_id DESC")$game_id,
-    team_poss = NULL)
+    team_poss = NULL,
+    # Review Focus 3: a credited lineup with no match in lineup_totals_by_game
+    # would drop its events silently; the view keeps it with NULL players.
+    unmatched = "SELECT COUNT(*) AS n FROM euroleague.ribbon_events_v
+                 WHERE game_id = %d AND player_ids IS NULL")
 )
 
 check_events_league <- function(con, league) {
   cfg <- EVENTS_LEAGUES[[league]]
   for (gid in as.integer(cfg$games(con))) {
-    ff <- DBI::dbGetQuery(con, sprintf("
+    if (!is.null(cfg$unmatched)) {
+      n <- DBI::dbGetQuery(con, sprintf(cfg$unmatched, gid))$n
+      expect_equal(as.numeric(n), 0,
+                   info = sprintf("game %d events with no lineup_totals_by_game match", gid))
+    }
+    ff <-DBI::dbGetQuery(con, sprintf("
       SELECT team_id, player_id, type_lineup,
              SUM(total_poss) AS poss, SUM(total_points) AS pts
       FROM %s.player_four_factors_by_game
@@ -103,4 +112,31 @@ test_that("Israeli Gameflow events match On/Off per player and team possessions"
   con <- events_db_con()
   on.exit(DBI::dbDisconnect(con))
   check_events_league(con, "israel")
+})
+
+test_that("EuroLeague Gameflow events match On/Off per player (D38 credit)", {
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- events_db_con()
+  on.exit(DBI::dbDisconnect(con))
+  check_events_league(con, "euroleague")
+})
+
+test_that("EuroLeague Gameflow reader returns possession ends", {
+  skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- events_db_con()
+  on.exit(DBI::dbDisconnect(con))
+  gid <- as.integer(EVENTS_LEAGUES$euroleague$games(con)[1])
+  tid <- DBI::dbGetQuery(con, sprintf(
+    "SELECT team_id FROM euroleague.final_schedule_mv WHERE game_id = %d LIMIT 1", gid))$team_id
+  sql <- events_reader_sql("euroleague")
+  sql <- gsub("$2", "?team_id", gsub("$1", "?game_id", sql, fixed = TRUE), fixed = TRUE)
+  row <- DBI::dbGetQuery(con, DBI::sqlInterpolate(con, sql, game_id = gid, team_id = tid))
+  expect_false(is.na(row$poss[1]))
+  poss <- jsonlite::fromJSON(row$poss[1])
+  expect_setequal(names(poss), c("elapsed", "order_key", "off", "own", "opp"))
+  ev <- jsonlite::fromJSON(row$events[1], simplifyVector = FALSE)
+  mine <- Filter(function(e) e$team_id == tid && isTRUE(e$poss_end), ev)
+  expect_equal(nrow(poss), length(mine))
 })

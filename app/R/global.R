@@ -442,14 +442,51 @@ marg AS (
          source_event_order AS order_key
   FROM euroleague.ribbon_margin_v
   WHERE game_id = $1 AND team_id = $2
+),
+poss AS (
+  -- Possession ends with the score on their row, as the Israeli poss CTE
+  -- (docs/shared_definitions.md, Gameflow ORtg). From ribbon_events_v, the
+  -- curated slice of action_team_context_actions (migration 061).
+  SELECT elapsed_seconds AS elapsed,
+         source_event_order AS order_key,
+         (type_lineup = 'offense') AS off,
+         own_team_score AS own,
+         opp_team_score AS opp
+  FROM euroleague.ribbon_events_v
+  WHERE game_id = $1 AND team_id = $2
+    AND final_end_poss IS TRUE
+),
+events AS (
+  -- Gameflow stint ratings and run results, in the Israeli events shape.
+  -- Credit is EuroLeague's own_lineup (D38: a trip goes to the lineup of its
+  -- last free throw, D1), so the sums match EuroLeague On/Off.
+  SELECT team_id,
+         elapsed_seconds AS elapsed,
+         source_event_order AS order_key,
+         (type_lineup = 'offense') AS off,
+         player_ids AS players,
+         COALESCE(points, 0) AS pts,
+         CASE
+           WHEN fg2_att > 0 THEN 'fg2'
+           WHEN fg3_att > 0 THEN 'fg3'
+           WHEN ft_attempts > 0 THEN 'ft'
+           WHEN turnovers > 0 THEN 'tov'
+           WHEN orebounds > 0 THEN 'oreb'
+         END AS kind,
+         CASE
+           WHEN fg2_att > 0 THEN fg2_made > 0
+           WHEN fg3_att > 0 THEN fg3_made > 0
+           WHEN ft_attempts > 0 THEN points > 0
+         END AS made,
+         (final_end_poss IS TRUE) AS poss_end
+  FROM euroleague.ribbon_events_v
+  WHERE game_id = $1
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
-  -- No possession ends yet: they live in action_team_context_actions
-  -- (possession_flag), which app_readonly may not read; the curated layer
-  -- needs a view for them first. NULL hides the web ratings panel.
-  NULL::jsonb AS poss,
+  (SELECT jsonb_agg(to_jsonb(poss) ORDER BY elapsed, order_key) FROM poss) AS poss,
+  (SELECT jsonb_agg(to_jsonb(events) ORDER BY elapsed, order_key) FROM events) AS events,
   (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
   0 AS excluded_segments,
   0 AS false_straddle_segments,

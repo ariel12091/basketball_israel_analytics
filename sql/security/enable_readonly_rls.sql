@@ -114,7 +114,8 @@ DECLARE
     'sub_lineups',
     'sub_lineups_stats_mv',
     'ribbon_segments_v',
-    'ribbon_margin_v'
+    'ribbon_margin_v',
+    'ribbon_events_v'
   ];
 BEGIN
   SELECT EXISTS (
