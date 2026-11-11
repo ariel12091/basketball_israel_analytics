@@ -110,7 +110,9 @@ KNOWN_SUBSTITUTION_CORRECTIONS: dict[
     # Empty on purpose. EuroCup 2026-27 game 18 (Trento's Q1 5:06 block of
     # eight substitutions, rows 63-70) was investigated and held back by the
     # user on 2026-11-10: ignoring it removes every duplicate, but about five
-    # minutes still disagree with the box score. See D37.
+    # minutes still disagree with the box score. See D37. Since 0.2.4 the
+    # phantom_pair rule repairs that block by itself (D38); the game is still
+    # not reloaded.
 }
 
 
@@ -143,6 +145,86 @@ def _substitution_corrections(
     return corrections
 
 
+# Two feed errors are repaired by rule, from the rest of the game, not by a
+# per-game entry (D37). Both rest on one invariant: a player's substitution
+# rows alternate IN, OUT, IN, ... and he acts only while on the floor.
+#
+# wrong_outgoing: the OUT row names a player who is not on the floor (so the
+#   pair would change nothing). If exactly one player on the floor is next seen
+#   coming IN, with no action of his before that, he is the one who left.
+#   (EuroCup 2025-26 game 32: OUT Olinde at Q2 6:45 was Golden.)
+# phantom_pair: the outgoing player is OUT again later without coming IN, and
+#   acts in between; the incoming player is IN again later without going OUT.
+#   The first pair did not happen. (EuroCup 2026-27 game 71, Q2 9:20.)
+#
+# Anything else -- no candidate, or more than one -- is left as the feed says.
+INFER_SUBSTITUTION_REPAIRS = True
+
+
+class _PlayerTimeline:
+    """Each player's substitution rows and action rows, by row position."""
+
+    def __init__(self, play_types, team_codes, players, ignored) -> None:
+        self.subs: dict[tuple[str, str], list[tuple[int, str]]] = {}
+        self.actions: dict[str, list[int]] = {}
+        for position, (play_type, team, player) in enumerate(
+            zip(play_types, team_codes, players)
+        ):
+            if player is None or position in ignored:
+                continue
+            if play_type in ("IN", "OUT"):
+                self.subs.setdefault((team, player), []).append((position, play_type))
+            else:
+                self.actions.setdefault(player, []).append(position)
+
+    def next_sub(self, team: str, player: str, after: int) -> Optional[tuple[int, str]]:
+        return next(
+            (event for event in self.subs.get((team, player), []) if event[0] > after),
+            None,
+        )
+
+    def acts_between(self, player: str, start: int, end: int) -> bool:
+        return any(start < position < end for position in self.actions.get(player, []))
+
+
+def _infer_repair(
+    timeline: _PlayerTimeline,
+    team: str,
+    current: list[str],
+    in_pos: int,
+    out_pos: int,
+    player_in: str,
+    player_out: str,
+) -> Optional[tuple[str, Optional[str]]]:
+    if player_in == player_out or player_in in current:
+        return None
+    after = max(in_pos, out_pos)
+    if player_out not in current:
+        candidates = []
+        for player in current:
+            event = timeline.next_sub(team, player, after)
+            if (
+                event is not None
+                and event[1] == "IN"
+                and not timeline.acts_between(player, out_pos, event[0])
+            ):
+                candidates.append(player)
+        if len(candidates) == 1:
+            return "wrong_outgoing", candidates[0]
+        return None
+    out_next = timeline.next_sub(team, player_out, after)
+    in_next = timeline.next_sub(team, player_in, after)
+    if (
+        out_next is not None
+        and out_next[1] == "OUT"
+        and timeline.acts_between(player_out, out_pos, out_next[0])
+        and in_next is not None
+        and in_next[1] == "IN"
+    ):
+        return "phantom_pair", None
+    return None
+
+
 def build_pbp_lineups(
     game: pd.DataFrame,
     boxscore: pd.DataFrame,
@@ -158,7 +240,8 @@ def build_pbp_lineups(
     so when both teams substitute at one stoppage and the feed interleaves their
     rows, it swaps one team's player into the other's lineup or lists a player
     twice (D37). Known feed errors are corrected first
-    (``KNOWN_SUBSTITUTION_CORRECTIONS``).
+    (``KNOWN_SUBSTITUTION_CORRECTIONS``), and two kinds are repaired by rule
+    while pairing (``INFER_SUBSTITUTION_REPAIRS``, D38).
     """
 
     if game.empty:
@@ -189,6 +272,7 @@ def build_pbp_lineups(
     ignored = {position for position, index in enumerate(result.index)
                if index in corrections and corrections[index] is None}
 
+    timeline = _PlayerTimeline(play_types, team_codes, players, ignored)
     processed: set[int] = set()
     lineup_home: list[list[str]] = []
     lineup_away: list[list[str]] = []
@@ -217,9 +301,24 @@ def build_pbp_lineups(
                 )
             else:
                 processed.update((position, match))
-                player_in = players[position] if play_type == "IN" else players[match]
-                player_out = players[match] if play_type == "IN" else players[position]
+                in_pos, out_pos = (position, match) if play_type == "IN" else (match, position)
+                player_in = players[in_pos]
+                player_out = players[out_pos]
                 current = five[team]
+                if INFER_SUBSTITUTION_REPAIRS:
+                    repair = _infer_repair(
+                        timeline, team, current, in_pos, out_pos, player_in, player_out
+                    )
+                    if repair is not None:
+                        rule, value = repair
+                        logger.info(
+                            "inferred substitution repair (%s) %s rows %s/%s: %s",
+                            rule, team, in_pos, out_pos, value,
+                        )
+                        if rule == "phantom_pair":
+                            player_out = player_in  # the pair did not happen
+                        else:
+                            player_out = value
                 if player_in != player_out and player_out in current:
                     slot = current.index(player_out)
                     five[team] = current[:slot] + [player_in] + current[slot + 1:]

@@ -1726,21 +1726,24 @@ build_checks <- function(con, schema) {
       severity = "warning",
       purpose = paste(
         "The reconstructed lineups give every player floor time; the official box score",
-        "gives his minutes. They normally agree to the second (median gap 0.04 s, 99th",
-        "percentile 60 s on 2026-11-10, where a cluster sits at exactly 60 s: official minutes",
-        "a whole minute out, a box-score quirk), so a gap over 90 s means the lineups put the",
-        "wrong five on the floor for a stretch, or the clock is wrong. R1, X and Z cannot",
-        "see a well-formed lineup with the wrong players; this can. One row per team-game.",
-        "likely_cause: 'unreadable clock' when the game has a clock value N12 flags;",
-        "'time missing from the game' when the team's lineup minutes do not",
-        "add up to its official total (whole segments absent); 'both teams: clock or feed'",
-        "when the opponent is off by a similar amount, since a bad clock moves time for",
-        "both sides; otherwise 'one team: lineup', a wrong five for one side. Seen: U 2025",
-        "32 (one player 15 min off), U 2026 18's stretch (D37), the round-10 clock defects",
-        "of E 2026 97-100 (N12)."
+        "gives his minutes. They normally agree to the second (median gap 0.04 s on",
+        "2026-11-10), so a gap over 90 s means the lineups put the wrong five on the",
+        "floor for a stretch, the clock is wrong, or the official minutes are. R1, X and",
+        "Z cannot see a well-formed lineup with the wrong players; this can. One row per",
+        "team-game. A gap of a whole number of minutes, up to 3, is a box-score quirk",
+        "and not flagged. likely_cause: 'unreadable clock' when the game has a clock",
+        "value N12 flags; 'time missing from the game' when the team's lineup minutes",
+        "do not add up to its official total; 'both teams: clock or feed' when the",
+        "opponent is off by a similar amount; 'feed consistent (likely box score)' when",
+        "the flagged players' gaps cancel (an exactly opposite pair) and none of them",
+        "makes a play while our lineups have him off the floor -- the play-by-play",
+        "cannot be corrected from itself, and in every case checked so far the box",
+        "score's own plus/minus showed its tracking had a different five (D38);",
+        "otherwise 'one team: lineup', a wrong five for one side. counted_players is 0",
+        "for 'feed consistent' rows, so the check goes green once only those remain."
       ),
-      required_tables = c("full_rosters", "player_four_factors_by_game", "team_four_factors_by_game", "schedule", "teams"),
-      problem_count_col = "players_over_90s",
+      required_tables = c("full_rosters", "player_four_factors_by_game", "team_four_factors_by_game", "schedule", "teams", "actions"),
+      problem_count_col = "counted_players",
       sql = sprintf(
         "WITH lineup AS (
            SELECT game_id, team_id, player_id, SUM(onoff_minutes) * 60 AS lineup_seconds
@@ -1748,41 +1751,60 @@ build_checks <- function(con, schema) {
             WHERE is_on_key = 1 AND type_lineup = 'offense'
             GROUP BY 1, 2, 3
          ), players AS (
-           SELECT fr.game_id, fr.team_id, fr.player_id, fr.minutes_seconds AS official_seconds,
-                  COALESCE(l.lineup_seconds, 0) AS lineup_seconds
+           SELECT fr.game_id, fr.team_id, fr.player_id,
+                  COALESCE(l.lineup_seconds, 0) - fr.minutes_seconds AS gap
              FROM %s fr
              LEFT JOIN lineup l USING (game_id, team_id, player_id)
             WHERE fr.minutes_seconds > 0
               AND EXISTS (SELECT 1 FROM %s t WHERE t.game_id = fr.game_id)
+         ), flagged AS (
+           SELECT p.*,
+                  ABS(p.gap) > 90
+                  AND NOT (ABS(p.gap) < 181 AND ABS(p.gap - 60 * ROUND(p.gap / 60)) < 1) AS over
+             FROM players p
          ), team_gaps AS (
            SELECT game_id, team_id,
-                  COUNT(*) FILTER (WHERE ABS(lineup_seconds - official_seconds) > 90) AS players_over_90s,
-                  ROUND(MAX(ABS(lineup_seconds - official_seconds))) AS largest_gap_seconds,
-                  ROUND(SUM(ABS(lineup_seconds - official_seconds)) / 60.0, 1) AS total_gap_minutes,
-                  ROUND(SUM(lineup_seconds - official_seconds) / 60.0, 1) AS net_gap_minutes
-             FROM players
+                  COUNT(*) FILTER (WHERE over) AS players_over_90s,
+                  ROUND(MAX(ABS(gap)) FILTER (WHERE over)) AS largest_gap_seconds,
+                  ROUND(SUM(ABS(gap)) / 60.0, 1) AS total_gap_minutes,
+                  ROUND(SUM(gap) / 60.0, 1) AS net_gap_minutes,
+                  ABS(SUM(gap) FILTER (WHERE over)) AS flagged_net_seconds,
+                  BOOL_OR(over AND EXISTS (
+                    SELECT 1 FROM %s a
+                     WHERE a.game_id = f.game_id AND a.player_id = f.player_id
+                       AND a.validate_on_court_player IS FALSE
+                       AND a.play_type NOT IN ('IN', 'OUT'))) AS flagged_player_acts_off_floor
+             FROM flagged f
             GROUP BY 1, 2
          ), teams AS (
            SELECT g.*,
                   MIN(g.total_gap_minutes) OVER (PARTITION BY g.game_id) AS smaller_team_gap,
                   MAX(g.total_gap_minutes) OVER (PARTITION BY g.game_id) AS larger_team_gap
              FROM team_gaps g
+         ), classified AS (
+           SELECT t.*,
+                  CASE WHEN EXISTS (SELECT 1 FROM %s a
+                                     WHERE a.game_id = t.game_id AND a.marker_time IS NOT NULL
+                                       AND a.marker_time !~ '^\\d{1,2}:\\d{2}$')
+                         THEN 'unreadable clock (see N12)'
+                       WHEN ABS(t.net_gap_minutes) >= 1 THEN 'time missing from the game'
+                       WHEN t.smaller_team_gap >= 0.8 * t.larger_team_gap THEN 'both teams: clock or feed'
+                       WHEN t.flagged_net_seconds <= 90 AND NOT t.flagged_player_acts_off_floor
+                         THEN 'feed consistent (likely box score)'
+                       ELSE 'one team: lineup' END AS likely_cause
+             FROM teams t
+            WHERE t.players_over_90s > 0
          )
-         SELECT s.competition, s.season, s.gamecode, t.game_id, tm.provider_team_code AS team,
-                t.players_over_90s, t.largest_gap_seconds, t.total_gap_minutes, t.net_gap_minutes,
-                CASE WHEN EXISTS (SELECT 1 FROM %s a
-                                   WHERE a.game_id = t.game_id AND a.marker_time IS NOT NULL
-                                     AND a.marker_time !~ '^\\d{1,2}:\\d{2}$')
-                       THEN 'unreadable clock (see N12)'
-                     WHEN ABS(t.net_gap_minutes) >= 1 THEN 'time missing from the game'
-                     WHEN t.smaller_team_gap >= 0.8 * t.larger_team_gap THEN 'both teams: clock or feed'
-                     ELSE 'one team: lineup' END AS likely_cause
-           FROM teams t
-           JOIN %s s ON s.game_id = t.game_id
-           JOIN %s tm ON tm.team_id = t.team_id
-          WHERE t.players_over_90s > 0
-          ORDER BY t.largest_gap_seconds DESC",
-        pffg, fr, tffg, act, sch, q("teams")
+         SELECT s.competition, s.season, s.gamecode, c.game_id, tm.provider_team_code AS team,
+                c.players_over_90s,
+                CASE WHEN c.likely_cause = 'feed consistent (likely box score)' THEN 0
+                     ELSE c.players_over_90s END AS counted_players,
+                c.largest_gap_seconds, c.total_gap_minutes, c.net_gap_minutes, c.likely_cause
+           FROM classified c
+           JOIN %s s ON s.game_id = c.game_id
+           JOIN %s tm ON tm.team_id = c.team_id
+          ORDER BY counted_players DESC, c.largest_gap_seconds DESC",
+        pffg, fr, tffg, act, act, sch, q("teams")
       )
     ),
 

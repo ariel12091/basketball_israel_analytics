@@ -84,16 +84,23 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
                 "blocks_favour": count("FV"),
                 "blocks_against": count("AG"),
                 # Official FoulsCommited includes player technicals (CMT*/CMTI)
-                # but excludes bench/coach technical rows (B/C). CMD stays out as
-                # before parser 0.2.3 made it a special foul: the official count
-                # includes it in 3 of the 4 games that have one, so it is an open
-                # question, not settled by this change.
+                # but excludes bench/coach technical rows (B/C). A disqualifying
+                # foul (CMD) counts when a player committed it -- the feed numbers
+                # it as his 4th-6th foul and the box score counts it (E 2025 235,
+                # 265, U 2025 192) -- and not when it has no player (a bench
+                # disqualification, E 2025 14).
                 "fouls_committed": count(
                     *(
                         code
                         for code in counts.index
                         if is_committed_foul(code) and code not in {"B", "C", "CMD"}
                     )
+                )
+                + int(
+                    (
+                        team_events["play_type"].eq("CMD")
+                        & team_events["player_id"].notna()
+                    ).sum()
                 ),
                 "fouls_received": count("RV"),
             }
