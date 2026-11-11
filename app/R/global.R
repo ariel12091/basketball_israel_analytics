@@ -461,7 +461,7 @@ poss AS (
 ),
 events AS (
   -- Gameflow stint ratings and run results, in the Israeli events shape.
-  -- Credit is EuroLeague's own_lineup (D38: a trip goes to the lineup of its
+  -- Credit is EuroLeague's own_lineup (D39: a trip goes to the lineup of its
   -- last free throw, D1), so the sums match EuroLeague On/Off.
   SELECT team_id,
          elapsed_seconds AS elapsed,

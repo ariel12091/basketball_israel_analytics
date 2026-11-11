@@ -249,6 +249,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
 
   log_msg("â”€â”€â”€ Phase 2: Base Table ETL â”€â”€â”€")
 
+  # The dropped-action file describes this run only (DQ check AO).
+  unlink(file.path("etl", "logs", "data_quality", "details", LINEUP_COVERAGE_DROPPED_FILE))
+
   processed_ids <- tryCatch({
     # Fetch schedule
     sched_df <- fetch_israel_schedule() %>%
@@ -820,7 +823,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
 
       # Reject missing/duplicate gameplay mappings before pws is written.
       # An error follows the per-game rollback path and leaves the game retryable.
-      assert_gameplay_lineup_coverage(
+      pws_stage <- assert_gameplay_lineup_coverage(
         actions_df, pws_stage, df_lineups_df, log_msg = log_msg,
         diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
       )
@@ -829,6 +832,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
 
       DBI::dbCommit(pg)
       transaction_open <- FALSE
+      tryCatch(
+        record_lineup_coverage_dropped(
+          attr(pws_stage, "lineup_coverage_dropped"),
+          file.path("etl", "logs", "data_quality", "details")
+        ),
+        error = function(e) log_msg(sprintf(
+          "  could not record dropped lineup-coverage rows: %s", conditionMessage(e)), "WARN")
+      )
       TRUE
         }, error = function(e) {
           if (isTRUE(transaction_open)) {

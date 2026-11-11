@@ -9,7 +9,7 @@
 -- the curated slice of it, one row per team perspective per event, and adds
 -- no new derivation -- every count is the column the on/off tables sum.
 --
--- Credit (D38): action_team_context_actions assigns each row to own_lineup,
+-- Credit (D39): action_team_context_actions assigns each row to own_lineup,
 -- the lineup the on/off tables use, so these rows match EuroLeague On/Off
 -- (a free-throw trip goes to the lineup of its last free throw, D1).
 --

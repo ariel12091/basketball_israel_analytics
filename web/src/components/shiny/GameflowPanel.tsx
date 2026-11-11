@@ -771,7 +771,7 @@ function StintStats({ d }: { d: CardStats }) {
     </dl>
   );
 }
-// D38: EuroLeague credits a trip to the lineup of its last free throw (D1).
+// D39: EuroLeague credits a trip to the lineup of its last free throw (D1).
 const ratingsNote = (league: League) =>
   `Ratings count free throws for ${league === "il" ? "the lineup that drew the foul" : "the lineup on the floor for the last free throw"}, as On/Off does, so they can differ slightly from the +/- beside them.`;
 

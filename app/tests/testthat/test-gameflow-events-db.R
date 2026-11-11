@@ -118,7 +118,7 @@ test_that("Israeli Gameflow events match On/Off per player and team possessions"
   check_events_league(con, "israel")
 })
 
-test_that("EuroLeague Gameflow events match On/Off per player (D38 credit)", {
+test_that("EuroLeague Gameflow events match On/Off per player (D39 credit)", {
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- events_db_con()

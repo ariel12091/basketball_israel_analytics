@@ -176,8 +176,25 @@ class RenamedFoulCountTest(unittest.TestCase):
             }
         )
         counts = _event_counts(events)
-        # Bench/coach (B, C) are excluded, as is CMD, exactly as before the rename.
-        self.assertEqual(int(counts["fouls_committed"].iloc[0]), 7)
+        # Bench/coach (B, C) are excluded; a player's CMD counts.
+        self.assertEqual(int(counts["fouls_committed"].iloc[0]), 8)
+
+    def test_disqualifying_foul_counts_only_with_a_player(self) -> None:
+        from euroleague_possessions.reconciliation import _event_counts
+
+        events = pd.DataFrame(
+            {
+                "season": 2025,
+                "gamecode": 14,
+                "source_event_order": [1, 2, 3],
+                "period": 4,
+                "play_type": ["CM", "CMD", "CMD"],
+                "team_code": "A",
+                "player_id": ["p1", "p1", None],
+            }
+        )
+        # The player's CMD is his foul; the bench CMD (no player) is not.
+        self.assertEqual(int(_event_counts(events)["fouls_committed"].iloc[0]), 2)
 
 
 if __name__ == "__main__":
