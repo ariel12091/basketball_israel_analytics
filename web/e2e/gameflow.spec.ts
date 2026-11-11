@@ -259,10 +259,18 @@ test("Gameflow marks game 673's runs and explains the defining one", async ({
   page,
 }, info) => {
   await routeFixture(page, 673);
-  const chips = page.locator(".gf-run-chip");
+  const chips = page.locator(".gf-run-chip:not(.is-cont)");
   await expect(chips).toHaveCount(3);
+  // Phones: the two runs that cross a quarter break carry a "‹" chip into
+  // the next card (Hapoel's 30-4 into Q3, Maccabi's 37-5 into Q4).
+  await expect(page.locator(".gf-run-chip.is-cont")).toHaveCount(
+    info.project.name === "phone" ? 2 : 0,
+  );
+  if (info.project.name === "phone")
+    await expect(page.locator('[data-quarter="4"] .gf-run-chip.is-cont')).toHaveText("‹ 37-5");
   const defining = page.getByRole("button", {
     name: "Maccabi Tel-Aviv 37-5 run, defining stretch",
+    exact: true,
   });
   await expect(defining).toHaveText("37-5 ›");
   await expect(defining).toHaveClass(/is-defining/);
@@ -434,6 +442,19 @@ test("Phone: a run's lineups open under the tapped quarter card", async ({ page 
     l = (await list.boundingBox())!;
   expect(l.y).toBeGreaterThanOrEqual(c.y + c.height);
   expect(l.y - (c.y + c.height)).toBeLessThan(40);
+});
+test("Phone: every quarter card shows its whole chart", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "quarter cards are phone-only");
+  await routeFixture(page, 673);
+  const sizes = await page.locator(".ibpl-ribbon-quarter-frame").evaluateAll((frames) =>
+    frames.map((f) => [
+      f.getBoundingClientRect().right,
+      f.querySelector("svg.ibpl-ribbon")!.getBoundingClientRect().right,
+    ]),
+  );
+  expect(sizes.length).toBe(4);
+  // The chart ends inside its frame: nothing is cut off at the right.
+  for (const [frame, svg] of sizes) expect(svg).toBeLessThanOrEqual(frame + 0.5);
 });
 test("Gameflow draws no run in a game without one", async ({ page }) => {
   await routeFixture(page, 440);

@@ -55,6 +55,11 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-gameflow-dialog .modal-title { margin: 0; }
 .ibpl-react-gameflow-panel { display: block; margin: 16px 0; }
 .ibpl-react-gameflow .ibpl-ribbon-quarter-frame > svg { width: 100%; max-width: 100%; height: auto; }
+/* mobile.css's `.ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact { width: auto }`
+   outranks the rule above, so a quarter's chart kept its layout width (316.5)
+   in a 298px frame and lost its last ~30 s to the frame's overflow (user
+   2026-11-11: runs across a quarter break were cut). Fit it to the card. */
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-frame > svg.ibpl-ribbon.is-compact { width: 100%; max-width: 100%; }
 .ibpl-react-gameflow .ibpl-gameflow-full { max-width: 100%; overflow-x: auto; }
 .ibpl-react-gameflow .ibpl-gameflow-full:has(.ibpl-gameflow-gutter) { display: flex; align-items: flex-start; }
 .ibpl-react-gameflow .ibpl-gameflow-full > svg { flex-shrink: 0; }
@@ -549,6 +554,10 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-chip.is-defining.is-own rect { fill: var(--ibpl-accent); }
 .gf-run-chip.is-defining.is-opp rect { fill: var(--ibpl-text-muted); }
 .gf-run-chip.is-defining text { fill: var(--ibpl-bg); }
+/* A run carried over from the previous quarter card: outlined, never filled. */
+.gf-run-chip.is-cont rect { fill: var(--ibpl-bg) !important; stroke-dasharray: 3 2; }
+.gf-run-chip.is-cont.is-own text { fill: var(--ibpl-accent); }
+.gf-run-chip.is-cont.is-opp text { fill: var(--ibpl-text-muted); }
 .gf-run-chip:focus { outline: none; }
 .gf-run-chip:focus rect, .gf-run-chip.is-open rect { stroke-width: 2; }
 .gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }
