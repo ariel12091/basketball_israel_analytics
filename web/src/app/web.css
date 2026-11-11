@@ -554,6 +554,10 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-chip.is-defining.is-own rect { fill: var(--ibpl-accent); }
 .gf-run-chip.is-defining.is-opp rect { fill: var(--ibpl-text-muted); }
 .gf-run-chip.is-defining text { fill: var(--ibpl-bg); }
+/* A run carried over from the previous quarter: outlined, never filled. */
+.gf-run-chip.is-cont rect { fill: var(--ibpl-bg) !important; stroke-dasharray: 3 2; }
+.gf-run-chip.is-cont.is-own text { fill: var(--ibpl-accent); }
+.gf-run-chip.is-cont.is-opp text { fill: var(--ibpl-text-muted); }
 .gf-run-chip:focus { outline: none; }
 .gf-run-chip:focus rect, .gf-run-chip.is-open rect { stroke-width: 2; }
 .gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }

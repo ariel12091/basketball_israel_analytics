@@ -339,9 +339,18 @@ test("Phone: the runs are listed in the panel and explained there", async ({
 }, info) => {
   test.skip(!isPhone(info), "phone layout only");
   await routeFixture(page, 673);
-  // No chips on a phone's quarter; the strip shades all three runs, unsplit.
-  await expect(page.locator(".gf-run-chip")).toHaveCount(0);
+  // The strip shades all three runs, unsplit; each quarter names its runs.
   await expect(page.locator(".gf-m-head .gf-run-band")).toHaveCount(3);
+  await expect(page.locator(".gf-run-chip")).toHaveCount(1);
+  await expect(page.locator(".gf-run-chip")).toHaveText("16-6 ›");
+  // Q4 carries the 37-5 run over from Q3 with a "‹" chip; a tap explains it.
+  await showQuarter(page, 4);
+  const cont = page.locator(".gf-run-chip.is-cont");
+  await expect(cont).toHaveText("‹ 37-5");
+  await cont.click();
+  await expect(panelBar(page)).toContainText("Maccabi Tel-Aviv 37-5 run · defining stretch");
+  await expect(page.locator(".gf-m-panel-body .gf-run-tip-line").last()).toContainText("Estimated cause");
+  await showQuarter(page, 1);
   await page.getByRole("button", { name: "Runs 3 ›" }).click();
   const rows = page.locator(".gf-m-runrow");
   await expect(rows).toHaveCount(3);

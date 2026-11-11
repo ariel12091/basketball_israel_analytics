@@ -584,7 +584,6 @@ export function GameflowView({
                     <GameflowChart
                       {...common}
                       range={{ start: i ? data.bounds[i - 1] : 0, end }}
-                      chips={false}
                     />
                   </div>
                 </section>
