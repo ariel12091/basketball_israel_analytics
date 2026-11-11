@@ -37,3 +37,46 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       ),
     ).toBe(true);
   });
+
+// Runs and stint ratings (shared_definitions.md, Gameflow stint rating and
+// Gameflow run) on live data: both readers return credited events and
+// possession ends, and game 673 shows its defining run and a rated card.
+for (const [league, game, team] of [
+  ["il", 673, 2],
+  ["euroleague", 781, 8],
+] as const)
+  test(`Gameflow events and ratings live ${league}`, async ({ page }) => {
+    // Fetched from the page so a protected Preview's bypass header applies.
+    await page.goto(`/${league}/gameflow?game_id=${game}&team_id=${team}`);
+    const body = await page.evaluate(async (url) => {
+      const r = await fetch(url);
+      const j = await r.json();
+      return { ok: r.ok, events: j.events?.length ?? 0, ratings: j.ratings != null };
+    }, `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`);
+    expect(body).toEqual({ ok: true, events: expect.any(Number), ratings: true });
+    expect(body.events).toBeGreaterThan(0);
+  });
+test("Gameflow 673 shows the defining run and a rated card live", async ({
+  page,
+}) => {
+  await page.goto("/il/gameflow?game_id=673&team_id=2");
+  await expect(
+    page.getByRole("button", { name: /37-5 run, defining stretch$/ }),
+  ).toHaveText("37-5 ›");
+  // The chart arrives in the server HTML, before React has hydrated it: a tap
+  // that early is lost, so retry until the selection shows.
+  await expect(async () => {
+    await page
+      .locator("svg.ibpl-ribbon")
+      .getByRole("button", { name: /^john dibartolomeo,/i })
+      .first()
+      .click();
+    await expect(page.locator(".ibpl-ribbon-pair-status")).not.toContainText(
+      "Select two or more",
+      { timeout: 2000 },
+    );
+  }).toPass({ timeout: 20000 });
+  await expect(
+    page.getByRole("region", { name: /dibartolomeo game detail/i }),
+  ).toContainText(/Net[+-]?[\d.]+ on \d+ poss/);
+});
