@@ -1,5 +1,6 @@
 "use client";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -122,6 +123,9 @@ export function GameflowView({
     // Each team's ORtg in the score readouts (user 2026-11-07): since tip-off
     // by default, or over its last RATING_WINDOW possessions.
     [ratingMode, setRatingMode] = useState<RatingMode | "off">("game"),
+    // Phones: the quarter card whose run band was tapped (its lineups open
+    // under it).
+    [runCard, setRunCard] = useState<number | null>(null),
     // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
     runs = data.runs,
     [runTip, setRunTip] = useState<{
@@ -503,12 +507,15 @@ export function GameflowView({
         )
       ) : (
         <>
-          {/* Quarter cards (phones): the lineups sit right above them. */}
-          {details}
+          {/* Quarter cards (phones): the lineups sit right above them --
+              except a run's, which open under the card whose band was tapped,
+              so nothing appears out of sight or moves the card (user
+              2026-11-11). */}
+          {!(run && runCard != null) && details}
           <div className="ibpl-ribbon-quarters">
             {data.bounds.map((end, i) => (
+              <Fragment key={end}>
               <section
-                key={end}
                 className="ibpl-ribbon-quarter-card"
                 data-quarter={i + 1}
                 ref={(el) => {
@@ -523,9 +530,17 @@ export function GameflowView({
                   <GameflowChart
                     {...common}
                     range={{ start: i ? data.bounds[i - 1] : 0, end }}
+                    onRunSelect={(r: Run) => {
+                      setRunCard(i);
+                      dispatch({ type: "run", run: r });
+                    }}
                   />
                 </div>
               </section>
+              {run && runCard === i && (
+                <div className="gf-run-inline">{details}</div>
+              )}
+              </Fragment>
             ))}
           </div>
         </>

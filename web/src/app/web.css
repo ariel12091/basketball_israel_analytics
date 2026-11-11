@@ -564,6 +564,8 @@ a.ibpl-gameflow-back { text-decoration: none; }
 }
 .gf-together-bar > span:last-child { color: var(--ibpl-accent); font-size: 18px; }
 .gf-lineups-more { margin-top: 6px; width: 100%; }
+/* Phones: a tapped run's lineups, right under its quarter card. */
+.gf-run-inline { margin: 8px 0 12px; }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 12px; line-height: 1.4; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }

@@ -418,6 +418,23 @@ test("A run's band lists both teams' lineups inside the run", async ({ page }, i
   await page.mouse.click(again.x + again.width / 2, again.y + 4);
   await expect(list).toHaveCount(0);
 });
+test("Phone: a run's lineups open under the tapped quarter card", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "quarter cards are phone-only");
+  await routeFixture(page, 673);
+  const card = page.locator('[data-quarter="4"]');
+  const band = card.locator(".gf-run-band").first();
+  await band.scrollIntoViewIfNeeded();
+  const b = (await band.boundingBox())!;
+  await page.mouse.click(b.x + b.width / 2, b.y + 4);
+  const list = page.getByRole("region", { name: "Run lineups", exact: true });
+  await expect(list).toHaveCount(1);
+  // The card did not move, and the list starts right below it.
+  expect((await band.boundingBox())!.y).toBeCloseTo(b.y, 0);
+  const c = (await card.boundingBox())!,
+    l = (await list.boundingBox())!;
+  expect(l.y).toBeGreaterThanOrEqual(c.y + c.height);
+  expect(l.y - (c.y + c.height)).toBeLessThan(40);
+});
 test("Gameflow draws no run in a game without one", async ({ page }) => {
   await routeFixture(page, 440);
   await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
