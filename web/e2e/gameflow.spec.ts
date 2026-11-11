@@ -346,6 +346,34 @@ test("Together comes first and every card fits without scrolling", async ({
   }
   void answer;
 });
+test("Phone: Together bar pinned on screen and a short lineup list", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "phone", "phone layout only");
+  await routeFixture(page, 673);
+  const row = (label: string) =>
+    page.locator("svg.ibpl-ribbon").getByRole("button", { name: new RegExp(`^${label},`) }).first();
+  await row("JOHN DIBARTOLOMEO").click();
+  const bar = page.locator(".gf-together-bar");
+  await expect(bar).toHaveCount(0);
+  await row("KEATON WALLACE").click();
+  await expect(bar).toContainText(/^Together \d+:\d\d · \+\/- [+-]?\d+ · Net /);
+  const b = (await bar.boundingBox())!;
+  expect(b.y + b.height).toBeLessThanOrEqual(844);
+  expect(b.y).toBeGreaterThan(700);
+  const list = page.getByRole("region", { name: "Shared lineups", exact: true });
+  await expect(list.locator(".ibpl-ribbon-shared-lineup")).toHaveCount(3);
+  await list.getByRole("button", { name: /^Show all \d+ lineups$/ }).click();
+  expect(await list.locator(".ibpl-ribbon-shared-lineup").count()).toBeGreaterThan(3);
+  await bar.click();
+  await expect(page.locator(".gf-player-cards")).toBeInViewport();
+});
+test("Run bands open no tip of their own", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "hover only");
+  await routeFixture(page, 673);
+  const band = page.locator(".gf-run-band.is-defining").first();
+  await expect(band).toHaveCSS("pointer-events", "none");
+});
 test("Gameflow draws no run in a game without one", async ({ page }) => {
   await routeFixture(page, 440);
   await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();

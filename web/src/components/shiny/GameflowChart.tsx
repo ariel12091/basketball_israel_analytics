@@ -380,11 +380,6 @@ export default function GameflowChart({
               y={geometry.padTop}
               width={Math.max(1, (b - a) * scale)}
               height={totalH - geometry.padTop}
-              onPointerEnter={(e) =>
-                e.pointerType !== "touch" &&
-                onRun?.(r, e.currentTarget.getBoundingClientRect(), "hover")
-              }
-              onPointerLeave={() => onRun?.(null, null, "hover")}
             />
           );
         })}

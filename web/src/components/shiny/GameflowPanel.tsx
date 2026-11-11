@@ -267,6 +267,7 @@ export function GameflowView({
       focus={focus}
       dispatch={dispatch}
       detail={detail}
+      compact={compact}
     />
   );
   // The margins are part of the room the chart gave up.
@@ -298,6 +299,9 @@ export function GameflowView({
         pointerMoved.current = true;
       }}
     >
+      {compact && selected.length > 1 && (
+        <TogetherBar data={data} selected={selected} windows={windows} />
+      )}
       {!compact && hover && hoverBox && !runTip && (
         <GameflowHoverTip data={data} window={hover} box={hoverBox} />
       )}
@@ -533,6 +537,57 @@ const TIP_WIDTH = 400,
   // At most two lineups in a bar's tip (user 2026-11-11); the rest are a
   // click away.
   TIP_ROWS = 2;
+const LINEUPS_SHORT = 3;
+/**
+ * Phones: what the selected players did together, pinned to the bottom of the
+ * screen while two or more are selected, so it never needs a scroll (user
+ * 2026-11-11). A tap brings the full cards into view.
+ */
+function TogetherBar({
+  data,
+  selected,
+  windows,
+}: {
+  data: GameflowPayload;
+  selected: string[];
+  windows: Span[];
+}) {
+  const sides = [
+    ...new Set(
+      selected.map((k) => data.bars.find((b) => laneKey(b) === k)?.side),
+    ),
+  ].filter((s): s is Side => s != null);
+  const secs = windows.reduce((t, w) => t + w.end - w.start, 0);
+  let text: string;
+  if (sides.length === 1) {
+    const d = windowsSummary(sides[0], windows, data.steps),
+      r = data.events.length
+        ? stintRatings(
+            data.events,
+            sides[0],
+            selected.map((k) => k.slice(k.indexOf(":") + 1)),
+          )
+        : null;
+    text = `Together ${clock(secs)} · +/- ${d.pm}${r ? ` · Net ${netLabel(r.net)}` : ""}`;
+  } else {
+    const d = windowsSummary("own", windows, data.steps);
+    text = `Head to head ${clock(secs)}${d.pf == null ? "" : ` · ${data.meta.ownTeam} ${d.pf} – ${d.pa} ${data.meta.oppTeam}`}`;
+  }
+  return (
+    <button
+      type="button"
+      className="gf-together-bar"
+      onClick={() =>
+        document
+          .querySelector(".gf-player-cards")
+          ?.scrollIntoView({ block: "start", behavior: "smooth" })
+      }
+    >
+      <span>{text}</span>
+      <span aria-hidden="true">›</span>
+    </button>
+  );
+}
 /** A listed lineup's Net over its windows, from the five's credited events. */
 function lineupNet(
   data: GameflowPayload,
@@ -731,7 +786,9 @@ function GameflowDetails({
   focus,
   dispatch,
   detail,
+  compact = false,
 }: {
+  compact?: boolean;
   data: GameflowPayload;
   activeWindow: BarWindow | null;
   showStint: boolean;
@@ -745,6 +802,11 @@ function GameflowDetails({
   // A card per click (user 2026-11-07): the stint clicked, else each selected
   // player's whole game, plus the minutes they shared when there are several.
   const bars = (key: string) => data.bars.filter((b) => laneKey(b) === key);
+  // Phones list the top LINEUPS_SHORT lineups, the rest one tap away, so the
+  // cards above the chart stay short (user 2026-11-11, minimal scrolling).
+  const [showAll, setShowAll] = useState(false),
+    shown =
+      compact && !showAll ? groups.slice(0, LINEUPS_SHORT) : groups;
   // Credited-lineup ratings, when the reader returned events.
   const rate = (side: Side, keys: string[], window?: Span) =>
     data.events.length
@@ -869,12 +931,12 @@ function GameflowDetails({
           </div>
           {(["own", "opp"] as const).map(
             (side) =>
-              groups.some((g) => g.side === side) && (
+              shown.some((g) => g.side === side) && (
                 <FragmentSide
                   key={side}
                   title={side === "own" ? data.meta.ownTeam : data.meta.oppTeam}
                 >
-                  {groups
+                  {shown
                     .filter((g) => g.side === side)
                     .map((g) => (
                       <button
@@ -913,6 +975,15 @@ function GameflowDetails({
                     ))}
                 </FragmentSide>
               ),
+          )}
+          {shown.length < groups.length && (
+            <button
+              type="button"
+              className="btn btn-default btn-sm gf-lineups-more"
+              onClick={() => setShowAll(true)}
+            >
+              Show all {groups.length} lineups
+            </button>
           )}
         </section>
       )}
