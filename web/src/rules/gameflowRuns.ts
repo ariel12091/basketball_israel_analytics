@@ -48,6 +48,14 @@ export function periodClock(elapsed: number, bounds: number[], opening = false) 
   return `${i < 4 ? `Q${i + 1}` : `OT${i - 3}`} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 }
 
+/**
+ * A stretch of the game as every Gameflow surface names it (user
+ * 2026-11-12: one format, the runs' "Q1 3:45 – Q1 0:48"). A start on a
+ * period line opens the next period.
+ */
+export const windowLabel = (w: { start: number; end: number }, bounds: number[]) =>
+  `${periodClock(w.start, bounds, true)} – ${periodClock(w.end, bounds)}`;
+
 type Scoring = { elapsed: number; side: Side; pts: number; before: number; after: number };
 
 /** Every scoring event, in game order, from consecutive score steps. */

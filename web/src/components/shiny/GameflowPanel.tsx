@@ -43,7 +43,12 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type RunTrigger } from "./GameflowChart";
-import { periodClock, runLineupGroups, type Run } from "@/rules/gameflowRuns";
+import {
+  periodClock,
+  runLineupGroups,
+  windowLabel,
+  type Run,
+} from "@/rules/gameflowRuns";
 import type { ExplainedRun } from "@/rules/gameflowSummary";
 import {
   EMPTY_SELECTION,
@@ -466,7 +471,7 @@ export function GameflowView({
                       ? ratingAt(data.ratings[ratingMode], elapsed)
                       : null;
                   setScore(
-                    `${clock(elapsed)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg${ratingMode === "window" ? ` (last ${RATING_WINDOW})` : ""} ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
+                    `${periodClock(elapsed, data.bounds)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg${ratingMode === "window" ? ` (last ${RATING_WINDOW})` : ""} ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
                   );
                 }}
                 onPointerLeave={() => setScore("")}
@@ -708,7 +713,7 @@ function PhonePanel({
   const team = (r: ExplainedRun) =>
     r.side === "own" ? data.meta.ownTeam : data.meta.oppTeam;
   const window = (r: ExplainedRun) =>
-    `${periodClock(r.start, data.bounds)} – ${periodClock(r.end, data.bounds)}`;
+    `${periodClock(r.start, data.bounds)} – ${periodClock(r.end, data.bounds)}`; // a run starts and ends on scores
   let title: string, sub: string, body: ReactNode;
   if (showRuns) {
     title = "Runs in this game";
@@ -853,7 +858,7 @@ function GameflowHoverTip({
       }}
     >
       <div className="ibpl-ribbon-detail-head">
-        {window.bar.player_label} · {clock(window.start)}–{clock(window.end)}
+        {window.bar.player_label} · {windowLabel(window, data.bounds)}
       </div>
       <div className="gf-hover-tip-stats">
         {clock(d.end - d.start)} on the floor · +/- {d.pm}
@@ -1043,7 +1048,7 @@ function GameflowDetails({
     );
     cards.push({
       key: "stint",
-      title: `${activeWindow.bar.player_label} · ${clock(activeWindow.start)}–${clock(activeWindow.end)}`,
+      title: `${activeWindow.bar.player_label} · ${windowLabel(activeWindow, data.bounds)}`,
       aria: "Stint detail",
       stats: {
         secs: d.end - d.start,
@@ -1184,7 +1189,7 @@ function GameflowDetails({
                             : ""}{" "}
                           ·{" "}
                           {g.windows
-                            .map((w) => `${clock(w.start)}–${clock(w.end)}`)
+                            .map((w) => windowLabel(w, data.bounds))
                             .join(", ")}
                         </span>
                       </button>
