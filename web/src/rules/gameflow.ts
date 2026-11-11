@@ -38,8 +38,10 @@ export type RawRibbon = {
       }[]
     | null;
   margin: Score[] | null;
-  /** Possession ends with the score on their row (Israeli league only). */
+  /** Possession ends with the score on their row. */
   poss?: PossEnd[] | null;
+  /** Counted events, both perspectives, each with its credited five. */
+  events?: RawEvent[] | null;
   n_periods: number | null;
   excluded_segments?: number;
   false_straddle_segments?: number;
@@ -228,6 +230,53 @@ export type PossEnd = {
   own: number;
   opp: number;
 };
+export type EventKind = "fg2" | "fg3" | "ft" | "tov" | "oreb";
+/** One events row as the readers return it (RIBBON_SQL_ISRAEL / _EURO). */
+export type RawEvent = {
+  team_id: number;
+  elapsed: number;
+  order_key: number;
+  off: boolean;
+  players: number[] | null;
+  pts: number;
+  kind: EventKind | null;
+  made: boolean | null;
+  poss_end: boolean;
+};
+/**
+ * A counted event from one team's point of view (shared_definitions.md,
+ * Gameflow stint rating): `off` is that team's offense, `players` its
+ * credited five as lane keys.
+ */
+export type GameflowEvent = {
+  side: Side;
+  elapsed: number;
+  order_key: number;
+  off: boolean;
+  players: string[];
+  pts: number;
+  kind: EventKind | null;
+  made: boolean | null;
+  poss_end: boolean;
+};
+export function normalizeEvents(
+  raw: RawRibbon["events"],
+  team: number,
+): GameflowEvent[] {
+  return (raw ?? [])
+    .map((e) => ({
+      side: e.team_id === team ? ("own" as const) : ("opp" as const),
+      elapsed: n(e.elapsed),
+      order_key: n(e.order_key),
+      off: e.off === true,
+      players: (e.players ?? []).map(String),
+      pts: n(e.pts) || 0,
+      kind: e.kind ?? null,
+      made: e.made ?? null,
+      poss_end: e.poss_end === true,
+    }))
+    .sort(byEvent);
+}
 export type RatingPoint = {
   elapsed: number;
   /** Each team's offensive rating: its points per 100 of its possessions. */
@@ -493,6 +542,7 @@ export function ribbonModel(
     ratings: raw.poss?.length
       ? { game: ratingSeries(raw.poss, steps), window: windowSeries(raw.poss) }
       : null,
+    events: normalizeEvents(raw.events, team),
   };
 }
 export type RibbonModel = ReturnType<typeof ribbonModel>;
