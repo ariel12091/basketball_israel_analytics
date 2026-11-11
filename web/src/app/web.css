@@ -525,8 +525,10 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-band.is-open { fill-opacity: 0.3; }
 /* The run's ends, drawn over the bars: the fill alone is lost between dark
    lanes (user 2026-11-11). Dashed for runs other than the defining one. */
-.gf-run-edge { pointer-events: none; stroke-width: 2; stroke-dasharray: 4 3; }
-.gf-run-edge.is-defining { stroke-dasharray: none; }
+/* Translucent, so the edges mark the run without drowning the bars (user
+   2026-11-11: fully solid made the runs all you could see). */
+.gf-run-edge { pointer-events: none; stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: 0.35; }
+.gf-run-edge.is-defining { stroke-dasharray: none; stroke-opacity: 0.5; }
 .gf-run-edge.is-own { stroke: var(--ibpl-accent); }
 .gf-run-edge.is-opp { stroke: var(--ibpl-text); }
 .gf-run-chip { cursor: pointer; }
