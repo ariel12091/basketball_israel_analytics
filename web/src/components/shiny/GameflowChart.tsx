@@ -50,7 +50,10 @@ export default function GameflowChart({
   onRun,
   selectedRun = null,
   onRunSelect,
+  chips = true,
 }: {
+  /** false: no run chips (phones list the runs in their panel instead). */
+  chips?: boolean;
   /** The run whose band was clicked, and how a band click selects one. */
   selectedRun?: Run | null;
   onRunSelect?: (run: Run) => void;
@@ -122,22 +125,18 @@ export default function GameflowChart({
   const runBands = runs.filter((r) => r.end >= start && r.start <= end),
     rowRight = [-Infinity, -Infinity],
     runChips =
-      crop === "bottom"
+      crop === "bottom" || !chips
         ? []
         : runs
-            // A run that began in an earlier quarter card gets a "‹" chip at
-            // this card's left edge, so its band is never unlabelled.
-            .filter((r) => r.start < end && r.end >= start)
+            .filter((r) => r.start >= start && r.start < end)
             .map((r) => {
-              const cont = r.start < start,
-                text = cont ? `‹ ${r.pts}-${r.oppPts}` : `${r.pts}-${r.oppPts} ›`,
+              const text = `${r.pts}-${r.oppPts} ›`,
                 w = text.length * CHIP_FONT * geometry.numberAdvance + 10,
-                left = Math.min(x(Math.max(r.start, start)), width - w - 1),
+                left = Math.min(x(r.start), width - w - 1),
                 row = left >= rowRight[0] + CHIP_GAP ? 0 : 1;
               rowRight[row] = left + w;
               return {
                 run: r,
-                cont,
                 text,
                 w,
                 left,
@@ -630,10 +629,10 @@ export default function GameflowChart({
         {runChips.map((c) => (
           <g
             key={`${c.run.side}:${c.run.start}`}
-            className={`gf-run-chip is-${c.run.side}${c.run.defining ? " is-defining" : ""}${c.cont ? " is-cont" : ""}${same(openRun, c.run) ? " is-open" : ""}`}
+            className={`gf-run-chip is-${c.run.side}${c.run.defining ? " is-defining" : ""}${same(openRun, c.run) ? " is-open" : ""}`}
             role="button"
             tabIndex={0}
-            aria-label={`${runLabel(c.run)}${c.cont ? ", continued from the previous quarter" : ""}`}
+            aria-label={runLabel(c.run)}
             aria-expanded={same(openRun, c.run)}
             onClick={(e) =>
               onRun?.(c.run, e.currentTarget.getBoundingClientRect(), "tap")

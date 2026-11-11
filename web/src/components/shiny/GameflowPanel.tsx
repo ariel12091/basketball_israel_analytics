@@ -43,7 +43,7 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type RunTrigger } from "./GameflowChart";
-import { runLineupGroups, type Run } from "@/rules/gameflowRuns";
+import { periodClock, runLineupGroups, type Run } from "@/rules/gameflowRuns";
 import type { ExplainedRun } from "@/rules/gameflowSummary";
 import {
   EMPTY_SELECTION,
@@ -123,9 +123,12 @@ export function GameflowView({
     // Each team's ORtg in the score readouts (user 2026-11-07): since tip-off
     // by default, or over its last RATING_WINDOW possessions.
     [ratingMode, setRatingMode] = useState<RatingMode | "off">("game"),
-    // Phones: the quarter card whose run band was tapped (its lineups open
-    // under it).
-    [runCard, setRunCard] = useState<number | null>(null),
+    // Phones (user 2026-11-11, from the mock-up): one quarter at a time, one
+    // bottom panel every tap reports to, the runs listed in it, and the
+    // display options behind a menu.
+    [panelOpen, setPanelOpen] = useState(false),
+    [panelRuns, setPanelRuns] = useState(false),
+    [menuOpen, setMenuOpen] = useState(false),
     // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
     runs = data.runs,
     [runTip, setRunTip] = useState<{
@@ -133,8 +136,7 @@ export function GameflowView({
       box: DOMRect;
       pinned: boolean;
     } | null>(null);
-  const cards = useRef(new Map<number, HTMLElement>()),
-    detail = useRef<HTMLElement>(null),
+  const detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
     lineupsBox = useRef<HTMLDivElement>(null),
     space =useChartSpace(compact, chartBox),
@@ -180,9 +182,20 @@ export function GameflowView({
           : hover
             ? [{ start: hover.start, end: hover.end }]
             : []);
-  const toggle = (bar: Bar, window?: BarWindow) =>
+  const toggle = (bar: Bar, window?: BarWindow) => {
+    if (compact) setPanelRuns(false);
     dispatch({ type: "toggle", bar, window, bars: data.bars, end: gameEnd });
+  };
   const clear = () => dispatch({ type: "clear" });
+  const quarterOf = (t: number) =>
+    Math.max(1, data.bounds.findIndex((b) => t < b) + 1 || data.bounds.length);
+  const selectRun = (r: Run) => {
+    dispatch({ type: "run", run: r });
+    if (compact) {
+      setPanelRuns(false);
+      setPanelOpen(true);
+    }
+  };
   // Wide: hovering moves nothing (it made bars slide out from under the pointer
   // on the way to a click, user 2026-11-04), so it shows a tooltip, and only a
   // click opens the details and shrinks the chart. Narrow keeps its inline card.
@@ -242,10 +255,15 @@ export function GameflowView({
     ratingMode,
     runs,
     selectedRun: run,
-    onRunSelect: (r: Run) => dispatch({ type: "run", run: r }),
+    onRunSelect: (r: Run) => selectRun(r),
     openRun: runTip?.run ?? null,
     // The chart hands back the run objects it was given (data.runs).
     onRun: (r: Run | null, box: DOMRect | null, how: RunTrigger) => {
+      // Phones explain a run in the bottom panel, never in a floating tip.
+      if (compact) {
+        if (how === "tap" && r) selectRun(r);
+        return;
+      }
       const run = r as ExplainedRun | null;
       setRunTip((tip) => {
         // A tap pins the tip (touch has no hover) and a second tap closes it;
@@ -281,7 +299,15 @@ export function GameflowView({
       groupKey={groupKey}
       focus={focus}
       run={run}
-      dispatch={dispatch}
+      dispatch={(a: SelectionAction) => {
+        dispatch(a);
+        // Phones show one quarter: a lineup picked in the panel brings up the
+        // quarter where it first played, or its marks could be off screen.
+        if (compact && !full && a.type === "focus" && a.key !== focus) {
+          const g = groups.find((x) => groupKey(x) === a.key);
+          if (g?.windows.length) setQuarter(quarterOf(g.windows[0].start));
+        }
+      }}
       detail={detail}
       compact={compact}
     />
@@ -299,9 +325,46 @@ export function GameflowView({
     ) : (
       list
     );
+  const ortgToggle = data.ratings && (
+    <div
+      className="ibpl-gameflow-rtg-toggle"
+      role="group"
+      aria-label="ORtg in the score readout"
+    >
+      <div className="ibpl-gameflow-rtg-row">
+        <span className="ibpl-gameflow-rtg-title">
+          Offensive rating (ORtg)
+        </span>
+        {(
+          [
+            ["off", "Off"],
+            ["game", "Entire game"],
+            ["window", `Last ${RATING_WINDOW} poss`],
+          ] as const
+        ).map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={ratingMode === mode}
+            className={ratingMode === mode ? "is-on" : undefined}
+            onClick={() => setRatingMode(mode)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {ratingMode !== "off" && (
+        <p className="ibpl-gameflow-rtg-hint">
+          {ratingMode === "game"
+            ? "Points per 100 possessions since tip-off."
+            : `Counts only each team's last ${RATING_WINDOW} possessions, so a recent run stands out instead of being averaged into the whole game.`}
+        </p>
+      )}
+    </div>
+  );
   return (
     <div
-      className="ibpl-ribbon-game ibpl-react-gameflow"
+      className={`ibpl-ribbon-game ibpl-react-gameflow${compact ? " gf-m" : ""}`}
       onPointerMove={(e) => {
         if (pointerMoved.current || !(e.movementX || e.movementY)) return;
         pointerMoved.current = true;
@@ -315,9 +378,6 @@ export function GameflowView({
         pointerMoved.current = true;
       }}
     >
-      {compact && selected.length > 1 && (
-        <TogetherBar data={data} selected={selected} windows={windows} />
-      )}
       {!compact && hover && hoverBox && !runTip && (
         <GameflowHoverTip data={data} window={hover} box={hoverBox} />
       )}
@@ -327,6 +387,7 @@ export function GameflowView({
           {data.health}
         </div>
       )}
+      {!compact && (
       <div className="ibpl-ribbon-pair-controls">
         <button
           type="button"
@@ -342,49 +403,12 @@ export function GameflowView({
         >
           {prompt}
         </div>
-        {data.ratings && (
-          <div
-            className="ibpl-gameflow-rtg-toggle"
-            role="group"
-            aria-label="ORtg in the score readout"
-          >
-            <div className="ibpl-gameflow-rtg-row">
-              <span className="ibpl-gameflow-rtg-title">
-                Offensive rating (ORtg)
-              </span>
-              {(
-                [
-                  ["off", "Off"],
-                  ["game", "Entire game"],
-                  ["window", `Last ${RATING_WINDOW} poss`],
-                ] as const
-              ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={ratingMode === mode}
-                  className={ratingMode === mode ? "is-on" : undefined}
-                  onClick={() => setRatingMode(mode)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {ratingMode !== "off" && (
-              <p className="ibpl-gameflow-rtg-hint">
-                {ratingMode === "game"
-                  ? "Points per 100 possessions since tip-off."
-                  : `Counts only each team's last ${RATING_WINDOW} possessions, so a recent run stands out instead of being averaged into the whole game.`}
-              </p>
-            )}
-          </div>
-        )}
+        {ortgToggle}
       </div>
+      )}
       {compact && (
-        <>
-          <div className="ibpl-ribbon-inline-hint">{labels.hint}</div>
+        <div className="gf-m-head">
           <div className="ibpl-ribbon-mobile-overview">
-            <div className="ibpl-ribbon-overview-title">{labels.overview}</div>
             <svg
               className="ibpl-ribbon-overview-svg"
               viewBox="0 0 320 56"
@@ -406,6 +430,17 @@ export function GameflowView({
                   x2={(b / data.bounds.at(-1)!) * 320}
                   y1={0}
                   y2={56}
+                />
+              ))}
+              {runs.map((r) => (
+                <rect
+                  key={`${r.side}:${r.start}`}
+                  className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${run && run.start === r.start && run.side === r.side ? " is-open" : ""}`}
+                  data-start={r.start}
+                  x={(r.start / data.bounds.at(-1)!) * 320}
+                  y={0}
+                  width={Math.max(2, ((r.end - r.start) / data.bounds.at(-1)!) * 320)}
+                  height={56}
                 />
               ))}
               <path
@@ -438,45 +473,70 @@ export function GameflowView({
               />
             </svg>
             {score && <output role="tooltip">{score}</output>}
-            <div
-              className="ibpl-ribbon-quarter-nav"
-              role="group"
-              aria-label="Jump to quarter"
-            >
-              {data.bounds.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className={`ibpl-ribbon-quarter-jump${quarter === i + 1 ? " is-active" : ""}`}
-                  aria-label={`Jump to ${i < 4 ? `Q${i + 1}` : `OT${i - 3}`}`}
-                  onClick={() => {
-                    setFull(false);
-                    setQuarter(i + 1);
-                    requestAnimationFrame(() =>
-                      cards.current.get(i + 1)?.scrollIntoView({
-                        block: "start",
-                        behavior: "smooth",
-                      }),
-                    );
-                  }}
-                >
-                  {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
-                </button>
-              ))}
-            </div>
           </div>
-          <button
-            type="button"
-            className="ibpl-ribbon-full-toggle"
-            aria-expanded={full}
-            onClick={() => {
-              setFull(!full);
-              dispatch({ type: "hover", window: null, box: null });
-            }}
-          >
-            {full ? labels.quarters : labels.full}
-          </button>
-        </>
+          <div className="gf-m-tabs" role="tablist" aria-label="Quarter">
+            {data.bounds.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={!full && quarter === i + 1}
+                className={`gf-m-tab${!full && quarter === i + 1 ? " is-active" : ""}`}
+                onClick={() => {
+                  setFull(false);
+                  setQuarter(i + 1);
+                }}
+              >
+                {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
+              </button>
+            ))}
+            {runs.length > 0 && (
+              <button
+                type="button"
+                className={`gf-m-runs${panelRuns && panelOpen ? " is-active" : ""}`}
+                onClick={() => {
+                  clear();
+                  setPanelRuns(true);
+                  setPanelOpen(true);
+                }}
+              >
+                Runs {runs.length} ›
+              </button>
+            )}
+            <button
+              type="button"
+              className="gf-m-more"
+              aria-label="More options"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {/* Drawn: the font has no usable ellipsis glyph. */}
+              <svg viewBox="0 0 18 4" width="18" height="4" aria-hidden="true">
+                <circle cx="2" cy="2" r="2" />
+                <circle cx="9" cy="2" r="2" />
+                <circle cx="16" cy="2" r="2" />
+              </svg>
+            </button>
+          </div>
+          {menuOpen && (
+            <div className="gf-m-menu">
+              {ortgToggle}
+              <button
+                type="button"
+                className="ibpl-ribbon-full-toggle"
+                aria-expanded={full}
+                onClick={() => {
+                  setFull(!full);
+                  setMenuOpen(false);
+                  dispatch({ type: "hover", window: null, box: null });
+                }}
+              >
+                {full ? labels.quarters : labels.full}
+              </button>
+              <p className="ibpl-ribbon-inline-hint">{PHONE_HINT}</p>
+            </div>
+          )}
+        </div>
       )}
       {!compact || full ? (
         upper ? (
@@ -507,43 +567,63 @@ export function GameflowView({
         )
       ) : (
         <>
-          {/* Quarter cards (phones): the lineups sit right above them --
-              except a run's, which open under the card whose band was tapped,
-              so nothing appears out of sight or moves the card (user
-              2026-11-11). */}
-          {!(run && runCard != null) && details}
+          {/* One quarter at a time (phones): the tabs above choose it, and
+              whatever a tap selects reports in the panel below. */}
           <div className="ibpl-ribbon-quarters">
-            {data.bounds.map((end, i) => (
-              <Fragment key={end}>
-              <section
-                className="ibpl-ribbon-quarter-card"
-                data-quarter={i + 1}
-                ref={(el) => {
-                  if (el) cards.current.set(i + 1, el);
-                  else cards.current.delete(i + 1);
-                }}
-              >
-                <h4 className="ibpl-ribbon-quarter-heading">
-                  {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
-                </h4>
-                <div className="ibpl-ribbon-quarter-frame">
-                  <GameflowChart
-                    {...common}
-                    range={{ start: i ? data.bounds[i - 1] : 0, end }}
-                    onRunSelect={(r: Run) => {
-                      setRunCard(i);
-                      dispatch({ type: "run", run: r });
-                    }}
-                  />
-                </div>
-              </section>
-              {run && runCard === i && (
-                <div className="gf-run-inline">{details}</div>
-              )}
-              </Fragment>
-            ))}
+            {data.bounds.map((end, i) =>
+              quarter !== i + 1 ? null : (
+                <section
+                  key={end}
+                  className="ibpl-ribbon-quarter-card"
+                  data-quarter={i + 1}
+                >
+                  <h4 className="ibpl-ribbon-quarter-heading">
+                    {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
+                  </h4>
+                  <div className="ibpl-ribbon-quarter-frame">
+                    <GameflowChart
+                      {...common}
+                      range={{ start: i ? data.bounds[i - 1] : 0, end }}
+                      chips={false}
+                    />
+                  </div>
+                </section>
+              ),
+            )}
           </div>
         </>
+      )}
+      {compact && (
+        <PhonePanel
+          data={data}
+          open={panelOpen}
+          setOpen={setPanelOpen}
+          showRuns={panelRuns}
+          run={run as ExplainedRun | null}
+          selected={selected}
+          active={active}
+          windows={windows}
+          prompt={prompt}
+          list={details}
+          onRun={(r) => {
+            selectRun(r);
+            setQuarter(quarterOf(r.start));
+            setFull(false);
+          }}
+          onAllRuns={() => {
+            clear();
+            setPanelRuns(true);
+          }}
+          onShow={(r) => {
+            setQuarter(quarterOf(r.start));
+            setFull(false);
+            setPanelOpen(false);
+          }}
+          onClear={() => {
+            clear();
+            setPanelOpen(false);
+          }}
+        />
       )}
     </div>
   );
@@ -565,27 +645,17 @@ const TIP_WIDTH = 400,
   // click away.
   TIP_ROWS = 2;
 const LINEUPS_SHORT = 3;
-/**
- * Phones: what the selected players did together, pinned to the bottom of the
- * screen while two or more are selected, so it never needs a scroll (user
- * 2026-11-11). A tap brings the full cards into view.
- */
-function TogetherBar({
-  data,
-  selected,
-  windows,
-}: {
-  data: GameflowPayload;
-  selected: string[];
-  windows: Span[];
-}) {
+const PHONE_HINT =
+  "Tap a player's name for his game, a bar for one stint, two or more names for their minutes together, or a shaded run for its lineups.";
+/** The one-line summary of several selected players: their minutes
+ * together (one team) or head to head (both). */
+function togetherText(data: GameflowPayload, selected: string[], windows: Span[]) {
   const sides = [
     ...new Set(
       selected.map((k) => data.bars.find((b) => laneKey(b) === k)?.side),
     ),
   ].filter((s): s is Side => s != null);
   const secs = windows.reduce((t, w) => t + w.end - w.start, 0);
-  let text: string;
   if (sides.length === 1) {
     const d = windowsSummary(sides[0], windows, data.steps),
       r = data.events.length
@@ -595,24 +665,135 @@ function TogetherBar({
             selected.map((k) => k.slice(k.indexOf(":") + 1)),
           )
         : null;
-    text = `Together ${clock(secs)} · +/- ${d.pm}${r ? ` · Net ${netLabel(r.net)}` : ""}`;
+    return `Together ${clock(secs)} · +/- ${d.pm}${r ? ` · Net ${netLabel(r.net)}` : ""}`;
+  }
+  const d = windowsSummary("own", windows, data.steps);
+  return `Head to head ${clock(secs)}${d.pf == null ? "" : ` · ${data.meta.ownTeam} ${d.pf} – ${d.pa} ${data.meta.oppTeam}`}`;
+}
+/**
+ * Phones: the one place every tap reports (user 2026-11-11 mock-up). Fixed to
+ * the bottom of the screen; collapsed it is a summary line, open it holds the
+ * cards and lineups, a run's explanation and lineups, or the list of runs.
+ */
+function PhonePanel({
+  data,
+  open,
+  setOpen,
+  showRuns,
+  run,
+  selected,
+  active,
+  windows,
+  prompt,
+  list,
+  onRun,
+  onAllRuns,
+  onShow,
+  onClear,
+}: {
+  data: GameflowPayload;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  showRuns: boolean;
+  run: ExplainedRun | null;
+  selected: string[];
+  active: BarWindow | null;
+  windows: Span[];
+  prompt: string;
+  list: ReactNode;
+  onRun: (r: ExplainedRun) => void;
+  onAllRuns: () => void;
+  onShow: (r: ExplainedRun) => void;
+  onClear: () => void;
+}) {
+  const team = (r: ExplainedRun) =>
+    r.side === "own" ? data.meta.ownTeam : data.meta.oppTeam;
+  const window = (r: ExplainedRun) =>
+    `${periodClock(r.start, data.bounds)} – ${periodClock(r.end, data.bounds)}`;
+  let title: string, sub: string, body: ReactNode;
+  if (showRuns) {
+    title = "Runs in this game";
+    sub = `${data.runs.length} · tap one to see why it happened`;
+    body = data.runs.map((r) => (
+      <button
+        key={`${r.side}:${r.start}`}
+        type="button"
+        className={`gf-m-runrow is-${r.side}${r.defining ? " is-defining" : ""}`}
+        onClick={() => onRun(r)}
+      >
+        <span className="gf-m-dot" aria-hidden="true" />
+        <b>
+          {team(r)} {r.pts}-{r.oppPts}
+          {r.defining ? " · defining" : ""}
+        </b>
+        <span className="gf-m-when">{window(r)}</span>
+      </button>
+    ));
+  } else if (run) {
+    title = `${team(run)} ${run.pts}-${run.oppPts} run${run.defining ? " · defining stretch" : ""}`;
+    // The headline line's window and swing ("Q3 2:25 – Q4 2:31 · from down 20
+    // to up 12") sit under the title; the body starts at the lineups.
+    sub = run.lines[0]?.split(" · ").slice(1).join(" · ") || window(run);
+    body = (
+      <>
+        <div className="gf-m-links">
+          <button type="button" className="gf-m-link" onClick={onAllRuns}>
+            ‹ All runs
+          </button>
+          <button type="button" className="gf-m-link" onClick={() => onShow(run)}>
+            Show on timeline ›
+          </button>
+        </div>
+        {run.lines.slice(1).map((line, i, rest) => (
+          <p
+            key={line}
+            className={`gf-run-tip-line${i === rest.length - 1 ? " is-cause" : ""}`}
+          >
+            {line}
+          </p>
+        ))}
+        {list}
+      </>
+    );
+  } else if (selected.length || active) {
+    const label = (k: string) =>
+      data.bars.find((b) => laneKey(b) === k)?.player_label ?? k;
+    title =
+      selected.length > 1
+        ? togetherText(data, selected, windows)
+        : `${label(selected[0])} · ${active && !(active.start === 0 && active.end === data.bounds.at(-1)) ? "stint" : "game"}`;
+    sub = selected.length > 1 ? selected.map(label).join(" + ") : prompt;
+    body = (
+      <>
+        {list}
+        <button type="button" className="gf-m-link" onClick={onClear}>
+          Clear players
+        </button>
+      </>
+    );
   } else {
-    const d = windowsSummary("own", windows, data.steps);
-    text = `Head to head ${clock(secs)}${d.pf == null ? "" : ` · ${data.meta.ownTeam} ${d.pf} – ${d.pa} ${data.meta.oppTeam}`}`;
+    title = "Nothing selected";
+    sub = "Tap a player, a bar or a shaded run";
+    body = <p className="ibpl-ribbon-inline-hint">{PHONE_HINT}</p>;
   }
   return (
-    <button
-      type="button"
-      className="gf-together-bar"
-      onClick={() =>
-        document
-          .querySelector(".gf-player-cards")
-          ?.scrollIntoView({ block: "start", behavior: "smooth" })
-      }
-    >
-      <span>{text}</span>
-      <span aria-hidden="true">›</span>
-    </button>
+    <section className="gf-m-panel" aria-label="Selection">
+      <button
+        type="button"
+        className="gf-m-panel-bar"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="gf-m-sum">
+          {title}
+          <span className="gf-m-sub">{sub}</span>
+        </span>
+        <span className="gf-m-chev" aria-hidden="true">
+          {open ? "▼" : "▲"}
+        </span>
+      </button>
+      {open && <div className="gf-m-panel-body">{body}</div>}
+    </section>
   );
 }
 /** A listed lineup's Net over its windows, from the five's credited events. */

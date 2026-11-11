@@ -121,9 +121,13 @@ test("Gameflow follows viewport width at tablet size", async ({ page }) => {
   );
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto(url);
-  await expect(page.locator(".ibpl-ribbon-quarter-card")).toHaveCount(4);
+  // Narrow: one quarter at a time behind tabs, and the bottom panel.
+  await expect(page.locator(".ibpl-ribbon-quarter-card")).toHaveCount(1);
+  await expect(page.getByRole("tab")).toHaveCount(4);
+  await expect(page.locator(".gf-m-panel")).toHaveCount(1);
   await page.setViewportSize({ width: 1100, height: 900 });
   await expect(page.locator(".ibpl-ribbon-quarter-card")).toHaveCount(0);
+  await expect(page.locator(".gf-m-panel")).toHaveCount(0);
   await expect(page.locator("svg.ibpl-ribbon")).toHaveCount(1);
 });
 

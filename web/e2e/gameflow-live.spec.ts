@@ -12,7 +12,7 @@ const CASES = {
   eurocup: { game: 671, team: 966, ownTeam: "Cosea JL Bourg-en-Bresse", season: "2025" },
 } as const;
 for (const league of ["il", "euroleague", "eurocup"] as const)
-  test(`Gameflow initial server HTML ${league}`, async ({ page }) => {
+  test(`Gameflow initial server HTML ${league}`, async ({ page }, info) => {
     const c = CASES[league];
     const answer = { meta: { ownTeam: c.ownTeam, season: c.season } };
     const response = await page.goto(
@@ -22,9 +22,13 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     expect(html).toContain('class="ibpl-ribbon');
     expect(html).toContain(answer.meta.ownTeam);
     await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
-    await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText(
-      "Select two or more",
-    );
+    // Desktop's status line; phones sum up the (empty) selection in the panel.
+    if (info.project.name === "phone")
+      await expect(page.locator(".gf-m-panel-bar")).toContainText("Nothing selected");
+    else
+      await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText(
+        "Select two or more",
+      );
     await expect(
       page.getByRole("link", { name: "Back to Game Logs" }),
     ).toHaveAttribute(
@@ -70,24 +74,34 @@ for (const [league, game, team] of [
   });
 test("Gameflow 673 shows the defining run and a rated card live", async ({
   page,
-}) => {
+}, info) => {
+  const phone = info.project.name === "phone";
   await page.goto("/il/gameflow?game_id=673&team_id=2");
-  await expect(
-    page.getByRole("button", { name: /37-5 run, defining stretch$/ }),
-  ).toHaveText("37-5 ›");
+  // Desktop names the run on a chip; phones list it in the panel.
+  if (phone) {
+    await expect(async () => {
+      await page.getByRole("button", { name: /^Runs \d+ ›$/ }).click();
+      await expect(page.locator(".gf-m-runrow").filter({ hasText: "37-5 · defining" })).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20000 });
+    await page.locator(".gf-m-panel-bar").click();
+  } else
+    await expect(
+      page.getByRole("button", { name: /37-5 run, defining stretch$/ }),
+    ).toHaveText("37-5 ›");
   // The chart arrives in the server HTML, before React has hydrated it: a tap
   // that early is lost, so retry until the selection shows.
+  const status = phone
+    ? page.locator(".gf-m-panel-bar")
+    : page.locator(".ibpl-ribbon-pair-status");
   await expect(async () => {
     await page
       .locator("svg.ibpl-ribbon")
       .getByRole("button", { name: /^john dibartolomeo,/i })
       .first()
       .click();
-    await expect(page.locator(".ibpl-ribbon-pair-status")).not.toContainText(
-      "Select two or more",
-      { timeout: 2000 },
-    );
+    await expect(status).toContainText(/dibartolomeo/i, { timeout: 2000 });
   }).toPass({ timeout: 20000 });
+  if (phone) await page.locator(".gf-m-panel-bar").click();
   await expect(
     page.getByRole("region", { name: /dibartolomeo game detail/i }),
   ).toContainText(/Net[+-]?[\d.]+ORtg/);

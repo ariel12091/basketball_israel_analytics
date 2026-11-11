@@ -554,27 +554,57 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-chip.is-defining.is-own rect { fill: var(--ibpl-accent); }
 .gf-run-chip.is-defining.is-opp rect { fill: var(--ibpl-text-muted); }
 .gf-run-chip.is-defining text { fill: var(--ibpl-bg); }
-/* A run carried over from the previous quarter card: outlined, never filled. */
-.gf-run-chip.is-cont rect { fill: var(--ibpl-bg) !important; stroke-dasharray: 3 2; }
-.gf-run-chip.is-cont.is-own text { fill: var(--ibpl-accent); }
-.gf-run-chip.is-cont.is-opp text { fill: var(--ibpl-text-muted); }
 .gf-run-chip:focus { outline: none; }
 .gf-run-chip:focus rect, .gf-run-chip.is-open rect { stroke-width: 2; }
 .gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }
 .gf-run-tip .gf-run-tip-line:last-child { font-style: italic; }
-/* Phones: the Together summary pinned to the bottom of the screen. */
-.gf-together-bar {
-  position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 1040;
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 10px 14px; border-radius: 8px; border: 1px solid var(--ibpl-accent);
-  background: var(--ibpl-surface-2, var(--ibpl-bg)); color: var(--ibpl-text);
-  font-size: 13px; font-weight: 600; text-align: left;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-}
-.gf-together-bar > span:last-child { color: var(--ibpl-accent); font-size: 18px; }
 .gf-lineups-more { margin-top: 6px; width: 100%; }
-/* Phones: a tapped run's lineups, right under its quarter card. */
-.gf-run-inline { margin: 8px 0 12px; }
+/* Phones (user 2026-11-11 mock-up): a header that stays on screen (the
+   whole-game strip with its runs, quarter tabs, Runs and the menu), one
+   quarter, and a bottom panel every tap reports to. */
+.gf-m { padding-bottom: 72px; }
+.gf-m-head { position: sticky; top: 0; z-index: 20; background: var(--ibpl-bg);
+  padding: 4px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.gf-m-head .ibpl-ribbon-mobile-overview { margin: 0; position: relative; }
+.gf-m-head .gf-run-band { pointer-events: none; }
+.gf-m-tabs { display: flex; gap: 6px; align-items: stretch; }
+.gf-m-tab, .gf-m-runs, .gf-m-more { background: var(--ibpl-surface-2, var(--ibpl-surface));
+  border: 1px solid var(--ibpl-border); border-radius: 8px; color: var(--ibpl-text);
+  font-weight: 700; font-size: 13px; padding: 7px 0; }
+.gf-m-tab { flex: 1 1 0; min-width: 0; }
+.gf-m-tab.is-active { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+.gf-m-runs { flex: 0 0 auto; padding: 7px 10px; color: var(--ibpl-accent); border-color: var(--ibpl-accent); background: transparent; }
+.gf-m-runs.is-active { background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.gf-m-more { flex: 0 0 38px; display: flex; align-items: center; justify-content: center; }
+.gf-m-more svg { fill: currentColor; }
+.gf-m-menu { border: 1px solid var(--ibpl-border); border-radius: 10px; padding: 10px;
+  display: flex; flex-direction: column; gap: 8px; background: var(--ibpl-surface); }
+.gf-m-menu .ibpl-ribbon-inline-hint { margin: 0; }
+.gf-m-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040;
+  background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
+  max-height: 62vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.gf-m-panel-bar { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: 0; color: var(--ibpl-text); padding: 10px 16px; }
+.gf-m-sum { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 13.5px; }
+.gf-m-sub { display: block; font-weight: 400; font-size: 12px; color: var(--ibpl-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gf-m-chev { color: var(--ibpl-accent); font-size: 14px; }
+.gf-m-panel-body { overflow-y: auto; padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.gf-m-panel-body .gf-player-cards, .gf-m-panel-body .ibpl-ribbon-detail { margin: 0; }
+.gf-m-links { display: flex; justify-content: space-between; gap: 12px; }
+.gf-m-link { background: none; border: 0; padding: 4px 0; color: var(--ibpl-accent); font-weight: 700; text-align: left; }
+.gf-m-panel-body .gf-run-tip-line { margin: 0; font-size: 13px; }
+.gf-m-panel-body .gf-run-tip-line.is-cause { font-style: italic; color: var(--ibpl-text-muted); }
+.gf-m-runrow { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--ibpl-surface-2, var(--ibpl-bg)); border: 1px solid var(--ibpl-border);
+  border-radius: 8px; padding: 9px 10px; color: var(--ibpl-text); }
+.gf-m-runrow b { flex: 1 1 auto; min-width: 0; }
+.gf-m-when { color: var(--ibpl-text-muted); font-size: 12px; white-space: nowrap; }
+.gf-m-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ibpl-accent); }
+.gf-m-runrow.is-opp .gf-m-dot { border-color: var(--ibpl-text-muted); }
+.gf-m-runrow.is-defining .gf-m-dot { background: var(--ibpl-accent); }
+.gf-m-runrow.is-defining.is-opp .gf-m-dot { background: var(--ibpl-text-muted); }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 12px; line-height: 1.4; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }
