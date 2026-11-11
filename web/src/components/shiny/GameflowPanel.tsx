@@ -828,12 +828,15 @@ function GameflowDetails({
           },
         });
       }
+      // What the players did together is the point of selecting several
+      // (user 2026-11-11): its card leads, the single-player cards follow.
+      cards.unshift(cards.pop()!);
     }
   }
   return (
     <>
       {cards.length > 0 && (
-        <div className="gf-player-cards">
+        <div className={`gf-player-cards${cards.length > 1 ? " is-multi" : ""}`}>
           {cards.map((c) => (
             <section
               className="ibpl-ribbon-detail is-card"

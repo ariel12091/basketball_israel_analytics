@@ -600,6 +600,20 @@ export default function GameflowChart({
             onPointerLeave={() => setScoreTip(null)}
           />
         )}
+        {runBands.flatMap((r) =>
+          [r.start, r.end]
+            .filter((t) => t >= start && t <= end)
+            .map((t) => (
+              <line
+                key={`${r.side}:${r.start}:${t}`}
+                className={`gf-run-edge is-${r.side}${r.defining ? " is-defining" : ""}`}
+                x1={x(t)}
+                x2={x(t)}
+                y1={geometry.padTop}
+                y2={totalH}
+              />
+            )),
+        )}
         {runChips.map((c) => (
           <g
             key={`${c.run.side}:${c.run.start}`}

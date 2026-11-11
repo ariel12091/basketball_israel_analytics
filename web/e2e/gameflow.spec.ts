@@ -303,6 +303,49 @@ test("Gameflow marks game 673's runs and explains the defining one", async ({
       expect(overlap).toBe(false);
     }
 });
+test("Gameflow run edges are drawn over the bars", async ({ page }, info) => {
+  await routeFixture(page, 673);
+  // Solid edges where a run starts and ends, so it reads against the dark
+  // lanes. A quarter card only shows the edges that fall inside it.
+  await expect(page.locator(".gf-run-band").first()).toBeAttached();
+  const bands = await page.locator(".gf-run-band").count(),
+    edges = await page.locator(".gf-run-edge").count();
+  if (info.project.name === "desktop") expect(edges).toBe(2 * bands);
+  else expect(edges).toBeGreaterThanOrEqual(6);
+});
+test("Together comes first and every card fits without scrolling", async ({
+  page,
+}, info) => {
+  const { answer } = await routeFixture(page, 673);
+  const row = (label: string) =>
+    page
+      .locator("svg.ibpl-ribbon")
+      .getByRole("button", { name: new RegExp(`^${label},`) })
+      .first();
+  for (const l of ["JOHN DIBARTOLOMEO", "KEATON WALLACE"]) {
+    await row(l).click();
+    await page.mouse.move(0, 0);
+  }
+  const cards = page.locator(".gf-player-cards > section");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.first()).toHaveAttribute("aria-label", "Shared minutes detail");
+  // The card column never hides a card behind its own scroll.
+  const [scroll, client] = await page
+    .locator(".gf-player-cards")
+    .evaluate((el) => [el.scrollHeight, el.clientHeight]);
+  expect(scroll).toBeLessThanOrEqual(client + 1);
+  if (info.project.name === "desktop") {
+    // No empty frame under the lineups: the box hugs its rows.
+    const box = page.getByRole("region", { name: "Shared lineups", exact: true });
+    const last = box.getByRole("button").last();
+    const [b, l] = [(await box.boundingBox())!, (await last.boundingBox())!];
+    expect(b.y + b.height - (l.y + l.height)).toBeLessThan(24);
+    // And Together is on screen without scrolling the page.
+    const t = (await cards.first().boundingBox())!;
+    expect(t.y + t.height).toBeLessThanOrEqual(900);
+  }
+  void answer;
+});
 test("Gameflow draws no run in a game without one", async ({ page }) => {
   await routeFixture(page, 440);
   await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();

@@ -518,11 +518,17 @@ a.ibpl-gameflow-back { text-decoration: none; }
 /* Gameflow runs: a band over the chart and the rows in the run team's colour
    (own = accent, opp = muted, as the lanes), and a chip where it starts. The
    defining stretch is the strong band and the filled chip. */
-.gf-run-band { pointer-events: all; opacity: 0.07; }
+.gf-run-band { pointer-events: all; fill-opacity: 0.12; }
 .gf-run-band.is-own { fill: var(--ibpl-accent); }
 .gf-run-band.is-opp { fill: var(--ibpl-text-muted); }
-.gf-run-band.is-defining { opacity: 0.16; }
-.gf-run-band.is-open { opacity: 0.24; }
+.gf-run-band.is-defining { fill-opacity: 0.22; }
+.gf-run-band.is-open { fill-opacity: 0.3; }
+/* The run's ends, drawn over the bars: the fill alone is lost between dark
+   lanes (user 2026-11-11). Dashed for runs other than the defining one. */
+.gf-run-edge { pointer-events: none; stroke-width: 2; stroke-dasharray: 4 3; }
+.gf-run-edge.is-defining { stroke-dasharray: none; }
+.gf-run-edge.is-own { stroke: var(--ibpl-accent); }
+.gf-run-edge.is-opp { stroke: var(--ibpl-text); }
 .gf-run-chip { cursor: pointer; }
 .gf-run-chip rect { fill: var(--ibpl-bg); stroke-width: 1; }
 .gf-run-chip.is-own rect { stroke: var(--ibpl-accent); }
@@ -539,7 +545,13 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-tip .gf-run-tip-line:last-child { font-style: italic; }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 12px; line-height: 1.4; }
-.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }
+/* Several cards (Together first): a wider column with each card's numbers
+   on one line, so all of them fit without scrolling (user 2026-11-11). */
+.gf-details .gf-player-cards.is-multi { flex-basis: 470px; width: 470px; }
+.gf-player-cards.is-multi .gf-stint-stats { flex-wrap: nowrap; gap: 4px 12px; }
+.gf-player-cards.is-multi .ibpl-ribbon-detail.is-card { padding: 6px 10px; }
+.gf-player-cards.is-multi .ibpl-ribbon-detail-head { margin-bottom: 2px; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-detail-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); margin-bottom: 6px; }
 .gf-details .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 3px 6px; }
 /* Team Ratings Traditional controls in the toolbar; Player Stats bar. */
