@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
@@ -43,7 +42,8 @@ import {
 import { useTabData } from "./TabKit";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type RunTrigger } from "./GameflowChart";
-import { detectRuns, runExplanation, type Run } from "@/rules/gameflowRuns";
+import type { Run } from "@/rules/gameflowRuns";
+import type { ExplainedRun } from "@/rules/gameflowSummary";
 import {
   EMPTY_SELECTION,
   selectionReducer,
@@ -123,9 +123,9 @@ export function GameflowView({
     // by default, or over its last RATING_WINDOW possessions.
     [ratingMode, setRatingMode] = useState<RatingMode | "off">("game"),
     // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
-    runs = useMemo(() => detectRuns(data.steps), [data.steps]),
+    runs = data.runs,
     [runTip, setRunTip] = useState<{
-      run: Run;
+      run: ExplainedRun;
       box: DOMRect;
       pinned: boolean;
     } | null>(null);
@@ -234,7 +234,9 @@ export function GameflowView({
     ratingMode,
     runs,
     openRun: runTip?.run ?? null,
-    onRun: (run: Run | null, box: DOMRect | null, how: RunTrigger) =>
+    // The chart hands back the run objects it was given (data.runs).
+    onRun: (r: Run | null, box: DOMRect | null, how: RunTrigger) => {
+      const run = r as ExplainedRun | null;
       setRunTip((tip) => {
         // A tap pins the tip (touch has no hover) and a second tap closes it;
         // a pointer shows it while resting and leaves a pinned one alone.
@@ -244,7 +246,8 @@ export function GameflowView({
             : null;
         if (tip?.pinned) return tip;
         return run && box ? { run, box, pinned: false } : null;
-      }),
+      });
+    },
   };
   const prompt = stint
     ? `${stint.bar.player_label} · ${clock(stint.end - stint.start)} in this stint, ${clock(total)} in the game. Select the stint again to remove it.`
@@ -305,7 +308,7 @@ export function GameflowView({
       {!compact && hover && hoverBox && !runTip && (
         <GameflowHoverTip data={data} window={hover} box={hoverBox} />
       )}
-      {runTip && <GameflowRunTip data={data} run={runTip.run} box={runTip.box} />}
+      {runTip && <GameflowRunTip run={runTip.run} box={runTip.box} />}
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
           {data.health}
@@ -673,20 +676,16 @@ function GameflowHoverTip({
     </div>
   );
 }
-/** A run explained (runExplanation()): window, lineups, results, cause. */
+/** A run explained (the answer's runs[].lines): window, lineups, results,
+ * cause. */
 function GameflowRunTip({
-  data,
   run,
   box,
 }: {
-  data: GameflowPayload;
-  run: Run;
+  run: ExplainedRun;
   box: DOMRect;
 }) {
-  const lines = runExplanation(data, run, {
-      own: data.meta.ownTeam,
-      opp: data.meta.oppTeam,
-    }),
+  const lines = run.lines,
     width = Math.min(TIP_WIDTH, innerWidth - 16),
     above = box.top > innerHeight / 2;
   return (

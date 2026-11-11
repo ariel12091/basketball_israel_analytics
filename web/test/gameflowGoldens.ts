@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { ribbonModel, type RawRibbon } from "../src/rules/gameflow";
+import { gameflowSummary } from "../src/rules/gameflowSummary";
 import type { League } from "../src/rules/gameLogs";
 export const gameflowFiles = readdirSync("test/goldens/gameflow").filter((f) =>
   f.endsWith(".json"),
@@ -19,9 +20,11 @@ export function loadFixture(game: keyof typeof GAMEFLOW_FIXTURES) {
     raw = JSON.parse(
       readFileSync(`src/rules/__fixtures__/gameflow-${game}.json`, "utf8"),
     ) as RawRibbon;
+  const model = ribbonModel(raw, c.team, c.league, game);
   return {
     answer: {
-      ...ribbonModel(raw, c.team, c.league, game),
+      ...model,
+      ...gameflowSummary(model, { own: c.ownTeam, opp: c.oppTeam }),
       meta: { league: c.league as League, game, team: c.team, version: "golden", season: c.season, ownTeam: c.ownTeam, oppTeam: c.oppTeam },
     },
     league: c.league,
@@ -47,6 +50,10 @@ export function loadGameflow(file: string) {
     g,
     answer: {
       ...ribbonModel(g.raw, c.team_id, c.league, c.game_id),
+      ...gameflowSummary(ribbonModel(g.raw, c.team_id, c.league, c.game_id), {
+        own: c.team_name,
+        opp: c.opp_team_name,
+      }),
       meta: {
         league: c.league,
         game: c.game_id,

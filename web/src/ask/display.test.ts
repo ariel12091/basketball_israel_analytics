@@ -251,5 +251,11 @@ describe("cellText equals the page column text", () => {
   it("columns outside the spec are not quotable", () => {
     expect(cellText("lineups", "il", "summary", "Off Shot", row(sample))).toBeNull();
     expect(cellText("gameflow", "il", null, "anything", row(sample))).toBeNull();
+    // Gameflow rows quote as the page shows them.
+    const g = (key: string, r: Row) => cellText("gameflow", "il", null, key, row(r));
+    expect(g("net", { net: 54.36 })).toBe("+54.4");
+    expect(g("ortg", { ortg: null })).toBe("–");
+    expect(g("secs", { secs: 1604 })).toBe("26:44");
+    expect(g("run_score", { run_score: "37-5" })).toBe("37-5");
   });
 });

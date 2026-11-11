@@ -51,9 +51,21 @@ for (const [league, game, team] of [
     const body = await page.evaluate(async (url) => {
       const r = await fetch(url);
       const j = await r.json();
-      return { ok: r.ok, events: j.events?.length ?? 0, ratings: j.ratings != null };
+      return {
+        ok: r.ok,
+        events: j.events?.length ?? 0,
+        ratings: j.ratings != null,
+        runs: Array.isArray(j.runs) && j.runs.every((x: { lines?: string[] }) => x.lines?.length),
+        rated: (j.players ?? []).some((x: { net: number | null }) => x.net != null),
+      };
     }, `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`);
-    expect(body).toEqual({ ok: true, events: expect.any(Number), ratings: true });
+    expect(body).toEqual({
+      ok: true,
+      events: expect.any(Number),
+      ratings: true,
+      runs: true,
+      rated: true,
+    });
     expect(body.events).toBeGreaterThan(0);
   });
 test("Gameflow 673 shows the defining run and a rated card live", async ({

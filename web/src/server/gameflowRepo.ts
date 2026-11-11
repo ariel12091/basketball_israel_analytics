@@ -1,6 +1,7 @@
 import "server-only";
 import type { League, Row } from "../rules/gameLogs";
 import { ribbonModel, type RawRibbon } from "../rules/gameflow";
+import { gameflowSummary } from "../rules/gameflowSummary";
 import sql from "../data/gameflowSql.json";
 import { Deadline, withSnapshot } from "./db";
 import { ParamError } from "./api";
@@ -45,16 +46,21 @@ async function read(league: League, game: number, team: number) {
       }));
     }
     // pg decodes the reader's jsonb arrays, unlike RPostgres's JSON strings.
+    const model = ribbonModel(raw, team, league, game),
+      ownTeam = String(meta.team_name ?? "Own"),
+      oppTeam = String(meta.opp_team_name ?? "Opponent");
     return {
-      ...ribbonModel(raw, team, league, game),
+      ...model,
+      // Runs and player ratings, once, for the page and the API/chat alike.
+      ...gameflowSummary(model, { own: ownTeam, opp: oppTeam }),
       meta: {
         version: await readVersion(q, league),
         league,
         game,
         team,
         season: String(meta.game_year),
-        ownTeam: String(meta.team_name ?? "Own"),
-        oppTeam: String(meta.opp_team_name ?? "Opponent"),
+        ownTeam,
+        oppTeam,
       },
     };
   });

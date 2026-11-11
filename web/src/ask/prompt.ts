@@ -34,7 +34,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   guide:
     `The app's own explanations: what a stat, column, tag or filter means and how to read a page. query: topic (${GUIDE_TOPICS.join("|")}; glossary: the stat definitions; filters: what each filter does; a page name: that page's 'What This Tab Answers' cards, its worked 'How to Read' example and its help popovers, such as On/Off's 3PT luck and small sample), view (optional, one of the page's views). Returns rows of text with a title. Its numbers may be repeated, but a worked example's figures are a fixed past example: say they are the page's example, never present them as current stats.`,
   gameflow:
-    "Gameflow of one game for one team (link only; no numbers to quote). query: game_id, team_id.",
+    "Gameflow of one game for one team: its scoring runs (section run: team, run_score, window, defining, explanation) and every player's whole-game Net/ORtg/DRtg on credited possessions (section player). An explanation's cause is a timing match, never proof. query: game_id, team_id.",
 };
 
 /** Table tools: sort is required; list the default view's sortable columns. */
