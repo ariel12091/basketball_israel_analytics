@@ -131,3 +131,34 @@ test_that("a failed roster step does not stop the identity link or the name rewr
   step <- wf[at:(at + 4)]
   expect_true(any(grepl("continue-on-error: true", step, fixed = TRUE)))
 })
+
+test_that("team-page players' profile links: a failed fetch is skipped with a warning", {
+  keys <- data.frame(game_year = 2027L, basket_player_id = c(28237L, 28240L))
+  fake <- function(game_year, basket_player_id) {
+    if (basket_player_id == 28240L) stop("HTTP 503")
+    data.frame(game_year = game_year, basket_player_id = basket_player_id,
+               cache_hit = TRUE, linked_basket_player_ids = "{21808,26116}")
+  }
+  expect_warning(out <- roster_profile_links(keys, pause_seconds = 0, fetch_profile = fake), "28240")
+  expect_equal(out$basket_player_id, 28237L)
+  expect_equal(out$linked_basket_player_ids, "{21808,26116}")
+})
+
+test_that("the refresh assigns person keys after both scrapes and before the identity link", {
+  wf <- readLines(file.path("..", "..", ".github", "workflows", "basket-refresh.yml"), warn = FALSE)
+  at <- function(text) grep(text, wf, fixed = TRUE)[1]
+  expect_true(at("basket_rosters.R") < at("basket_person_ids.R --write"))
+  expect_true(at("basket_person_ids.R --write") < at("basket_identity_match.R"))
+})
+
+test_that("a profile that now yields no links never wipes links already stored", {
+  sql <- basket_links_update_sql()
+  expect_match(sql, "WHEN cardinality(s.linked::integer[]) = 0 AND cardinality(r.linked_basket_player_ids) > 0 THEN r.linked_basket_player_ids", fixed = TRUE)
+})
+
+test_that("a failed person-key step does not stop the identity link or the name rewrite", {
+  wf <- readLines(file.path("..", "..", ".github", "workflows", "basket-refresh.yml"), warn = FALSE)
+  at <- grep("name: Assign Basket person keys", wf, fixed = TRUE)
+  expect_length(at, 1)
+  expect_true(any(grepl("continue-on-error: true", wf[at:(at + 2)], fixed = TRUE)))
+})
