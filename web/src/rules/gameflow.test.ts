@@ -184,3 +184,30 @@ describe("ratingSeries", () => {
     expect(ribbonModel(raw, 1, "euroleague", 1).ratings).toBeNull();
   });
 });
+
+describe("lineup names by height", () => {
+  const raw = JSON.parse(readFileSync("src/rules/__fixtures__/gameflow-673.json", "utf8")) as RawRibbon;
+  const height: Record<string, [number, string]> = {
+    "JOHN DIBARTOLOMEO": [1.83, "G"], "YAM MADAR": [1.9, "G"], "KEATON WALLACE": [1.91, "G"],
+    "JIMMY CLARK III": [1.91, "G"], "JAYLEN HOARD": [2.03, "F"], "ROMAN SORKIN": [2.08, "C"], "TJ LEAF": [2.08, "F-C"],
+  };
+  const withHeights = {
+    ...raw,
+    heights: (raw.lanes ?? [])
+      .filter((l) => height[l.player_label])
+      .map((l) => ({ team_id: l.team_id, player_id: l.player_id, height_m: height[l.player_label][0], position_en: height[l.player_label][1] })),
+  } as RawRibbon;
+  const members = (r: RawRibbon) => ribbonModel(r, 2, "il", 673).dict.map((d) => d.members);
+  it("orders each lineup shortest to tallest; position breaks ties; unknown last", () => {
+    const m = members(withHeights).find((x) => x.includes("TJ LEAF") && x.includes("DANIEL THEIS") && x.includes("JIMMY CLARK III"))!;
+    // 1.83, 1.91 (G, G: by name), 2.08 F-C, then Theis with no height.
+    expect(m).toBe("JOHN DIBARTOLOMEO | JIMMY CLARK III | KEATON WALLACE | TJ LEAF | DANIEL THEIS");
+    // A lineup whose five all have a height: strictly shortest to tallest.
+    const known = members(withHeights).find((x) => x.split(" | ").every((n) => height[n]))!;
+    const hs = known.split(" | ").map((n) => height[n][0]);
+    expect(hs).toEqual([...hs].sort((a, b) => a - b));
+  });
+  it("stays alphabetical without heights (EuroLeague, the stored goldens)", () => {
+    for (const m of members(raw)) expect(m.split(" | ")).toEqual([...m.split(" | ")].sort((a, b) => a.localeCompare(b)));
+  });
+});

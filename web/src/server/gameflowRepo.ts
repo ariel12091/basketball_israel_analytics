@@ -44,6 +44,15 @@ async function read(league: League, game: number, team: number) {
         player_label:
           ownerName(names, l.team_id, l.player_id)?.en ?? l.player_label,
       }));
+      // Each lineup's names in height order (basket.co.il).
+      const seen = new Set<string>();
+      raw.heights = raw.lanes.flatMap((l) => {
+        const k = `${l.team_id}:${l.player_id}`,
+          n = ownerName(names, l.team_id, l.player_id);
+        if (seen.has(k) || n?.height == null) return [];
+        seen.add(k);
+        return [{ team_id: l.team_id, player_id: l.player_id, height_m: n.height, position_en: n.position ?? null }];
+      });
     }
     // pg decodes the reader's jsonb arrays, unlike RPostgres's JSON strings.
     const model = ribbonModel(raw, team, league, game),

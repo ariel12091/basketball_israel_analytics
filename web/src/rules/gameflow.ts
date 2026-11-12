@@ -42,6 +42,9 @@ export type RawRibbon = {
   poss?: PossEnd[] | null;
   /** Counted events, both perspectives, each with its credited five. */
   events?: RawEvent[] | null;
+  /** Height and position per player (basket.co.il, Israeli league), which
+   * orders each lineup's names. */
+  heights?: { team_id: number; player_id: number; height_m: number | null; position_en: string | null }[];
   n_periods: number | null;
   excluded_segments?: number;
   false_straddle_segments?: number;
@@ -380,7 +383,29 @@ export function windowsSummary(side: Side, windows: Window[], steps: Score[]) {
   };
 }
 export type WindowsSummary = ReturnType<typeof windowsSummary>;
-export function lineupDictionary(lanes: Lane[]): Dictionary {
+/** Position order for a tie on height (basket.co.il's codes, guards first). */
+const POSITION_RANK: Record<string, number> = { PG: 1, G: 2, "G-F": 3, F: 4, "F-C": 5, C: 6 };
+export type PlayerSize = { height: number | null; position: string | null };
+/**
+ * A lineup's names shortest to tallest (user 2026-11-12), a tie broken by
+ * position and then by name; a player with no height goes last. Without any
+ * sizes (EuroLeague) the order stays by name.
+ */
+export function bySize(sizes: Map<string, PlayerSize>) {
+  const rank = (k: string) => {
+    const s = sizes.get(k);
+    return [s?.height ?? Infinity, POSITION_RANK[s?.position ?? ""] ?? 9] as const;
+  };
+  return (a: Lane, b: Lane) => {
+    const [ha, pa] = rank(laneKey(a)),
+      [hb, pb] = rank(laneKey(b));
+    return (ha === hb ? 0 : ha < hb ? -1 : 1) || pa - pb || cmp(a.player_label, b.player_label);
+  };
+}
+export function lineupDictionary(
+  lanes: Lane[],
+  sizes: Map<string, PlayerSize> = new Map(),
+): Dictionary {
   const groups = new Map<string, Lane[]>();
   for (const r of lanes) {
     const key = `${r.side}\r${r.lineup_key}`,
@@ -393,9 +418,9 @@ export function lineupDictionary(lanes: Lane[]): Dictionary {
     .map(([, g]) => ({
       side: g[0].side,
       lineup_key: g[0].lineup_key,
-      members: g
+      members: [...g]
+        .sort(bySize(sizes))
         .map((r) => r.player_label)
-        .sort(cmp)
         .join(" | "),
     }));
 }
@@ -485,7 +510,16 @@ export function ribbonModel(
     steps = [...(raw.margin ?? [])].sort(
       (a, b) => a.elapsed - b.elapsed || a.order_key - b.order_key,
     ),
-    dict = lineupDictionary(lanes);
+    sizes = new Map<string, PlayerSize>(
+      (raw.heights ?? []).map((h) => [
+        laneKey({
+          side: h.team_id === team ? "own" : "opp",
+          player_key: String(h.player_id),
+        }),
+        { height: h.height_m == null ? null : Number(h.height_m), position: h.position_en },
+      ]),
+    ),
+    dict = lineupDictionary(lanes, sizes);
   const bars = mergeStints(lanes).map((r) => ({
     ...r,
     ...points(r.side, r.start_elapsed, r.end_elapsed, steps),
