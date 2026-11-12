@@ -452,6 +452,14 @@ export function GameflowView({
                 className="ibpl-ribbon-overview-line"
                 d={marginPath(data.margin, data.bounds.at(-1)!, 320, 4, 44, 0)}
               />
+              {/* Which way is which (user 2026-11-12): up is the team whose
+                  Gameflow this is, in the lanes' colours. */}
+              <text className="gf-m-side is-own" x={4} y={10}>
+                {data.meta.ownTeam} ahead ↑
+              </text>
+              <text className="gf-m-side is-opp" x={4} y={53}>
+                {data.meta.oppTeam} ahead ↓
+              </text>
               <rect
                 x={0}
                 y={4}

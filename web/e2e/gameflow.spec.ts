@@ -420,6 +420,20 @@ test("Together comes first and every card fits without scrolling", async ({
   }
   void answer;
 });
+test("Phone: the score strip names which team is ahead on each side", async ({
+  page,
+}, info) => {
+  test.skip(!isPhone(info), "phone layout only");
+  await routeFixture(page, 673);
+  const strip = page.locator(".gf-m-head .ibpl-ribbon-overview-svg");
+  const own = strip.locator(".gf-m-side.is-own"),
+    opp = strip.locator(".gf-m-side.is-opp");
+  await expect(own).toHaveText("Maccabi Tel-Aviv ahead ↑");
+  await expect(opp).toHaveText("Hapoel Tel-Aviv ahead ↓");
+  // Up is the team on top: its label sits above the other's.
+  const [o, p] = [(await own.boundingBox())!, (await opp.boundingBox())!];
+  expect(o.y).toBeLessThan(p.y);
+});
 test("Phone: a tap on the score strip opens a run, or the quarter tapped", async ({
   page,
 }, info) => {
