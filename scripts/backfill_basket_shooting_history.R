@@ -968,9 +968,10 @@ database_preflight <- function(con) {
   }
   # pg_attribute, not information_schema: the latter hides ungranted columns.
   required_columns <- list(
-    c("basketball_test.basket_player_season", "player_name_en"),
-    c("basketball_test.basket_player_season", "position_en"),
-    c("basketball_test.basket_player_season", "profile_fetched_at")
+    c(BASKET_REGISTRATION_TABLE, "player_name_en"),
+    c(BASKET_REGISTRATION_TABLE, "position_en"),
+    c(BASKET_REGISTRATION_TABLE, "profile_fetched_at"),
+    c(BASKET_REGISTRATION_TABLE, "linked_basket_player_ids")
   )
   column_present <- vapply(required_columns, function(rc) {
     DBI::dbGetQuery(con, paste(
@@ -980,7 +981,7 @@ database_preflight <- function(con) {
   }, logical(1))
   if (any(!column_present)) {
     stop("Database preflight failed; apply ",
-         "sql/migrations/2026-09-23_basket_shooting_history_consolidate.sql first (missing: ",
+         "sql/migrations/2026-11-12_basket_player_registration.sql and _basket_registration_links.sql first (missing: ",
          paste(vapply(required_columns[!column_present], paste, character(1),
                       collapse = "."), collapse = ", "), ")")
   }
@@ -1084,9 +1085,17 @@ compare_written_rows <- function(stored, expected) {
 }
 
 validate_written_rows <- function(con, run_id, expected, label) {
+  # Totals from basket_player_season, names from the registration.
+  names_cols <- c("player_name", "player_name_en")
+  select <- c(paste0("s.", SHOOTING_KEY_COLUMNS),
+              ifelse(SHOOTING_VALUE_COLUMNS %in% names_cols, "r.", "s."))
+  select[-seq_along(SHOOTING_KEY_COLUMNS)] <- paste0(select[-seq_along(SHOOTING_KEY_COLUMNS)],
+                                                     SHOOTING_VALUE_COLUMNS)
   stored <- DBI::dbGetQuery(con, paste(
-    "SELECT", paste(c(SHOOTING_KEY_COLUMNS, SHOOTING_VALUE_COLUMNS), collapse = ", "),
-    "FROM basketball_test.basket_player_season WHERE run_id = $1"
+    "SELECT", paste(select, collapse = ", "),
+    "FROM basketball_test.basket_player_season s",
+    "JOIN", BASKET_REGISTRATION_TABLE, "r USING (game_year, basket_player_id)",
+    "WHERE s.run_id = $1"
   ), params = list(run_id))
   problems <- compare_written_rows(stored, expected)
   if (length(problems)) {
@@ -1112,7 +1121,7 @@ validate_written_scrape <- function(con, run_id, players, profiles = NULL) {
     "SELECT count(profile_fetched_at)::integer AS rows,",
     "count(*) FILTER (WHERE position_name IS NOT NULL",
     "                   AND position_en IS NULL)::integer AS untranslated",
-    "FROM basketball_test.basket_player_season WHERE run_id = $1"
+    "FROM", BASKET_REGISTRATION_TABLE, "WHERE run_id = $1 AND source = 'stats'"
   ), params = list(run_id))
   stored_profiles <- profile_counts$rows[[1]]
   if (profile_counts$untranslated[[1]] > 0L) {
@@ -1120,23 +1129,15 @@ validate_written_scrape <- function(con, run_id, players, profiles = NULL) {
          " SQL profiles have a Hebrew position but no position_en")
   }
   expected_profiles <- if (is.null(profiles)) 0L else nrow(profiles)
-  # Every parsed player has a stats registration from this run, with his names
-  # and (when fetched) his profile.
+  # Every parsed player has a stats registration from this run; his names are
+  # compared row by row in validate_written_rows().
   registrations <- DBI::dbGetQuery(con, paste(
-    "SELECT count(*)::integer AS rows, count(r.profile_fetched_at)::integer AS profiles,",
-    "count(*) FILTER (WHERE r.player_name IS DISTINCT FROM s.player_name",
-    "  OR r.player_name_en IS DISTINCT FROM s.player_name_en)::integer AS name_diffs",
-    "FROM", BASKET_REGISTRATION_TABLE, "r",
-    "JOIN basketball_test.basket_player_season s USING (game_year, basket_player_id)",
-    "WHERE r.run_id = $1 AND r.source = 'stats'"
+    "SELECT count(*)::integer AS rows FROM", BASKET_REGISTRATION_TABLE,
+    "WHERE run_id = $1 AND source = 'stats'"
   ), params = list(run_id))
-  if (registrations$rows[[1]] != nrow(players) ||
-      registrations$profiles[[1]] != expected_profiles ||
-      registrations$name_diffs[[1]] != 0L) {
-    stop(sprintf(paste("Post-backfill check failed: %d stats registrations (%d profiles,",
-                       "%d name differences) for %d parsed players (%d profiles)"),
-                 registrations$rows[[1]], registrations$profiles[[1]],
-                 registrations$name_diffs[[1]], nrow(players), expected_profiles))
+  if (registrations$rows[[1]] != nrow(players)) {
+    stop(sprintf("Post-backfill check failed: %d stats registrations for %d parsed players",
+                 registrations$rows[[1]], nrow(players)))
   }
   matches <- c(
     stored$rows[[1]] == nrow(players),
@@ -1193,30 +1194,37 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
       ))
 
       players$run_id <- run_id
-      DBI::dbExecute(con, paste(
-        "CREATE TEMP TABLE basket_shooting_players_stage",
-        "(LIKE basketball_test.basket_player_season INCLUDING DEFAULTS)",
-        "ON COMMIT DROP"
-      ))
-      stage_columns <- c(
-        "game_year", "basket_player_id", "player_name", "player_name_en", "games",
+      # Totals go to basket_player_season, names to the registration; the
+      # stage holds both, typed from the tables they come from.
+      season_columns <- c(
+        "game_year", "basket_player_id", "games",
         "minutes", "points",
         "fg2_made", "fg2_attempted", "fg3_made", "fg3_attempted", "ft_made",
         "ft_attempted", "source_url", "source_page", "source_row",
         "source_content_md5", "fetched_at", "run_id"
       )
+      stage_columns <- c(season_columns, "player_name", "player_name_en")
+      DBI::dbExecute(con, paste(
+        "CREATE TEMP TABLE basket_shooting_players_stage ON COMMIT DROP AS",
+        "SELECT", paste0("s.", season_columns, collapse = ", "), ", r.player_name, r.player_name_en",
+        "FROM basketball_test.basket_player_season s",
+        "JOIN", BASKET_REGISTRATION_TABLE, "r USING (game_year, basket_player_id) WITH NO DATA"
+      ))
       upsert_players <- function(rows) {
         DBI::dbExecute(con, "TRUNCATE basket_shooting_players_stage")
         DBI::dbAppendTable(con, DBI::Id(table = "basket_shooting_players_stage"),
                            rows[stage_columns])
+        # The registration first: basket_player_season references it.
+        DBI::dbExecute(con, registration_upsert_sql("stats", "basket_shooting_players_stage",
+          c("game_year", "basket_player_id", "player_name", "player_name_en",
+            "source_url", "source_content_md5", "fetched_at", "run_id")))
         DBI::dbExecute(con, paste(
           "INSERT INTO basketball_test.basket_player_season",
-          paste0("(", paste(stage_columns, collapse = ", "), ")"),
-          "SELECT", paste(stage_columns, collapse = ", "),
+          paste0("(", paste(season_columns, collapse = ", "), ")"),
+          "SELECT", paste(season_columns, collapse = ", "),
           "FROM basket_shooting_players_stage",
           "ON CONFLICT (game_year, basket_player_id) DO UPDATE SET",
-          "player_name = EXCLUDED.player_name,",
-          "player_name_en = EXCLUDED.player_name_en, games = EXCLUDED.games,",
+          "games = EXCLUDED.games,",
           "minutes = EXCLUDED.minutes, points = EXCLUDED.points,",
           "fg2_made = EXCLUDED.fg2_made, fg2_attempted = EXCLUDED.fg2_attempted,",
           "fg3_made = EXCLUDED.fg3_made, fg3_attempted = EXCLUDED.fg3_attempted,",
@@ -1226,10 +1234,6 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "source_content_md5 = EXCLUDED.source_content_md5,",
           "fetched_at = EXCLUDED.fetched_at, run_id = EXCLUDED.run_id, updated_at = now()"
         ))
-        # The player's registration: names and the stats page as its source.
-        DBI::dbExecute(con, registration_upsert_sql("stats", "basket_shooting_players_stage",
-          c("game_year", "basket_player_id", "player_name", "player_name_en",
-            "source_url", "source_content_md5", "fetched_at", "run_id")))
       }
       # Row checkpoint: write the first N rows, read them back and compare
       # every value before writing the rest. A mismatch stops inside the
@@ -1268,9 +1272,8 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
         )
         DBI::dbAppendTable(con, DBI::Id(table = "basket_profiles_stage"),
                            profiles[profile_columns])
-        # The profile's facts go on the registration row. PHASE B: remove
-        # basket_player_season from this loop when its profile columns drop.
-        for (target in c(BASKET_REGISTRATION_TABLE, "basketball_test.basket_player_season")) {
+        # The profile's facts go on the registration row.
+        for (target in BASKET_REGISTRATION_TABLE) {
         updated <- DBI::dbExecute(con, paste(
           "UPDATE", target, "t SET",
           "position_name = s.position_name, position_en = s.position_en,",
