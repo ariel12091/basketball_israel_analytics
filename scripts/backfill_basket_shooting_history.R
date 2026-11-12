@@ -647,6 +647,32 @@ parse_basket_player_links <- function(html, own_id) {
   sort(unique(setdiff(ids, as.integer(own_id))))
 }
 
+# Writes linked_basket_player_ids onto existing registration rows. `links` has
+# game_year, basket_player_id and linked_basket_player_ids (a list of integer
+# vectors). Runs inside the caller's transaction; every row must exist.
+write_basket_links <- function(con, links) {
+  if (!nrow(links)) return(0L)
+  stage <- data.frame(
+    game_year = as.integer(links$game_year),
+    basket_player_id = as.integer(links$basket_player_id),
+    linked = vapply(links$linked_basket_player_ids, function(ids)
+      paste0("{", paste(as.integer(ids), collapse = ","), "}"), character(1))
+  )
+  DBI::dbExecute(con, paste("CREATE TEMP TABLE basket_links_stage",
+    "(game_year integer, basket_player_id integer, linked text) ON COMMIT DROP"))
+  DBI::dbAppendTable(con, DBI::Id(table = "basket_links_stage"), stage)
+  updated <- DBI::dbExecute(con, paste(
+    "UPDATE", BASKET_REGISTRATION_TABLE, "r",
+    "SET linked_basket_player_ids = s.linked::integer[], updated_at = now()",
+    "FROM basket_links_stage s",
+    "WHERE r.game_year = s.game_year AND r.basket_player_id = s.basket_player_id"))
+  DBI::dbExecute(con, "DROP TABLE basket_links_stage")
+  if (updated != nrow(stage)) {
+    stop("links written to ", updated, " registrations for ", nrow(stage), " profiles; every profile must have a registration")
+  }
+  updated
+}
+
 fetch_basket_player_profile <- function(
     game_year, basket_player_id,
     cache_dir = "exports/cache/basket_shooting_history",
