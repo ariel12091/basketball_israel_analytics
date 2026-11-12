@@ -12,7 +12,7 @@ const names = new Map([
 describe("Player display name owner (D27)", () => {
   it("reads player_display_names_v for the Israeli league only", async () => {
     const q = vi.fn(async (sql: string) => sql.includes("etl_full_last_success") ? [{ value: "v1" }] : [
-      { team_id: 1, player_id: 10, name: "Owner Ten", name_he: "בעלים עשר" },
+      { team_id: 1, player_id: 10, name: "Owner Ten", name_he: "בעלים עשר", height_m: "2.03", position_en: "F" },
       { team_id: 1, player_id: 11, name: "Owner Eleven", name_he: " " },
       { team_id: 1, player_id: 12, name: null, name_he: null },
     ]) as unknown as Query & ReturnType<typeof vi.fn>;
@@ -21,8 +21,9 @@ describe("Player display name owner (D27)", () => {
     expect(nameCall[0]).toContain("basketball_test.player_display_names_v");
     expect(nameCall[1]).toEqual([2026]);
     expect([...m]).toEqual([
-      ["1:10", { en: "Owner Ten", he: "בעלים עשר" }],
-      ["1:11", { en: "Owner Eleven", he: null }],
+      // basket.co.il's height and position ride along (lineup order).
+      ["1:10", { en: "Owner Ten", he: "בעלים עשר", height: 2.03, position: "F" }],
+      ["1:11", { en: "Owner Eleven", he: null, height: null, position: null }],
     ]);
     // Cached per season: a second request does not re-read the view.
     await readPlayerNames(q as Query, "il", 2026);

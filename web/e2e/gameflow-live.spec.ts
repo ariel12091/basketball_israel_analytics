@@ -72,6 +72,18 @@ for (const [league, game, team] of [
     });
     expect(body.events).toBeGreaterThan(0);
   });
+test("Gameflow lineups list players shortest to tallest live", async ({ page }) => {
+  // basket.co.il heights (user 2026-11-12): DiBartolomeo 1.83 m always
+  // before Sorkin 2.08 m in any lineup that has both.
+  await page.goto("/il/gameflow?game_id=673&team_id=2");
+  const dict = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/il/gameflow?game_id=673&team_id=2");
+    return ((await r.json()).dict as { members: string }[]).map((d) => d.members.split(" | "));
+  });
+  const both = dict.filter((m) => m.includes("JOHN DIBARTOLOMEO") && m.includes("ROMAN SORKIN"));
+  expect(both.length).toBeGreaterThan(0);
+  for (const m of both) expect(m.indexOf("JOHN DIBARTOLOMEO")).toBeLessThan(m.indexOf("ROMAN SORKIN"));
+});
 test("Gameflow 673 shows the defining run and a rated card live", async ({
   page,
 }, info) => {

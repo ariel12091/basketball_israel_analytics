@@ -11,13 +11,22 @@ import { VersionedCache } from "./versionedCache";
  * provider id (two people in one pair) has no name there and keeps the row's
  * own spelling. Israeli league only; EuroLeague names come from
  * `euroleague.players`. */
-export type PlayerName = { en: string; he: string | null };
+export type PlayerName = {
+  en: string;
+  he: string | null;
+  /** basket.co.il's height (m) and position code, for ordering lineups. */
+  height?: number | null;
+  position?: string | null;
+};
 export type PlayerNames = Map<string, PlayerName>;
 const key = (team: unknown, player: unknown) =>
   `${Number(team)}:${Number(player)}`;
 
+// Height and position ride along from basket.co.il's season table, joined on
+// the identity the view already resolved (user 2026-11-12: lineups in height
+// order). Same cost as the names alone (0.4 s for 2026-27, cached).
 const SQL =
-  "SELECT team_id,player_id,display_name AS name,display_name_he AS name_he FROM basketball_test.player_display_names_v WHERE game_year=$1 AND display_name IS NOT NULL";
+  "SELECT v.team_id,v.player_id,v.display_name AS name,v.display_name_he AS name_he,h.height_m,h.position_en FROM basketball_test.player_display_names_v v LEFT JOIN (SELECT game_year,identity_id,max(height_m) AS height_m,min(position_en) AS position_en FROM basketball_test.basket_player_season WHERE identity_match_status='verified' GROUP BY game_year,identity_id) h ON h.game_year=v.game_year AND h.identity_id=v.identity_id WHERE v.game_year=$1 AND v.display_name IS NOT NULL";
 const blank = (v: unknown) => v == null || String(v).trim() === "";
 const cache = new VersionedCache<{
   version: string;
@@ -41,7 +50,12 @@ export async function readPlayerNames(
         .filter((r) => !blank(r.name))
         .map((r): [string, PlayerName] => [
           key(r.team_id, r.player_id),
-          { en: String(r.name), he: blank(r.name_he) ? null : String(r.name_he) },
+          {
+            en: String(r.name),
+            he: blank(r.name_he) ? null : String(r.name_he),
+            height: r.height_m == null ? null : Number(r.height_m),
+            position: blank(r.position_en) ? null : String(r.position_en),
+          },
         ]),
     }),
   );
