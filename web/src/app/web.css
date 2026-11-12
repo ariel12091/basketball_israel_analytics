@@ -519,12 +519,16 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-details .gf-stint-stats { flex-wrap: wrap; gap: 6px 14px; }
 /* Team names are long: the head-to-head score may wrap. */
 .gf-details .gf-stint-stats dd.is-score { white-space: normal; }
-/* Head to head: one row per team, its +/- and ratings over the shared minutes;
-   the card wraps even in the one-line column of several cards. */
-.gf-player-cards .gf-stint-stats.is-h2h,
-.gf-player-cards.is-multi .gf-stint-stats.is-h2h { flex-wrap: wrap; }
-.gf-stint-stats.is-h2h .gf-h2h-team { flex: 1 1 100%; }
-.gf-stint-stats.is-h2h .gf-h2h-team dd, .gf-stint-stats.is-h2h dd.is-score { white-space: normal; }
+/* Head to head: a scoreboard -- teams at the ends with their ORtg under
+   them, the score and +/- in the middle with Net under it. */
+.gf-h2h-board { display: grid; grid-template-columns: 1fr auto 1fr; gap: 2px 12px;
+  align-items: baseline; font-size: 13px; font-variant-numeric: tabular-nums; }
+.gf-h2h-board > span:nth-child(3n + 1) { text-align: left; }
+.gf-h2h-board > span:nth-child(3n) { text-align: right; }
+.gf-h2h-board .is-team { font-weight: 700; }
+.gf-h2h-board .is-mid { text-align: center; font-weight: 700; white-space: nowrap; }
+.gf-h2h-board > span:nth-child(n + 4) { color: var(--ibpl-text-muted); font-size: 12px; }
+.gf-h2h-board > span.is-mid:nth-child(n + 4) { color: var(--ibpl-text); }
 .gf-details .gf-stint-stats dd { font-size: 13px; white-space: nowrap; }
 /* Gameflow runs: a band over the chart and the rows in the run team's colour
    (own = accent, opp = muted, as the lanes), and a chip where it starts. The

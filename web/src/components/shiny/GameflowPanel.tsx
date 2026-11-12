@@ -1038,40 +1038,32 @@ const RATING_ROWS = [
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
     return (
-      <dl className="gf-stint-stats is-h2h">
-        <div>
-          <dt>On the floor together</dt>
-          <dd>{clock(d.secs)}</dd>
-        </div>
-        {d.score !== "" && (
+      <>
+        <dl className="gf-stint-stats">
           <div>
-            <dt>Score</dt>
-            <dd className="is-score">{d.score}</dd>
+            <dt>On the floor together</dt>
+            <dd>{clock(d.secs)}</dd>
           </div>
-        )}
-        {d.h2h && (
-          <>
-            <div>
-              <dt>{d.h2h.team} +/-</dt>
-              <dd>{d.h2h.pm}</dd>
-            </div>
+        </dl>
+        {/* A scoreboard (user 2026-11-12): each team with its ORtg under it,
+            the score with the game log's +/- in the middle, Net under it. */}
+        {d.h2h && d.pf != null && (
+          <div className="gf-h2h-board">
+            <span className="is-team">{d.h2h.ortg[0].name}</span>
+            <span className="is-mid">
+              {d.pf} – {d.pa} ({d.h2h.pm})
+            </span>
+            <span className="is-team">{d.h2h.ortg[1].name}</span>
             {d.h2h.ortg.some((o) => o.v != null) && (
               <>
-                <div>
-                  <dt>{d.h2h.team} Net</dt>
-                  <dd>{netLabel(d.h2h.net)}</dd>
-                </div>
-                <div className="gf-h2h-team">
-                  <dt>ORtg</dt>
-                  <dd>
-                    {d.h2h.ortg.map((o) => `${o.name} ${ratingLabel(o.v)}`).join(" · ")}
-                  </dd>
-                </div>
+                <span>ORtg {ratingLabel(d.h2h.ortg[0].v)}</span>
+                <span className="is-mid">Net {netLabel(d.h2h.net)}</span>
+                <span>ORtg {ratingLabel(d.h2h.ortg[1].v)}</span>
               </>
             )}
-          </>
+          </div>
         )}
-      </dl>
+      </>
     );
   return (
     <dl className="gf-stint-stats">

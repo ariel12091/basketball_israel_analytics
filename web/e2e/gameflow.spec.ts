@@ -10,7 +10,9 @@ import {
   sharedWindows,
   clock,
   laneKey,
+  pmLabel,
   ratingLabel,
+  windowsSummary,
 } from "../src/rules/gameflow";
 import { stintRatings, windowsRatings } from "../src/rules/gameflowRatings";
 import { rRound } from "../src/rules/round";
@@ -258,19 +260,24 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await page.mouse.move(0, 0);
   const h2h = page.getByRole("region", { name: "Head to head detail" });
   await expect(h2h).toBeVisible();
-  // Over the minutes the selected players shared (user 2026-11-12): one ORtg
-  // per team, and the +/- and Net once, signed for the game log's team; Net
-  // is the gap between the two ORtgs, so the card adds up.
+  // A scoreboard over the minutes the selected players shared (user
+  // 2026-11-12): each team with its ORtg under it, the score and the game
+  // log's +/- in the middle with Net, the gap between the ORtgs, under it.
   const shared = sharedWindows(answer.bars, [`own:${dib.player_key}`, `opp:${opp.player_key}`]);
   const mine = windowsRatings(answer.events, "own", [dib.player_key], shared).ortg!,
     theirs = windowsRatings(answer.events, "opp", [opp.player_key], shared).ortg!;
-  await expect(h2h).toContainText(
-    `ORtgMaccabi Tel-Aviv ${ratingLabel(mine)} · Hapoel Tel-Aviv ${ratingLabel(theirs)}`,
-  );
-  await expect(h2h).toContainText(`Maccabi Tel-Aviv Net${signed(mine - theirs)}`);
-  await expect(h2h).toContainText(/Maccabi Tel-Aviv \+\/-[+-]?\d+/);
+  const sum = windowsSummary("own", shared, answer.steps);
+  const cells = await h2h.locator(".gf-h2h-board > span").allTextContents();
+  expect(cells).toEqual([
+    "Maccabi Tel-Aviv",
+    `${sum.pf} – ${sum.pa} (${pmLabel(sum.pf! - sum.pa!)})`,
+    "Hapoel Tel-Aviv",
+    `ORtg ${ratingLabel(mine)}`,
+    `Net ${signed(mine - theirs)}`,
+    `ORtg ${ratingLabel(theirs)}`,
+  ]);
+  await expect(h2h).toContainText(`On the floor together${clock(shared.reduce((t, w) => t + w.end - w.start, 0))}`);
   await expect(h2h).not.toContainText("DRtg");
-  await expect(h2h).not.toContainText("Hapoel Tel-Aviv +/-");
 });
 test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   test.skip(info.project.name === "phone", "hover tips are pointer-only");
