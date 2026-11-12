@@ -26,7 +26,8 @@ test_that("the check reads the display-name owner and counts Basket's games", {
   fn <- dq_text("etl", "player_identity_dictionary.R")
   fn <- sub(".*player_display_name_gaps <- function", "", fn)
   expect_true(grepl("player_display_names_v", fn, fixed = TRUE))
-  expect_true(grepl("basket_player_season", fn, fixed = TRUE))
+  expect_true(grepl("basket_player_registration", fn, fixed = TRUE))
+  expect_false(grepl("basket_player_season", fn, fixed = TRUE))
   # Basket's season pages count regular-season games only.
   expect_true(grepl("s.game_type = 5", fn, fixed = TRUE))
   for (p in c("reused_provider_id", "no_identity_roster_spelling",

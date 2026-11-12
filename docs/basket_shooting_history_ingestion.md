@@ -174,15 +174,25 @@ still fails closed.
 
 ## Tables
 
-Three relations, all in `basketball_test`:
+Four relations, all in `basketball_test`:
 
 | relation | holds |
 |---|---|
-| `basket_player_season` | one row per `(game_year, basket_player_id)`: names, shooting totals, position/height/nationality, both provenance sets |
+| `basket_player_registration` | one row per registered `(game_year, basket_player_id)`: names, team, position/height/date of birth/nationality, provenance, the identity link. `source = 'stats'` (season-stat page + profile, wins) or `'roster'` (team page only, `scripts/basket_rosters.R`) |
+| `basket_player_season` | one row per `(game_year, basket_player_id)` on the season-stat pages: shooting totals and their page provenance |
 | `basket_shooting_import_runs` | one row per run: seasons requested, status, counts |
 | `basket_shooting_source_pages` | one row per fetched stats page: URL, content hash, parsed rows |
 
-`basket_player_season` is the only table to query. Player names are
+**Split again on 2026-11-12.** Query player facts and names from
+`basket_player_registration`; `basket_player_season` is for shooting totals.
+The 2026-09-23 merge below was right while the two halves were 1:1; they no
+longer are -- basket.co.il's team pages list registered players the stats
+pages do not (48 of 2026-27's 227), who have facts but no totals. Until the
+phase B migration drops them, `basket_player_season` still carries copies of
+the moved columns; do not read them.
+(Plan: `docs/superpowers/plans/2026-11-12-basket-player-registration-split.md`.)
+
+Before that split, `basket_player_season` was the only table to query. Player names are
 `player_name` (Hebrew) and `player_name_en` — **not** on any other relation.
 Profile columns (`position_name`, `position_en`, `height_m`,
 `nationality_name`, `nationality_code`, `profile_*` provenance) are NULL unless
