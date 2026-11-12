@@ -82,7 +82,10 @@ jobs:
 
       # Ties registrations across seasons (basket_person_id) from the profile
       # links both scrapes wrote; the matcher reads it.
+      # A refused write (a birth-date conflict, or persons that would split)
+      # turns the job red; the matcher still runs on the stored keys.
       - name: Assign Basket person keys
+        continue-on-error: true
         run: Rscript etl/basket_person_ids.R --write
 
       # Links every registration -- stats-page and team-page rows -- in

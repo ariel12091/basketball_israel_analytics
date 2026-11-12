@@ -647,6 +647,16 @@ parse_basket_player_links <- function(html, own_id) {
   sort(unique(setdiff(ids, as.integer(own_id))))
 }
 
+# Links only grow from a profile: a page that now yields none where some were
+# stored keeps the stored ones -- a profile does not lose its past seasons,
+# a parser that stopped matching a changed page does.
+basket_links_update_sql <- function() paste(
+  "UPDATE", BASKET_REGISTRATION_TABLE, "r SET linked_basket_player_ids = CASE",
+  "WHEN cardinality(s.linked::integer[]) = 0 AND cardinality(r.linked_basket_player_ids) > 0 THEN r.linked_basket_player_ids",
+  "ELSE s.linked::integer[] END, updated_at = now()",
+  "FROM basket_links_stage s",
+  "WHERE r.game_year = s.game_year AND r.basket_player_id = s.basket_player_id")
+
 # Writes linked_basket_player_ids onto existing registration rows. `links` has
 # game_year, basket_player_id and linked_basket_player_ids -- a list of integer
 # vectors, or array literals ("{1,2}") as the profile fetcher returns them.
@@ -663,11 +673,15 @@ write_basket_links <- function(con, links) {
   DBI::dbExecute(con, paste("CREATE TEMP TABLE basket_links_stage",
     "(game_year integer, basket_player_id integer, linked text) ON COMMIT DROP"))
   DBI::dbAppendTable(con, DBI::Id(table = "basket_links_stage"), stage)
-  updated <- DBI::dbExecute(con, paste(
-    "UPDATE", BASKET_REGISTRATION_TABLE, "r",
-    "SET linked_basket_player_ids = s.linked::integer[], updated_at = now()",
-    "FROM basket_links_stage s",
-    "WHERE r.game_year = s.game_year AND r.basket_player_id = s.basket_player_id"))
+  kept <- DBI::dbGetQuery(con, paste(
+    "SELECT count(*)::integer AS n FROM", BASKET_REGISTRATION_TABLE, "r JOIN basket_links_stage s",
+    "ON r.game_year = s.game_year AND r.basket_player_id = s.basket_player_id",
+    "WHERE cardinality(s.linked::integer[]) = 0 AND cardinality(r.linked_basket_player_ids) > 0"))$n
+  if (kept > 0) {
+    warning(kept, " profiles now show no past-season links where links were stored; kept the stored ",
+            "links (has the profile page's layout changed?)")
+  }
+  updated <- DBI::dbExecute(con, basket_links_update_sql())
   DBI::dbExecute(con, "DROP TABLE basket_links_stage")
   if (updated != nrow(stage)) {
     stop("links written to ", updated, " registrations for ", nrow(stage), " profiles; every profile must have a registration")

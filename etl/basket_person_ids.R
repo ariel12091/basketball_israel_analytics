@@ -3,8 +3,10 @@
 # registrations (basket_player_registration.linked_basket_player_ids). The
 # registrations those links join -- in either direction, through ids before
 # 2022 as well -- are one person; basket_person_id is the smallest PlayerId
-# among them, the earliest registration basket.co.il knows, so it stays put as
-# later seasons are added.
+# among them, the earliest registration basket.co.il knows. Later seasons do
+# not move it; a newly read profile that reveals an older registration does
+# (every member then takes the older id), so join on it within a run, never
+# store it elsewhere as permanent.
 #
 # A link that joins two different dates of birth is not trusted: the run stops
 # and names the registrations.
@@ -47,6 +49,18 @@ assign_basket_person_ids <- function(registrations) {
              basket_person_id = person)
 }
 
+# Stored keys whose registrations would no longer share one key. A split means
+# links have gone missing (for instance a profile page whose layout changed),
+# not that two people were told apart, so the write refuses it.
+person_splits <- function(stored, new) {
+  m <- merge(stored[c("basket_player_id", "stored")], new[c("basket_player_id", "basket_person_id")],
+             by = "basket_player_id")
+  m <- m[!is.na(m$stored), ]
+  if (!nrow(m)) return(integer(0))
+  n <- tapply(m$basket_person_id, m$stored, function(k) length(unique(k)))
+  sort(as.integer(names(n)[n > 1]))
+}
+
 parse_pg_int_array <- function(x) {
   lapply(x, function(v) {
     if (is.na(v)) return(NULL)
@@ -57,7 +71,8 @@ parse_pg_int_array <- function(x) {
 
 main_person_ids <- function() {
   args <- commandArgs(trailingOnly = TRUE)
-  if (any(!args %in% "--write")) stop("Unknown argument(s): ", paste(setdiff(args, "--write"), collapse = ", "))
+  flags <- c("--write", "--allow-split")
+  if (any(!args %in% flags)) stop("Unknown argument(s): ", paste(setdiff(args, flags), collapse = ", "))
   write <- "--write" %in% args
   source("scripts/backfill_basket_shooting_history.R", local = TRUE)
   con <- connect_etl_db()
@@ -76,6 +91,11 @@ main_person_ids <- function() {
   cat(sprintf("keys to set or change: %d (%d were set before)\n", sum(changed), sum(changed & !is.na(out$stored))))
   moved <- out[changed & !is.na(out$stored), ]
   if (nrow(moved)) print(head(moved, 40), row.names = FALSE)
+  splits <- person_splits(out, out)
+  if (length(splits) && !"--allow-split" %in% args) {
+    stop(length(splits), " persons would split (stored keys ", paste(head(splits, 20), collapse = ", "),
+         "): their links have gone missing -- check the profile parser; --allow-split to accept")
+  }
   if (!write) {
     cat("Dry run only; pass --write to update basket_person_id.\n")
     return(invisible(out))

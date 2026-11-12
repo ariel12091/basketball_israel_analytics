@@ -150,3 +150,15 @@ test_that("the refresh assigns person keys after both scrapes and before the ide
   expect_true(at("basket_rosters.R") < at("basket_person_ids.R --write"))
   expect_true(at("basket_person_ids.R --write") < at("basket_identity_match.R"))
 })
+
+test_that("a profile that now yields no links never wipes links already stored", {
+  sql <- basket_links_update_sql()
+  expect_match(sql, "WHEN cardinality(s.linked::integer[]) = 0 AND cardinality(r.linked_basket_player_ids) > 0 THEN r.linked_basket_player_ids", fixed = TRUE)
+})
+
+test_that("a failed person-key step does not stop the identity link or the name rewrite", {
+  wf <- readLines(file.path("..", "..", ".github", "workflows", "basket-refresh.yml"), warn = FALSE)
+  at <- grep("name: Assign Basket person keys", wf, fixed = TRUE)
+  expect_length(at, 1)
+  expect_true(any(grepl("continue-on-error: true", wf[at:(at + 2)], fixed = TRUE)))
+})

@@ -41,3 +41,15 @@ test_that("a registration with no links, read or not, is a person of its own", {
   out <- assign_basket_person_ids(r)
   expect_equal(out$basket_person_id, c(10L, 20L))
 })
+
+test_that("registrations that were one person and would now split are named, so the write can refuse", {
+  stored <- data.frame(basket_player_id = c(10L, 20L, 30L), stored = c(10L, 10L, 30L))
+  new <- data.frame(basket_player_id = c(10L, 20L, 30L), basket_person_id = c(10L, 20L, 30L))
+  expect_equal(person_splits(stored, new), 10L)
+  # a merge is not a split
+  merged <- data.frame(basket_player_id = c(10L, 20L, 30L), basket_person_id = c(10L, 10L, 10L))
+  expect_equal(person_splits(stored, merged), integer(0))
+  # nothing stored yet: nothing to split
+  stored$stored <- NA_integer_
+  expect_equal(person_splits(stored, new), integer(0))
+})
