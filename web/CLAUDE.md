@@ -21,6 +21,34 @@ the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
   `sql/web-foundation` branch, which must not be merged whole (it also holds
   unapplied SQL/loader edits); the `docs/` paths named below live there.
 
+## Gameflow (since 2026-11-12, live)
+
+Runs, credited-lineup ratings and the phone layout are live (PRs #24-#26).
+Contract rows: Gameflow stint rating, run, run standout, run cause (D39).
+- Readers return `events` (each with its credited five) and `poss`;
+  EuroLeague reads `euroleague.ribbon_events_v` (migration 061).
+- Rules: `rules/gameflowRatings.ts` (`stintRatings`, `windowsRatings`),
+  `rules/gameflowRuns.ts` (`detectRuns`, `runLineups`, `runStandouts`,
+  `causeLine` via `runExplanation`, `periodClock`, `windowLabel`).
+  `rules/gameflowSummary.ts` runs once on the server; the API returns
+  `runs` / `players`, which the page and the Ask `gameflow` tool read.
+- Every moment/window reads "Q3 2:25 – Q4 2:31" (`windowLabel`); durations
+  stay m:ss.
+- Phones (`GameflowView` compact): sticky header (strip + quarter tabs +
+  Runs + menu), one quarter at a time (tabs or swipe), one bottom panel
+  (`PhonePanel`) every tap reports to. Desktop keeps the old layout.
+- Fixtures with events: `src/rules/__fixtures__/gameflow-{673,440,1147}.json`
+  from `scripts/save_gameflow_fixture.R` (the real reader as app_readonly);
+  e2e loads them with `loadFixture()`.
+- Traps: `gameflow_export_sources()` also rewrites `gameflowLayout.json` and
+  drops hand-added keys -- `git checkout` that file and commit only
+  `gameflowSql.json`. mobile.css's `.ibpl-ribbon-inline-panel
+  .ibpl-ribbon.is-compact { width: auto }` outranks web.css (a quarter chart
+  overflowed its frame by 18 px); override with a more specific rule.
+  Production live checks (`LIVE_DB_SMOKE=1`, `PREVIEW_URL` = production,
+  any bypass value) hit Vercel's 429 when both widths run back to back: run
+  phone and desktop separately, about 90 s apart.
+
 ## Current resume point (2026-10-22)
 
 Gameflow is implemented for all competitions: Game Logs links and direct SSR
