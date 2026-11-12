@@ -1109,7 +1109,7 @@ validate_written_scrape <- function(con, run_id, players, profiles = NULL) {
   # Every parsed player has a stats registration from this run, with his names
   # and (when fetched) his profile.
   registrations <- DBI::dbGetQuery(con, paste(
-    "SELECT count(*)::integer AS rows, count(profile_fetched_at)::integer AS profiles,",
+    "SELECT count(*)::integer AS rows, count(r.profile_fetched_at)::integer AS profiles,",
     "count(*) FILTER (WHERE r.player_name IS DISTINCT FROM s.player_name",
     "  OR r.player_name_en IS DISTINCT FROM s.player_name_en)::integer AS name_diffs",
     "FROM", BASKET_REGISTRATION_TABLE, "r",
