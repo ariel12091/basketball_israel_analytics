@@ -175,9 +175,10 @@ describe("runExplanation", () => {
     expect(l[4]).toBe(
       "Hapoel Tel-Aviv 17% inside the arc (1/6), 54% the rest of the game (15/28)",
     );
-    // Both teams changed shortly before the run: neither is credited.
+    // The strongest result that is not from three leads; the threes follow;
+    // both teams changed just before, so neither lineup is credited.
     expect(l[5]).toBe(
-      "Estimated cause: both teams changed lineups shortly before the run (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so the swing is not credited to either; this is a timing match, not proof.",
+      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game), with Maccabi Tel-Aviv's hot three-point shooting on top; both teams also changed lineups just before (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so no lineup is credited. A timing match, not proof.",
     );
     expect(l).toHaveLength(6);
   });
@@ -190,7 +191,7 @@ describe("runExplanation", () => {
     expect(l[1]).toBe("A: the starting five; stayed on throughout");
     expect(l[2]).toBe("B: the starting five; stayed on throughout");
     expect(l.at(-1)).toBe(
-      "Estimated cause: same fives as before the run; no lineup change is claimed.",
+      "Estimated cause: neither team changed lineups in the 2 minutes before the run, and no result stood out against the rest of the game.",
     );
   });
   it("credits only the team whose change came shortly before the run", () => {
@@ -199,24 +200,33 @@ describe("runExplanation", () => {
     // Move Hapoel's change far back: only Maccabi's 3:54 change is close.
     const far = lu.map((x) => (x.side === "opp" ? { ...x, onSince: d.start - 400 } : x));
     expect(runExplanation(model673, d, names, [], far).at(-1)).toBe(
-      "Estimated cause: Maccabi Tel-Aviv's lineup change at Q3 3:54 lines up with the run; this is a timing match, not proof.",
+      "Estimated cause: Maccabi Tel-Aviv's lineup change at Q3 3:54 lines up with the run. A timing match, not proof.",
     );
     const oppOnly = lu.map((x) => (x.side === "own" ? { ...x, onSince: d.start - 400 } : x));
     expect(runExplanation(model673, d, names, [], oppOnly).at(-1)).toBe(
-      "Estimated cause: Hapoel Tel-Aviv's lineup change at Q3 3:01 lines up with the run; this is a timing match, not proof.",
+      "Estimated cause: Hapoel Tel-Aviv's lineup change at Q3 3:01 lines up with the run. A timing match, not proof.",
+    );
+    // A result and one team's change: both named.
+    const twos = runStandouts(model673.events, d).filter((x) => !x.variance);
+    expect(runExplanation(model673, d, names, twos, far).at(-1)).toBe(
+      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game); Maccabi Tel-Aviv's lineup change at Q3 3:54 also lines up with the run. A timing match, not proof.",
     );
   });
   it("reads the margin from the run team's side", () => {
     const hapoel = runs.find((r) => r.side === "opp")!;
     expect(lines(hapoel)[0]).toMatch(/^Hapoel Tel-Aviv 30-4 · Q2 2:50 – Q3 4:18 · from (down|up|level)/);
   });
-  it("blames no lineup when only three-point shooting stands out", () => {
+  it("names three-point shooting as the cause when only it stood out", () => {
     const r = runs.find((r) => r.defining)!;
-    const only3 = runExplanation(model673, r, names, [
-      { side: "own", metric: "fg3", inRun: { made: 9, att: 12 }, rest: { made: 3, att: 17 }, variance: true },
-    ]);
-    expect(only3.at(-1)).toBe(
-      "Estimated cause: hot three-point shooting; no lineup effect is claimed.",
+    const three = [
+      { side: "own" as const, metric: "fg3" as const, inRun: { made: 9, att: 12 }, rest: { made: 3, att: 17 }, variance: true },
+    ];
+    expect(runExplanation(model673, r, names, three).at(-1)).toBe(
+      "Estimated cause: Maccabi Tel-Aviv's hot three-point shooting; both teams also changed lineups just before (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so no lineup is credited. A timing match, not proof.",
+    );
+    const lu = runLineups(model673, r).map((x) => ({ ...x, onSince: r.start - 400 }));
+    expect(runExplanation(model673, r, names, three, lu).at(-1)).toBe(
+      "Estimated cause: Maccabi Tel-Aviv's hot three-point shooting; neither team changed lineups in the 2 minutes before the run.",
     );
   });
 });
