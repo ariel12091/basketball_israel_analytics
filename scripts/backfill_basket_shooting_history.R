@@ -630,6 +630,23 @@ parse_basket_player_profile_html <- function(html) {
   )
 }
 
+# The player's other basket.co.il registrations, as his profile page links them
+# (2026-11-12): each row of the past-seasons table ("2020-21" -> that season's
+# PlayerId) and the "player in the previous season" tab. Only those count --
+# the page links team-mates too. Sorted, distinct, without his own id;
+# integer(0) for a page with none.
+parse_basket_player_links <- function(html, own_id) {
+  grab <- function(pattern) {
+    hits <- regmatches(html, gregexpr(pattern, html, perl = TRUE))[[1]]
+    as.integer(sub(pattern, "\\1", hits, perl = TRUE))
+  }
+  ids <- c(
+    grab('PlayerId=([0-9]+)">[0-9]{4}-[0-9]{2}</a>'),
+    grab('(?s)<li id="player-prev-year"[^>]*>\\s*<a href="player\\.asp\\?PlayerId=([0-9]+)')
+  )
+  sort(unique(setdiff(ids, as.integer(own_id))))
+}
+
 fetch_basket_player_profile <- function(
     game_year, basket_player_id,
     cache_dir = "exports/cache/basket_shooting_history",

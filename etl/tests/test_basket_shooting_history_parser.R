@@ -347,3 +347,35 @@ test_that("recorded download failures refuse the write", {
   expect_error(assert_no_download_failures(failures), "refusing to write")
   expect_error(assert_no_download_failures(failures), "player 42")
 })
+
+# basket.co.il profile page, past-seasons section (player.asp?PlayerId=21797,
+# 2026-11-12): a "previous season" tab and one stats row per earlier season,
+# each linking that season's PlayerId; team-mate links elsewhere on the page.
+links_fixture <- paste0(
+  '<a href="player.asp?PlayerId=21795">team-mate</a>',
+  '<li id="player-prev-year" class="tab" aria-controls="panel10" role="tab">',
+  '<a href="player.asp?PlayerId=19720">previous&nbsp;>></a></li>',
+  '<tr class="row even"> <td class="da_ltr_center space"><a href="player.asp?PlayerId=21797">2025-26</a></td>',
+  ' <td class="da_ltr_center space"><a href="team.asp?TeamId=1018">x</a></td></tr>',
+  '<tr class="row even"> <td class="da_ltr_center space"><a href="player.asp?PlayerId=12490">2020-21</a></td>',
+  ' <td class="da_ltr_center space"><a href="team.asp?TeamId=1018">x</a></td></tr>',
+  '<tr class="row odd"> <td class="da_ltr_center space"><a href="player.asp?PlayerId=11214">2019-20</a></td>',
+  ' <td class="da_ltr_center space"><a href="team.asp?TeamId=1006">x</a></td></tr>'
+)
+
+test_that("a profile page's past-season ids, without its own id or team-mates", {
+  expect_identical(parse_basket_player_links(links_fixture, 21797L), c(11214L, 12490L, 19720L))
+})
+
+test_that("a profile page with no past seasons links nobody", {
+  expect_identical(parse_basket_player_links("<p></p>", 1L), integer(0))
+})
+
+test_that("the cached 21797 profile links his earlier registrations", {
+  path <- file.path("..", "..", "exports", "cache", "basket_shooting_history", "profiles", "2026", "21797.html")
+  skip_if_not(file.exists(path))
+  ids <- parse_basket_player_links(read_downloaded_html(path), 21797L)
+  expect_true(all(c(12490L, 19720L) %in% ids))
+  expect_false(21797L %in% ids)
+  expect_false(21795L %in% ids)
+})
