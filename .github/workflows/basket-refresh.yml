@@ -71,6 +71,17 @@ jobs:
       - name: Link registrations to identities
         run: Rscript etl/basket_identity_match.R --seasons=${{ steps.season.outputs.season }} --write
 
+      # Team-page rosters: position, height and date of birth for players the
+      # season-stat pages do not list yet (mostly new signings). Politely: the
+      # 14 team pages in Hebrew and English, one request at a time, 5 s apart.
+      - name: Scrape and write team rosters
+        run: >
+          Rscript scripts/basket_rosters.R --season=${{ steps.season.outputs.season }}
+          --refresh-cache --pause-seconds=5 --initial-backoff=15 --write
+
+      - name: Link roster rows to identities
+        run: Rscript etl/basket_identity_match.R --seasons=${{ steps.season.outputs.season }} --table=roster --write
+
       # The same rewrite as the one-time migration: idempotent, touches only
       # rows whose names change.
       - name: Rewrite stored lineup names

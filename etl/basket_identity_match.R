@@ -88,17 +88,26 @@ assert_seasons_matchable <- function(seasons) {
 # One row per Basket season registration, with the team already resolved
 # through schedule_team_dict. A registration whose team string is unmapped is
 # returned with team_id NA and reported rather than silently dropped.
-fetch_basket_registrations <- function(con, seasons) {
+# The two tables that hold registrations: the season-stat rows and the
+# team-page rosters (scripts/basket_rosters.R). Same name, team and link
+# columns, so one matcher serves both (2026-11-12).
+BASKET_IDENTITY_TABLES <- c(
+  season = "basketball_test.basket_player_season",
+  roster = "basketball_test.basket_player_roster"
+)
+
+fetch_basket_registrations <- function(con, seasons,
+                                       table = BASKET_IDENTITY_TABLES[["season"]]) {
   rows <- db_query(con, sprintf("
     SELECT s.game_year, s.basket_player_id, s.player_name, s.player_name_en,
            s.basket_team_name, d.team_id_rosters AS team_id
-    FROM basketball_test.basket_player_season s
+    FROM %s s
     LEFT JOIN basketball_test.schedule_team_dict d
       ON d.game_year = s.game_year
      AND d.team_name_basket = s.basket_team_name
     WHERE s.game_year IN (%s)
     ORDER BY s.game_year, s.basket_player_id",
-    paste(as.integer(seasons), collapse = ", ")))
+    table, paste(as.integer(seasons), collapse = ", ")))
   rows$norm_en <- normalize_person_name(rows$player_name_en)
   rows$norm_he <- normalize_person_name(rows$player_name)
   rows
@@ -380,7 +389,8 @@ report_unresolved <- function(matches, limit = 40L) {
 # of players to resolve. Only 'verified' and 'proposal' carry an identity;
 # 'ambiguous' and 'unmatched' record that the matcher ran and did not conclude,
 # which the schema distinguishes from NULL (never attempted).
-write_basket_identity_links <- function(con, matches) {
+write_basket_identity_links <- function(con, matches,
+                                        table = BASKET_IDENTITY_TABLES[["season"]]) {
   resolved <- matches[matches$status %in% c("verified", "proposal"), , drop = FALSE]
   unresolved <- matches[matches$status %in% c("ambiguous", "unmatched",
                                               "unmapped_team"), , drop = FALSE]
@@ -421,8 +431,8 @@ write_basket_identity_links <- function(con, matches) {
     )
     if (!nrow(stage)) return("no rows to link")
     DBI::dbAppendTable(con, DBI::Id(table = "basket_identity_stage"), stage)
-    written <- DBI::dbExecute(con, "
-      UPDATE basketball_test.basket_player_season t
+    written <- DBI::dbExecute(con, sprintf("
+      UPDATE %s t
       SET identity_id = s.identity_id,
           canonical_player_id = s.canonical_player_id,
           identity_match_status = s.identity_match_status,
@@ -431,7 +441,7 @@ write_basket_identity_links <- function(con, matches) {
           updated_at = now()
       FROM basket_identity_stage s
       WHERE t.game_year = s.game_year
-        AND t.basket_player_id = s.basket_player_id")
+        AND t.basket_player_id = s.basket_player_id", table))
     if (written != nrow(stage)) {
       stop("Linked ", written, " rows for ", nrow(stage),
            " matched registrations; every registration must exist")
@@ -445,12 +455,13 @@ write_basket_identity_links <- function(con, matches) {
 }
 
 # Read the links back and confirm they say what was matched, row by row.
-validate_written_links <- function(con, matches, seasons) {
+validate_written_links <- function(con, matches, seasons,
+                                   table = BASKET_IDENTITY_TABLES[["season"]]) {
   stored <- db_query(con, sprintf("
     SELECT game_year, basket_player_id, identity_id, canonical_player_id,
            identity_match_status, identity_matched_on
-    FROM basketball_test.basket_player_season
-    WHERE game_year IN (%s)", paste(as.integer(seasons), collapse = ", ")))
+    FROM %s
+    WHERE game_year IN (%s)", table, paste(as.integer(seasons), collapse = ", ")))
   expected <- matches[matches$status %in% c("verified", "proposal"), , drop = FALSE]
   problems <- character()
 
@@ -489,7 +500,7 @@ validate_written_links <- function(con, matches, seasons) {
 
 main <- function() {
   args <- commandArgs(trailingOnly = TRUE)
-  known <- grepl("^--seasons=", args) | args %in% c("--write")
+  known <- grepl("^--(seasons|table)=", args) | args %in% c("--write")
   if (any(!known)) stop("Unknown argument(s): ", paste(args[!known], collapse = ", "))
   seasons_arg <- sub("^--seasons=", "",
                      args[grepl("^--seasons=", args)][1])
@@ -504,12 +515,18 @@ main <- function() {
   if (anyNA(seasons)) stop("Invalid --seasons value: ", seasons_arg)
   assert_seasons_matchable(seasons)
   write <- "--write" %in% args
+  table_arg <- sub("^--table=", "", args[grepl("^--table=", args)][1])
+  table_key <- if (is.na(table_arg)) "season" else table_arg
+  if (!table_key %in% names(BASKET_IDENTITY_TABLES)) {
+    stop("--table must be one of: ", paste(names(BASKET_IDENTITY_TABLES), collapse = ", "))
+  }
+  table <- BASKET_IDENTITY_TABLES[[table_key]]
 
   source("scripts/backfill_basket_shooting_history.R", local = TRUE)
   con <- connect_etl_db()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  registrations <- fetch_basket_registrations(con, seasons)
+  registrations <- fetch_basket_registrations(con, seasons, table)
   identities <- fetch_pbp_identities(con, seasons)
   cat(sprintf("%d Basket registrations, %d play-by-play identity-team-seasons\n",
               nrow(registrations), nrow(identities)))
@@ -520,11 +537,11 @@ main <- function() {
   cat(paste(report_unresolved(matches), collapse = "\n"), "\n\n")
 
   if (!write) {
-    cat("Dry run only; pass --write to link on basket_player_season.\n")
+    cat("Dry run only; pass --write to link on", table, "\n")
     return(invisible(matches))
   }
-  cat(write_basket_identity_links(con, matches), "\n")
-  cat(paste(validate_written_links(con, matches, seasons), collapse = "\n"), "\n")
+  cat(write_basket_identity_links(con, matches, table), "\n")
+  cat(paste(validate_written_links(con, matches, seasons, table), collapse = "\n"), "\n")
   invisible(matches)
 }
 
