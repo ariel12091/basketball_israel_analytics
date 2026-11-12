@@ -12,7 +12,7 @@ import {
   laneKey,
   ratingLabel,
 } from "../src/rules/gameflow";
-import { stintRatings } from "../src/rules/gameflowRatings";
+import { stintRatings, windowsRatings } from "../src/rules/gameflowRatings";
 import { rRound } from "../src/rules/round";
 type Page = import("@playwright/test").Page;
 const isPhone = (info: { project: { name: string } }) =>
@@ -258,7 +258,23 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await page.mouse.move(0, 0);
   const h2h = page.getByRole("region", { name: "Head to head detail" });
   await expect(h2h).toBeVisible();
-  await expect(h2h).not.toContainText("Net");
+  // Each team over the minutes the selected players shared (user
+  // 2026-11-12): its +/- and its credited ratings, as stintRatings() gives.
+  const shared = sharedWindows(answer.bars, [`own:${dib.player_key}`, `opp:${opp.player_key}`]);
+  const mine = windowsRatings(answer.events, "own", [dib.player_key], shared),
+    theirs = windowsRatings(answer.events, "opp", [opp.player_key], shared);
+  for (const [team, r] of [
+    ["Maccabi Tel-Aviv", mine],
+    ["Hapoel Tel-Aviv", theirs],
+  ] as const)
+    await expect(h2h.locator(".gf-h2h-team", { hasText: team })).toContainText(
+      `· Net ${signed(r.net)} · ORtg ${ratingLabel(r.ortg)} · DRtg ${ratingLabel(r.drtg)}`,
+    );
+  // Both teams' +/- over those minutes are opposite.
+  const pms = await h2h.locator(".gf-h2h-team dd").allTextContents();
+  const pm = (t: string) => Number(t.match(/^\+\/- ([+-]?\d+)/)![1]);
+  expect(pms).toHaveLength(2);
+  expect(pm(pms[0])).toBe(-pm(pms[1]));
 });
 test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   test.skip(info.project.name === "phone", "hover tips are pointer-only");

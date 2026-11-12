@@ -1025,6 +1025,8 @@ type CardStats = {
   score?: string;
   /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
   ratings?: StintRatings;
+  /** Head to head: each team over the shared minutes, its +/- and ratings. */
+  teams?: { name: string; pm: string; ratings?: StintRatings }[];
 };
 // Ratings only, no possession count (user 2026-11-11).
 const RATING_ROWS = [
@@ -1035,7 +1037,7 @@ const RATING_ROWS = [
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
     return (
-      <dl className="gf-stint-stats">
+      <dl className="gf-stint-stats is-h2h">
         <div>
           <dt>On the floor together</dt>
           <dd>{clock(d.secs)}</dd>
@@ -1046,6 +1048,16 @@ function StintStats({ d }: { d: CardStats }) {
             <dd className="is-score">{d.score}</dd>
           </div>
         )}
+        {d.teams?.map((t) => (
+          <div className="gf-h2h-team" key={t.name}>
+            <dt>{t.name}</dt>
+            <dd>
+              +/- {t.pm}
+              {t.ratings &&
+                ` · Net ${netLabel(t.ratings.net)} · ORtg ${ratingLabel(t.ratings.ortg)} · DRtg ${ratingLabel(t.ratings.drtg)}`}
+            </dd>
+          </div>
+        ))}
       </dl>
     );
   return (
@@ -1122,13 +1134,13 @@ function GameflowDetails({
           )
         : groups;
   // Credited-lineup ratings, when the reader returned events.
-  const rate = (side: Side, keys: string[], window?: Span) =>
+  const rate = (side: Side, keys: string[], window?: Span, windows?: Span[]) =>
     data.events.length
-      ? stintRatings(
+      ? windowsRatings(
           data.events,
           side,
           keys.map((k) => k.slice(k.indexOf(":") + 1)),
-          window,
+          windows ?? (window ? [window] : null),
         )
       : undefined;
   const cards: { key: string; title: string; aria: string; stats: CardStats }[] =
@@ -1189,14 +1201,26 @@ function GameflowDetails({
           },
         });
       } else {
-        // Both teams: no side to sign a +/- from, so the score from both.
+        // Both teams: no side to sign a +/- from, so the score from both, then
+        // each team over the shared minutes with its own +/- and ratings
+        // (user 2026-11-12), its selected players as the credited filter.
         const d = windowsSummary("own", shared, data.steps);
+        const teams = (["own", "opp"] as const).map((side) => {
+          const mine = selected.filter((k) => bars(k)[0]?.side === side),
+            pm = d.pf == null ? null : side === "own" ? d.pf - d.pa! : d.pa! - d.pf;
+          return {
+            name: side === "own" ? data.meta.ownTeam : data.meta.oppTeam,
+            pm: pmLabel(pm) || "0",
+            ratings: rate(side, mine, undefined, shared),
+          };
+        });
         cards.push({
           key: "h2h",
           title: "Head to head",
           aria: "Head to head detail",
           stats: {
             ...d,
+            teams,
             score:
               d.pf == null
                 ? ""

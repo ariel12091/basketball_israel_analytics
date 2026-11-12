@@ -519,6 +519,12 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-details .gf-stint-stats { flex-wrap: wrap; gap: 6px 14px; }
 /* Team names are long: the head-to-head score may wrap. */
 .gf-details .gf-stint-stats dd.is-score { white-space: normal; }
+/* Head to head: one row per team, its +/- and ratings over the shared minutes;
+   the card wraps even in the one-line column of several cards. */
+.gf-player-cards .gf-stint-stats.is-h2h,
+.gf-player-cards.is-multi .gf-stint-stats.is-h2h { flex-wrap: wrap; }
+.gf-stint-stats.is-h2h .gf-h2h-team { flex: 1 1 100%; }
+.gf-stint-stats.is-h2h .gf-h2h-team dd, .gf-stint-stats.is-h2h dd.is-score { white-space: normal; }
 .gf-details .gf-stint-stats dd { font-size: 13px; white-space: nowrap; }
 /* Gameflow runs: a band over the chart and the rows in the run team's colour
    (own = accent, opp = muted, as the lanes), and a chip where it starts. The
