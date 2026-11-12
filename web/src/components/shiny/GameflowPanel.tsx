@@ -134,6 +134,9 @@ export function GameflowView({
     [panelOpen, setPanelOpen] = useState(false),
     [panelRuns, setPanelRuns] = useState(false),
     [menuOpen, setMenuOpen] = useState(false),
+    // A swipe across the quarter, and a tap that only closes the run
+    // details, must not also count as a tap on the bar under them.
+    swallowTap = useRef(false),
     // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
     runs = data.runs,
     [runTip, setRunTip] = useState<{
@@ -192,6 +195,12 @@ export function GameflowView({
     dispatch({ type: "toggle", bar, window, bars: data.bars, end: gameEnd });
   };
   const clear = () => dispatch({ type: "clear" });
+  // The next click is swallowed; a gesture that never ends in one (a touch
+  // swipe) lets the flag lapse instead of eating a later, real tap.
+  const skipNextTap = () => {
+    swallowTap.current = true;
+    setTimeout(() => (swallowTap.current = false), 500);
+  };
   const quarterOf = (t: number) =>
     Math.max(1, data.bounds.findIndex((b) => t < b) + 1 || data.bounds.length);
   const selectRun = (r: Run) => {
@@ -223,6 +232,22 @@ export function GameflowView({
           lineupsOpen,
         )
       : undefined;
+  // Phones: a tap outside the panel closes a run's details or the runs list
+  // (user 2026-11-12). A tap on the chart that does so does nothing else.
+  const detailsOpen = compact && panelOpen && (run != null || panelRuns);
+  useEffect(() => {
+    if (!detailsOpen) return;
+    const close = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (t.closest?.(".gf-m-panel")) return;
+      dispatch({ type: "clear" });
+      setPanelRuns(false);
+      setPanelOpen(false);
+      if (t.closest?.(".ibpl-ribbon-quarters")) skipNextTap();
+    };
+    addEventListener("pointerdown", close, true);
+    return () => removeEventListener("pointerdown", close, true);
+  }, [detailsOpen]);
   // A tapped run tip is placed once: touching anywhere else (which is also
   // how a touch scroll starts) closes it. Not on scroll events: layout can
   // scroll the page right after the tap.
@@ -600,9 +625,37 @@ export function GameflowView({
         )
       ) : (
         <>
-          {/* One quarter at a time (phones): the tabs above choose it, and
-              whatever a tap selects reports in the panel below. */}
-          <div className="ibpl-ribbon-quarters">
+          {/* One quarter at a time (phones): the tabs above or a swipe
+              choose it, and whatever a tap selects reports in the panel. */}
+          <div
+            className="ibpl-ribbon-quarters"
+            onPointerDown={(e) => {
+              // The finger may lift past the card's edge: read the release
+              // wherever it happens.
+              const from = { x: e.clientX, y: e.clientY };
+              const end = (ev: PointerEvent) => {
+                removeEventListener("pointerup", end);
+                removeEventListener("pointercancel", end);
+                if (ev.type !== "pointerup") return;
+                const dx = ev.clientX - from.x,
+                  dy = ev.clientY - from.y;
+                if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < 1.5 * Math.abs(dy))
+                  return;
+                skipNextTap();
+                setQuarter((q) =>
+                  Math.min(data.bounds.length, Math.max(1, q + (dx < 0 ? 1 : -1))),
+                );
+              };
+              addEventListener("pointerup", end);
+              addEventListener("pointercancel", end);
+            }}
+            onClickCapture={(e) => {
+              if (!swallowTap.current) return;
+              swallowTap.current = false;
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
             {data.bounds.map((end, i) =>
               quarter !== i + 1 ? null : (
                 <section
@@ -677,8 +730,10 @@ const TIP_WIDTH = 400,
   // click away.
   TIP_ROWS = 2;
 const LINEUPS_SHORT = 3;
+/** A horizontal move at least this long (px) is a swipe, not a tap. */
+const SWIPE_MIN = 60;
 const PHONE_HINT =
-  "Tap a player's name for his game, a bar for one stint, two or more names for their minutes together, or a shaded run for its lineups.";
+  "Swipe to change quarter. Tap a player's name for his game, a bar for one stint, two or more names for their minutes together, or a shaded run for its lineups.";
 /** The one-line summary of several selected players: their minutes
  * together (one team) or head to head (both). */
 function togetherText(data: GameflowPayload, selected: string[], windows: Span[]) {

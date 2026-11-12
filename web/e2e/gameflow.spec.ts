@@ -420,6 +420,55 @@ test("Together comes first and every card fits without scrolling", async ({
   }
   void answer;
 });
+test("Phone: a swipe across the quarter changes quarter", async ({ page }, info) => {
+  test.skip(!isPhone(info), "phone layout only");
+  await routeFixture(page, 673);
+  const card = page.locator(".ibpl-ribbon-quarter-card");
+  const swipe = async (dx: number) => {
+    const b = (await card.boundingBox())!;
+    const x = b.x + b.width / 2, y = b.y + 120;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y + 4);
+    await page.mouse.move(x + dx, y + 6);
+    await page.mouse.up();
+  };
+  const tab = (q: number) => page.getByRole("tab", { name: `Q${q}`, exact: true });
+  await swipe(-160);
+  await expect(tab(2)).toHaveAttribute("aria-selected", "true");
+  // The swipe selected nobody, though it started on a bar.
+  await expect(panelBar(page)).toContainText("Nothing selected");
+  await swipe(-160);
+  await expect(tab(3)).toHaveAttribute("aria-selected", "true");
+  await swipe(160);
+  await expect(tab(2)).toHaveAttribute("aria-selected", "true");
+  // Nothing before Q1.
+  await swipe(160);
+  await swipe(160);
+  await expect(tab(1)).toHaveAttribute("aria-selected", "true");
+});
+test("Phone: a tap outside the run details closes them", async ({ page }, info) => {
+  test.skip(!isPhone(info), "phone layout only");
+  await routeFixture(page, 673);
+  await page.getByRole("button", { name: "Runs 3 ›" }).click();
+  await page.locator(".gf-m-runrow").nth(2).click();
+  await expect(panelBar(page)).toContainText("Maccabi Tel-Aviv 37-5 run");
+  await expect(panelBar(page)).toHaveAttribute("aria-expanded", "true");
+  // A tap just above the open panel: the run closes, and the tap selects no
+  // player.
+  const above = async () => {
+    const p = (await page.locator(".gf-m-panel").boundingBox())!;
+    await page.mouse.click(200, p.y - 8);
+  };
+  await above();
+  await expect(panelBar(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(panelBar(page)).toContainText("Nothing selected");
+  // The runs list closes the same way.
+  await page.getByRole("button", { name: "Runs 3 ›" }).click();
+  await expect(page.locator(".gf-m-runrow")).toHaveCount(3);
+  await above();
+  await expect(page.locator(".gf-m-runrow")).toHaveCount(0);
+});
 test("Phone: the score strip names which team is ahead on each side", async ({
   page,
 }, info) => {

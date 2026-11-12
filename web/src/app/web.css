@@ -567,6 +567,8 @@ a.ibpl-gameflow-back { text-decoration: none; }
    whole-game strip with its runs, quarter tabs, Runs and the menu), one
    quarter, and a bottom panel every tap reports to. */
 .gf-m { padding-bottom: 72px; }
+/* Horizontal moves on the quarter are swipes; vertical ones still scroll. */
+.gf-m .ibpl-ribbon-quarters { touch-action: pan-y; }
 .gf-m-head { position: sticky; top: 0; z-index: 20; background: var(--ibpl-bg);
   padding: 4px 0 8px; display: flex; flex-direction: column; gap: 6px; }
 .gf-m-head .ibpl-ribbon-mobile-overview { margin: 0; position: relative; }
