@@ -156,7 +156,9 @@ WHERE m.active AND m.game_id IS NULL      -- no provider predicate
 The view's two final joins filter `provider = 'segev'`; this CTE does not.
 Harmless today because only segev rows exist, but any active non-segev row
 would surface as a phantom source player carrying a foreign id in a segev id
-column. **This is why the Basket link lives on `basket_player_season` and not
+column. (Since 2026-11-12 the link lives on `basket_player_registration`, which
+holds every registered player-season; the reason below still applies.)
+**This is why the Basket link lives on `basket_player_season` and not
 in `player_identity_map`.** A one-line fix if you want it:
 `AND m.provider = 'segev'`.
 

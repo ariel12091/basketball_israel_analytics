@@ -2881,7 +2881,7 @@ build_checks <- function(con, schema) {
         "registrations the matcher could not link. Each falls back to a weaker name in",
         "player_display_names_v."
       ),
-      required_tables = c("player_display_names_v", "basket_player_season", "player_traditional_by_game"),
+      required_tables = c("player_display_names_v", "basket_player_registration", "player_traditional_by_game"),
       problem_count_col = "problems",
       runner = function(con, schema, root) {
         source(file.path(root, "etl", "player_identity_dictionary.R"), local = TRUE)

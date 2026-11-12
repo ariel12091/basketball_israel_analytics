@@ -959,10 +959,10 @@ player_display_name_gaps <- function(pg, schema = SCHEMA, game_years = NULL) {
        GROUP BY t.game_year, t.team_id, t.player_id
      ),
      basket_seasons AS (
-       SELECT DISTINCT game_year FROM "%1$s"."basket_player_season"
+       SELECT DISTINCT game_year FROM "%1$s"."basket_player_registration"
      ),
      unlinked AS (
-       SELECT b.* FROM "%1$s"."basket_player_season" b
+       SELECT b.* FROM "%1$s"."basket_player_registration" b
        WHERE b.identity_match_status IN (\'unmatched\', \'ambiguous\')
      )
      SELECT v.game_year, v.team_id, v.player_id, v.display_name,

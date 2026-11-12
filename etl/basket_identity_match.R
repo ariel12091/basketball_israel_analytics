@@ -1,7 +1,7 @@
 # Link basket.co.il season registrations to play-by-play player identities.
 #
 # Safe default: match and report only. Pass --write to fill the identity
-# columns on basketball_test.basket_player_season.
+# columns on basketball_test.basket_player_registration.
 #
 # Only seasons present on both sides can match. Basket covers 2022-2026, the
 # play-by-play side 2025 onward, so the overlap is 2025-2026 and asking for a
@@ -92,7 +92,7 @@ fetch_basket_registrations <- function(con, seasons) {
   rows <- db_query(con, sprintf("
     SELECT s.game_year, s.basket_player_id, s.player_name, s.player_name_en,
            s.basket_team_name, d.team_id_rosters AS team_id
-    FROM basketball_test.basket_player_season s
+    FROM basketball_test.basket_player_registration s
     LEFT JOIN basketball_test.schedule_team_dict d
       ON d.game_year = s.game_year
      AND d.team_name_basket = s.basket_team_name
@@ -422,7 +422,7 @@ write_basket_identity_links <- function(con, matches) {
     if (!nrow(stage)) return("no rows to link")
     DBI::dbAppendTable(con, DBI::Id(table = "basket_identity_stage"), stage)
     written <- DBI::dbExecute(con, "
-      UPDATE basketball_test.basket_player_season t
+      UPDATE basketball_test.basket_player_registration t
       SET identity_id = s.identity_id,
           canonical_player_id = s.canonical_player_id,
           identity_match_status = s.identity_match_status,
@@ -449,7 +449,7 @@ validate_written_links <- function(con, matches, seasons) {
   stored <- db_query(con, sprintf("
     SELECT game_year, basket_player_id, identity_id, canonical_player_id,
            identity_match_status, identity_matched_on
-    FROM basketball_test.basket_player_season
+    FROM basketball_test.basket_player_registration
     WHERE game_year IN (%s)", paste(as.integer(seasons), collapse = ", ")))
   expected <- matches[matches$status %in% c("verified", "proposal"), , drop = FALSE]
   problems <- character()
@@ -520,7 +520,7 @@ main <- function() {
   cat(paste(report_unresolved(matches), collapse = "\n"), "\n\n")
 
   if (!write) {
-    cat("Dry run only; pass --write to link on basket_player_season.\n")
+    cat("Dry run only; pass --write to link on basket_player_registration.\n")
     return(invisible(matches))
   }
   cat(write_basket_identity_links(con, matches), "\n")

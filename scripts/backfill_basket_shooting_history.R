@@ -889,7 +889,8 @@ database_preflight <- function(con) {
   required <- c(
     "basketball_test.basket_shooting_import_runs",
     "basketball_test.basket_shooting_source_pages",
-    "basketball_test.basket_player_season"
+    "basketball_test.basket_player_season",
+    BASKET_REGISTRATION_TABLE
   )
   present <- vapply(required, function(relation) {
     value <- DBI::dbGetQuery(
@@ -923,6 +924,53 @@ database_preflight <- function(con) {
   )$bytes[[1]]
   c("database migrations present (incl. English columns)",
     paste("database size before backfill:", format_bytes(size)))
+}
+
+BASKET_REGISTRATION_TABLE <- "basketball_test.basket_player_registration"
+# The registration's player facts, as opposed to its key, names, provenance
+# and identity link.
+REGISTRATION_FACT_COLUMNS <- c("basket_team_name", "basket_team_id", "jersey",
+  "position_name", "position_en", "height_m", "date_of_birth",
+  "nationality_name", "nationality_code")
+
+# The one upsert both writers use for basket_player_registration (2026-11-12):
+# a row per player-season, owned by one source. 'stats' (this script) always
+# takes the row; 'roster' (scripts/basket_rosters.R) updates only rows it owns.
+# Neither touches the identity columns -- etl/basket_identity_match.R does.
+registration_upsert_sql <- function(source = c("stats", "roster"), stage, columns) {
+  source <- match.arg(source)
+  if (any(grepl("^identity_|^canonical_player_id$", columns))) {
+    stop("the identity columns belong to etl/basket_identity_match.R")
+  }
+  keys <- c("game_year", "basket_player_id")
+  if (!all(keys %in% columns)) stop("registration columns must include game_year and basket_player_id")
+  values <- setdiff(columns, keys)
+  # A stats row taking over a roster row drops the roster's facts the stats
+  # write does not bring, so the row holds one source whichever writer ran
+  # first; the profile write then fills them from the player's profile.
+  cleared <- if (source == "stats") setdiff(REGISTRATION_FACT_COLUMNS, columns) else character()
+  paste0(
+    "INSERT INTO ", BASKET_REGISTRATION_TABLE, " (", paste(c(columns, "source"), collapse = ", "), ") ",
+    "SELECT ", paste(columns, collapse = ", "), ", '", source, "' FROM ", stage, " ",
+    "ON CONFLICT (game_year, basket_player_id) DO UPDATE SET ",
+    paste(c(sprintf("%s = EXCLUDED.%s", values, values),
+            sprintf(paste0("%s = CASE WHEN basket_player_registration.source = 'roster' ",
+                           "THEN NULL ELSE basket_player_registration.%s END"), cleared, cleared),
+            "source = EXCLUDED.source", "updated_at = now()"), collapse = ", "),
+    if (source == "roster") " WHERE basket_player_registration.source = 'roster'"
+  )
+}
+
+# A stats write takes over a player's roster row and clears the roster's facts
+# -- his team spelling among them, which the identity matcher needs -- for the
+# profile write to refill. Without profiles nothing refills them, so such a
+# write is refused while the seasons hold roster rows.
+assert_profiles_for_takeover <- function(with_profiles, roster_rows) {
+  if (!with_profiles && roster_rows > 0) {
+    stop(roster_rows, " team-page registrations in these seasons would lose their team and ",
+         "position to this write; rerun with --with-profiles")
+  }
+  invisible(TRUE)
 }
 
 SHOOTING_KEY_COLUMNS <- c("game_year", "basket_player_id")
@@ -1007,6 +1055,24 @@ validate_written_scrape <- function(con, run_id, players, profiles = NULL) {
          " SQL profiles have a Hebrew position but no position_en")
   }
   expected_profiles <- if (is.null(profiles)) 0L else nrow(profiles)
+  # Every parsed player has a stats registration from this run, with his names
+  # and (when fetched) his profile.
+  registrations <- DBI::dbGetQuery(con, paste(
+    "SELECT count(*)::integer AS rows, count(profile_fetched_at)::integer AS profiles,",
+    "count(*) FILTER (WHERE r.player_name IS DISTINCT FROM s.player_name",
+    "  OR r.player_name_en IS DISTINCT FROM s.player_name_en)::integer AS name_diffs",
+    "FROM", BASKET_REGISTRATION_TABLE, "r",
+    "JOIN basketball_test.basket_player_season s USING (game_year, basket_player_id)",
+    "WHERE r.run_id = $1 AND r.source = 'stats'"
+  ), params = list(run_id))
+  if (registrations$rows[[1]] != nrow(players) ||
+      registrations$profiles[[1]] != expected_profiles ||
+      registrations$name_diffs[[1]] != 0L) {
+    stop(sprintf(paste("Post-backfill check failed: %d stats registrations (%d profiles,",
+                       "%d name differences) for %d parsed players (%d profiles)"),
+                 registrations$rows[[1]], registrations$profiles[[1]],
+                 registrations$name_diffs[[1]], nrow(players), expected_profiles))
+  }
   matches <- c(
     stored$rows[[1]] == nrow(players),
     as.numeric(stored$fg2a[[1]]) == sum(players$fg2_attempted),
@@ -1027,6 +1093,7 @@ validate_written_scrape <- function(con, run_id, players, profiles = NULL) {
     paste("reconciled import run:", format(run_id, scientific = FALSE)),
     sprintf("SQL player-seasons: %d", stored$rows[[1]]),
     sprintf("SQL profiles: %d", stored_profiles),
+    sprintf("stats registrations: %d", registrations$rows[[1]]),
     sprintf("SQL attempts: 2PT=%s, 3PT=%s, FT=%s",
             stored$fg2a[[1]], stored$fg3a[[1]], stored$fta[[1]]),
     row_lines,
@@ -1094,6 +1161,10 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "source_content_md5 = EXCLUDED.source_content_md5,",
           "fetched_at = EXCLUDED.fetched_at, run_id = EXCLUDED.run_id, updated_at = now()"
         ))
+        # The player's registration: names and the stats page as its source.
+        DBI::dbExecute(con, registration_upsert_sql("stats", "basket_shooting_players_stage",
+          c("game_year", "basket_player_id", "player_name", "player_name_en",
+            "source_url", "source_content_md5", "fetched_at", "run_id")))
       }
       # Row checkpoint: write the first N rows, read them back and compare
       # every value before writing the rest. A mismatch stops inside the
@@ -1132,8 +1203,11 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
         )
         DBI::dbAppendTable(con, DBI::Id(table = "basket_profiles_stage"),
                            profiles[profile_columns])
+        # The profile's facts go on the registration row. PHASE B: remove
+        # basket_player_season from this loop when its profile columns drop.
+        for (target in c(BASKET_REGISTRATION_TABLE, "basketball_test.basket_player_season")) {
         updated <- DBI::dbExecute(con, paste(
-          "UPDATE basketball_test.basket_player_season t SET",
+          "UPDATE", target, "t SET",
           "position_name = s.position_name, position_en = s.position_en,",
           "height_m = s.height_m, nationality_name = s.nationality_name,",
           "nationality_code = s.nationality_code,",
@@ -1148,8 +1222,9 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "AND t.basket_player_id = s.basket_player_id"
         ))
         if (updated != nrow(profiles)) {
-          stop("Profile write touched ", updated, " rows for ", nrow(profiles),
+          stop("Profile write touched ", updated, " rows of ", target, " for ", nrow(profiles),
                " parsed profiles; every profile must match a player-season row")
+        }
         }
       }
     })
@@ -1239,10 +1314,14 @@ main <- function() {
   )
   if (write) {
     preflight_con <- connect_etl_db()
-    database_lines <- tryCatch(
-      database_preflight(preflight_con),
-      finally = DBI::dbDisconnect(preflight_con)
-    )
+    database_lines <- tryCatch({
+      roster_rows <- DBI::dbGetQuery(preflight_con, paste(
+        "SELECT count(*)::integer AS n FROM", BASKET_REGISTRATION_TABLE,
+        "WHERE source = 'roster' AND game_year = ANY($1::integer[])"),
+        params = list(paste0("{", paste(as.integer(seasons), collapse = ","), "}")))$n[[1]]
+      assert_profiles_for_takeover(with_profiles, roster_rows)
+      database_preflight(preflight_con)
+    }, finally = DBI::dbDisconnect(preflight_con))
     preflight <- c(preflight, database_lines)
   }
   write_sanity_report(monitor, "PREFLIGHT BEFORE SCRAPE/BACKFILL", preflight)

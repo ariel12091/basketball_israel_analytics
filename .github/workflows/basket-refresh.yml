@@ -1,7 +1,8 @@
 name: Basket refresh
 
 # Keeps player display names on basket.co.il's spellings (docs/shared_definitions.md,
-# "Player display name"): re-scrapes the season's Basket registrations, links
+# "Player display name"): re-scrapes the season's Basket registrations (stats
+# pages + profiles, then team pages) into basket_player_registration, links
 # them to play-by-play identities, and rewrites the stored lineup names. New
 # players reach the view player_display_names_v here; data quality check AM
 # lists the ones still waiting (played_without_basket_link).
@@ -68,6 +69,19 @@ jobs:
           --seasons=${{ steps.season.outputs.season }} --with-profiles --refresh-cache
           --profile-pause-seconds=3 --initial-backoff=15 --write
 
+      # Team-page rosters: position, height and date of birth for players the
+      # season-stat pages do not list yet (mostly new signings). Politely: the
+      # 14 team pages in Hebrew and English, one request at a time, 5 s apart.
+      # A failure here (the step fails, the job ends red) must not stop the
+      # stats-page players from being linked and renamed below.
+      - name: Scrape and write team rosters
+        continue-on-error: true
+        run: >
+          Rscript scripts/basket_rosters.R --season=${{ steps.season.outputs.season }}
+          --refresh-cache --pause-seconds=5 --initial-backoff=15 --write
+
+      # Links every registration -- stats-page and team-page rows -- in
+      # basket_player_registration.
       - name: Link registrations to identities
         run: Rscript etl/basket_identity_match.R --seasons=${{ steps.season.outputs.season }} --write
 
