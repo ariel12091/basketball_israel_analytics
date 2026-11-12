@@ -206,6 +206,14 @@ const routeFixture = async (
   await page.goto(f.url);
   return f;
 };
+/** A lineup row reads "+/- +6 (20–14)": raw points beside the +/-, which
+ *  is their difference (user 2026-11-12). */
+const expectPoints = async (row: import("@playwright/test").Locator) => {
+  const text = (await row.textContent()) ?? "";
+  const m = text.match(/\+\/- ([+-]?\d+) \((\d+)–(\d+)\)/);
+  expect(m, text).not.toBeNull();
+  expect(Number(m![2]) - Number(m![3])).toBe(Number(m![1]));
+};
 const signed = (v: number | null) =>
   v != null && rRound(v, 1) > 0 ? `+${ratingLabel(v)}` : ratingLabel(v);
 test("Gameflow card shows Net, ORtg and DRtg", async ({
@@ -244,6 +252,7 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   // Each lineup row of his game carries its Net too.
   const rows = page.getByRole("region", { name: "Stint lineups", exact: true }).getByRole("button");
   await expect(rows.first()).toContainText(/ · Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
+  await expectPoints(rows.first());
   await expect(card).toContainText("+/-");
   const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
   await lane(`own:${wallace.player_key}`).click();
@@ -298,6 +307,7 @@ test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   // At most two lineups in the tip (user 2026-11-11), each rated.
   expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
   await expect(page.locator(".gf-hover-tip-row").first()).toContainText(/Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
+  await expectPoints(page.locator(".gf-hover-tip-row").first());
 });
 test("EuroLeague Gameflow card shows ratings", async ({ page }, info) => {
   const { answer } = await routeFixture(page, 1147);
@@ -570,6 +580,7 @@ test("A run's band lists both teams' lineups inside the run", async ({ page }, i
   const heads = await list.locator(".ibpl-ribbon-detail-head").allTextContents();
   expect(heads.slice(1)).toEqual(["Maccabi Tel-Aviv", "Hapoel Tel-Aviv"]);
   await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText("in the run");
+  for (const row of await list.locator(".ibpl-ribbon-shared-lineup").all()) await expectPoints(row);
   // Windows read as the run's own does: period and game clock (user 2026-11-12).
   await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText(/Q\d \d+:\d\d – Q\d \d+:\d\d/);
   // The chart holding the run (a phone's quarter card, or the one chart).

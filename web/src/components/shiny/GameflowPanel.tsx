@@ -900,6 +900,19 @@ function lineupRatings(
   ];
   return windowsRatings(data.events, g.side, five, g.windows);
 }
+/** " · +/- +6 (20–14)" for a listed lineup: its raw points for and against
+ * beside the +/-, their difference (user 2026-11-12). Floor-based, as the
+ * +/- is, so the two always agree. */
+function lineupPmText(
+  data: GameflowPayload,
+  g: ReturnType<typeof aggregateSegments>[number],
+) {
+  if (!g.hasPm) return "";
+  const d = windowsSummary(g.side, g.windows, data.steps);
+  return d.pf == null
+    ? ` · +/- ${pmLabel(g.pm)}`
+    : ` · +/- ${d.pm || "0"} (${d.pf}–${d.pa})`;
+}
 /** " · Net +12.3 · ORtg 110.0 · DRtg 97.7" for a listed lineup (user
  * 2026-11-12: Net with both ratings), or "" without events. */
 function lineupRatingText(
@@ -968,7 +981,7 @@ function GameflowHoverTip({
           </div>
           <div className="ibpl-ribbon-detail-meta">
             {clock(g.duration)}
-            {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+            {lineupPmText(data, g)}
             {lineupRatingText(data, g)}
           </div>
         </div>
@@ -1317,7 +1330,7 @@ function GameflowDetails({
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}
                           {run ? "in the run" : selected.length > 1 ? "shared" : "total"}
-                          {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+                          {lineupPmText(data, g)}
                           {lineupRatingText(data, g)}{" "}
                           ·{" "}
                           {g.windows
