@@ -264,6 +264,49 @@ export function runStandouts(events: GameflowEvent[], run: Run): Standout[] {
   return out;
 }
 
+const CAUSE_METRIC: Record<StandoutMetric, string> = {
+  fg2: "two-point shooting",
+  fg3: "three-point shooting",
+  ft: "free-throw shooting",
+  tov: "turnovers",
+  oreb: "offensive rebounding",
+};
+const rate = (x: { made: number; att: number }) => x.made / x.att;
+/**
+ * The run's "Estimated cause" (docs/shared_definitions.md, Gameflow run
+ * cause; user 2026-11-12). The strongest standout that is not from three
+ * leads; a three-point standout is named as hot or cold shooting, after it
+ * ("with ... on top") or alone; then the lineup changes that came within
+ * CHANGE_WINDOW of the run's first point -- one team's is said to line up,
+ * both teams' credit neither. A timing match, never proof.
+ */
+function causeLine(
+  standouts: Standout[],
+  changes: { team: string; at: string }[],
+  names: Record<Side, string>,
+) {
+  const lead = standouts.find((s) => !s.variance),
+    three = standouts.find((s) => s.variance);
+  const result = (s: Standout) =>
+    `${names[s.side]}'s ${CAUSE_METRIC[s.metric]} (${pct(s.inRun.made, s.inRun.att)} vs ${pct(s.rest.made, s.rest.att)} the rest of the game)`;
+  const threes = (s: Standout) =>
+    `${names[s.side]}'s ${rate(s.inRun) > rate(s.rest) ? "hot" : "cold"} three-point shooting`;
+  const results = lead
+    ? `${result(lead)}${three ? `, with ${threes(three)} on top` : ""}`
+    : three
+      ? threes(three)
+      : null;
+  const minutes = `${CHANGE_WINDOW / 60} minutes`;
+  if (!results && !changes.length)
+    return `Estimated cause: neither team changed lineups in the ${minutes} before the run, and no result stood out against the rest of the game.`;
+  if (!changes.length)
+    return `Estimated cause: ${results}${three && !lead ? `; neither team changed lineups in the ${minutes} before the run` : ""}.`;
+  const change =
+    changes.length === 2
+      ? `both teams ${results ? "also " : ""}changed lineups just before (${changes.map((c) => `${c.team} at ${c.at}`).join(", ")}), so no lineup is credited`
+      : `${changes[0].team}'s lineup change at ${changes[0].at} ${results ? "also " : ""}lines up with the run`;
+  return `Estimated cause: ${results ? `${results}; ${change}` : change}. A timing match, not proof.`;
+}
 const swing = (m: number) => (m > 0 ? `up ${m}` : m < 0 ? `down ${-m}` : "level");
 const pct = (made: number, att: number) => `${rRound((100 * made) / att, 0)}%`;
 function standoutLine(team: string, s: Standout) {
@@ -323,27 +366,13 @@ export function runExplanation(
   const close = lineups.filter(
     (l) => l.cameIn.length && run.start - l.onSince <= CHANGE_WINDOW,
   );
-  if (standouts.length && standouts.every((s) => s.variance)) {
-    const hot = standouts.some(
-      (s) => s.inRun.made / s.inRun.att > s.rest.made / s.rest.att,
-    );
-    lines.push(
-      `Estimated cause: ${hot ? "hot" : "cold"} three-point shooting; no lineup effect is claimed.`,
-    );
-  } else if (close.length === 2)
-    lines.push(
-      `Estimated cause: both teams changed lineups shortly before the run (${close.map((l) => `${names[l.side]} at ${since(l.onSince)}`).join(", ")}), so the swing is not credited to either; this is a timing match, not proof.`,
-    );
-  else if (close.length === 1)
-    lines.push(
-      `Estimated cause: ${names[close[0].side]}'s lineup change at ${since(close[0].onSince)} lines up with the run; this is a timing match, not proof.`,
-    );
-  else
-    lines.push(
-      standouts.length
-        ? "Estimated cause: same fives as before the run; the results above are what stood out."
-        : "Estimated cause: same fives as before the run; no lineup change is claimed.",
-    );
+  lines.push(
+    causeLine(
+      standouts,
+      close.map((l) => ({ team: names[l.side], at: since(l.onSince) })),
+      names,
+    ),
+  );
   return lines;
 }
 

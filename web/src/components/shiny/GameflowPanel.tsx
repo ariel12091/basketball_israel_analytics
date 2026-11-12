@@ -883,8 +883,9 @@ function PhonePanel({
     </section>
   );
 }
-/** A listed lineup's Net over its windows, from the five's credited events. */
-function lineupNet(
+/** A listed lineup's ratings over its windows, from the five's credited
+ * events; null when the reader returned none. */
+function lineupRatings(
   data: GameflowPayload,
   g: ReturnType<typeof aggregateSegments>[number],
 ) {
@@ -897,7 +898,18 @@ function lineupNet(
         .map((l) => l.player_key),
     ),
   ];
-  return windowsRatings(data.events, g.side, five, g.windows).net;
+  return windowsRatings(data.events, g.side, five, g.windows);
+}
+/** " · Net +12.3 · ORtg 110.0 · DRtg 97.7" for a listed lineup (user
+ * 2026-11-12: Net with both ratings), or "" without events. */
+function lineupRatingText(
+  data: GameflowPayload,
+  g: ReturnType<typeof aggregateSegments>[number],
+) {
+  const r = lineupRatings(data, g);
+  return r
+    ? ` · Net ${netLabel(r.net)} · ORtg ${ratingLabel(r.ortg)} · DRtg ${ratingLabel(r.drtg)}`
+    : "";
 }
 /** What a hovered stint holds, floating clear of its bar: nothing moves. */
 function GameflowHoverTip({
@@ -957,6 +969,7 @@ function GameflowHoverTip({
           <div className="ibpl-ribbon-detail-meta">
             {clock(g.duration)}
             {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+            {lineupRatingText(data, g)}
           </div>
         </div>
       ))}
@@ -1012,6 +1025,9 @@ type CardStats = {
   score?: string;
   /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
   ratings?: StintRatings;
+  /** Head to head over the shared minutes: the +/- and Net once, signed for
+   * the game log's team, and one ORtg per team. */
+  h2h?: { team: string; pm: string; net: number | null; ortg: { name: string; v: number | null }[] };
 };
 // Ratings only, no possession count (user 2026-11-11).
 const RATING_ROWS = [
@@ -1022,18 +1038,32 @@ const RATING_ROWS = [
 function StintStats({ d }: { d: CardStats }) {
   if (d.score != null)
     return (
-      <dl className="gf-stint-stats">
-        <div>
-          <dt>On the floor together</dt>
-          <dd>{clock(d.secs)}</dd>
-        </div>
-        {d.score !== "" && (
+      <>
+        <dl className="gf-stint-stats">
           <div>
-            <dt>Score</dt>
-            <dd className="is-score">{d.score}</dd>
+            <dt>On the floor together</dt>
+            <dd>{clock(d.secs)}</dd>
+          </div>
+        </dl>
+        {/* A scoreboard (user 2026-11-12): each team with its ORtg under it,
+            the score with the game log's +/- in the middle, Net under it. */}
+        {d.h2h && d.pf != null && (
+          <div className="gf-h2h-board">
+            <span className="is-team">{d.h2h.ortg[0].name}</span>
+            <span className="is-mid">
+              {d.pf} – {d.pa} ({d.h2h.pm})
+            </span>
+            <span className="is-team">{d.h2h.ortg[1].name}</span>
+            {d.h2h.ortg.some((o) => o.v != null) && (
+              <>
+                <span>ORtg {ratingLabel(d.h2h.ortg[0].v)}</span>
+                <span className="is-mid">Net {netLabel(d.h2h.net)}</span>
+                <span>ORtg {ratingLabel(d.h2h.ortg[1].v)}</span>
+              </>
+            )}
           </div>
         )}
-      </dl>
+      </>
     );
   return (
     <dl className="gf-stint-stats">
@@ -1109,13 +1139,13 @@ function GameflowDetails({
           )
         : groups;
   // Credited-lineup ratings, when the reader returned events.
-  const rate = (side: Side, keys: string[], window?: Span) =>
+  const rate = (side: Side, keys: string[], window?: Span, windows?: Span[]) =>
     data.events.length
-      ? stintRatings(
+      ? windowsRatings(
           data.events,
           side,
           keys.map((k) => k.slice(k.indexOf(":") + 1)),
-          window,
+          windows ?? (window ? [window] : null),
         )
       : undefined;
   const cards: { key: string; title: string; aria: string; stats: CardStats }[] =
@@ -1176,14 +1206,35 @@ function GameflowDetails({
           },
         });
       } else {
-        // Both teams: no side to sign a +/- from, so the score from both.
+        // Both teams: the score from both, then over the shared minutes one
+        // ORtg per team (its selected players as the credited filter) and
+        // the +/- and Net once, signed for the game log's team (user
+        // 2026-11-12: both teams' full lines were redundant). Net is the gap
+        // between the two ORtgs, so the card adds up.
         const d = windowsSummary("own", shared, data.steps);
+        const ortg = (["own", "opp"] as const).map((side) => ({
+          name: side === "own" ? data.meta.ownTeam : data.meta.oppTeam,
+          v:
+            rate(
+              side,
+              selected.filter((k) => bars(k)[0]?.side === side),
+              undefined,
+              shared,
+            )?.ortg ?? null,
+        }));
+        const h2h = {
+          team: data.meta.ownTeam,
+          pm: d.pf == null ? "" : pmLabel(d.pf - d.pa!) || "0",
+          net: ortg[0].v == null || ortg[1].v == null ? null : ortg[0].v - ortg[1].v,
+          ortg,
+        };
         cards.push({
           key: "h2h",
           title: "Head to head",
           aria: "Head to head detail",
           stats: {
             ...d,
+            h2h,
             score:
               d.pf == null
                 ? ""
@@ -1267,9 +1318,7 @@ function GameflowDetails({
                           {clock(g.duration)}{" "}
                           {run ? "in the run" : selected.length > 1 ? "shared" : "total"}
                           {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
-                          {data.events.length
-                            ? ` · Net ${netLabel(lineupNet(data, g))}`
-                            : ""}{" "}
+                          {lineupRatingText(data, g)}{" "}
                           ·{" "}
                           {g.windows
                             .map((w) => windowLabel(w, data.bounds))

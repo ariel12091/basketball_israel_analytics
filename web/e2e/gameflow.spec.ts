@@ -10,9 +10,11 @@ import {
   sharedWindows,
   clock,
   laneKey,
+  pmLabel,
   ratingLabel,
+  windowsSummary,
 } from "../src/rules/gameflow";
-import { stintRatings } from "../src/rules/gameflowRatings";
+import { stintRatings, windowsRatings } from "../src/rules/gameflowRatings";
 import { rRound } from "../src/rules/round";
 type Page = import("@playwright/test").Page;
 const isPhone = (info: { project: { name: string } }) =>
@@ -241,7 +243,7 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await expect(card).not.toContainText("poss");
   // Each lineup row of his game carries its Net too.
   const rows = page.getByRole("region", { name: "Stint lineups", exact: true }).getByRole("button");
-  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.]+|· Net –/);
+  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
   await expect(card).toContainText("+/-");
   const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
   await lane(`own:${wallace.player_key}`).click();
@@ -258,7 +260,24 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await page.mouse.move(0, 0);
   const h2h = page.getByRole("region", { name: "Head to head detail" });
   await expect(h2h).toBeVisible();
-  await expect(h2h).not.toContainText("Net");
+  // A scoreboard over the minutes the selected players shared (user
+  // 2026-11-12): each team with its ORtg under it, the score and the game
+  // log's +/- in the middle with Net, the gap between the ORtgs, under it.
+  const shared = sharedWindows(answer.bars, [`own:${dib.player_key}`, `opp:${opp.player_key}`]);
+  const mine = windowsRatings(answer.events, "own", [dib.player_key], shared).ortg!,
+    theirs = windowsRatings(answer.events, "opp", [opp.player_key], shared).ortg!;
+  const sum = windowsSummary("own", shared, answer.steps);
+  const cells = await h2h.locator(".gf-h2h-board > span").allTextContents();
+  expect(cells).toEqual([
+    "Maccabi Tel-Aviv",
+    `${sum.pf} – ${sum.pa} (${pmLabel(sum.pf! - sum.pa!)})`,
+    "Hapoel Tel-Aviv",
+    `ORtg ${ratingLabel(mine)}`,
+    `Net ${signed(mine - theirs)}`,
+    `ORtg ${ratingLabel(theirs)}`,
+  ]);
+  await expect(h2h).toContainText(`On the floor together${clock(shared.reduce((t, w) => t + w.end - w.start, 0))}`);
+  await expect(h2h).not.toContainText("DRtg");
 });
 test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   test.skip(info.project.name === "phone", "hover tips are pointer-only");
@@ -276,8 +295,9 @@ test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
   await expect(page.getByRole("tooltip")).not.toContainText("poss");
-  // At most two lineups in the tip (user 2026-11-11).
+  // At most two lineups in the tip (user 2026-11-11), each rated.
   expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
+  await expect(page.locator(".gf-hover-tip-row").first()).toContainText(/Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
 });
 test("EuroLeague Gameflow card shows ratings", async ({ page }, info) => {
   const { answer } = await routeFixture(page, 1147);
