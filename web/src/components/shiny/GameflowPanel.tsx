@@ -235,6 +235,11 @@ export function GameflowView({
   // Phones: a tap outside the panel closes a run's details or the runs list
   // (user 2026-11-12). A tap on the chart that does so does nothing else.
   const detailsOpen = compact && panelOpen && (run != null || panelRuns);
+  // Phones: what the selection is, so the panel's button can pulse when it
+  // changes (user 2026-11-12: the ▲ alone was easy to miss).
+  const selectionKey = run
+    ? `run:${run.side}:${run.start}`
+    : `${selected.join(",")}|${active ? `${active.start}-${active.end}` : ""}`;
   useEffect(() => {
     if (!detailsOpen) return;
     const close = (e: PointerEvent) => {
@@ -690,6 +695,8 @@ export function GameflowView({
           windows={windows}
           prompt={prompt}
           list={details}
+          lineups={groups.length}
+          selectionKey={selectionKey}
           onRun={(r) => {
             selectRun(r);
             setQuarter(quarterOf(r.start));
@@ -773,11 +780,17 @@ function PhonePanel({
   windows,
   prompt,
   list,
+  lineups,
+  selectionKey,
   onRun,
   onAllRuns,
   onShow,
   onClear,
 }: {
+  /** How many lineups the open panel lists, named on its button. */
+  lineups: number;
+  /** Changes with the selection; the button pulses when it does. */
+  selectionKey: string;
   data: GameflowPayload;
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -875,9 +888,22 @@ function PhonePanel({
           {title}
           <span className="gf-m-sub">{sub}</span>
         </span>
-        <span className="gf-m-chev" aria-hidden="true">
-          {open ? "▼" : "▲"}
-        </span>
+        {/* What a tap opens, named (user 2026-11-12), pulsing once on each
+            new selection; the plain arrow alone was easy to miss. */}
+        {(open || showRuns || run || selected.length > 0 || active) && (
+          <span
+            className={`gf-m-open${open ? " is-open" : ""}`}
+            key={open ? "open" : selectionKey}
+          >
+            {open
+              ? "Hide ▼"
+              : showRuns
+                ? "Runs ▲"
+                : lineups
+                  ? `Lineups (${lineups}) ▲`
+                  : "Details ▲"}
+          </span>
+        )}
       </button>
       {open && <div className="gf-m-panel-body">{body}</div>}
     </section>

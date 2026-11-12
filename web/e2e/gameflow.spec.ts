@@ -539,17 +539,22 @@ test("Phone: the panel sums up a selection on screen; short lineup list", async 
   const row = (label: string) =>
     page.locator("svg.ibpl-ribbon").getByRole("button", { name: new RegExp(`^${label},`) }).first();
   await expect(panelBar(page)).toContainText("Nothing selected");
+  await expect(page.locator(".gf-m-open")).toHaveCount(0);
   await row("JOHN DIBARTOLOMEO").click();
   await expect(panelBar(page)).toContainText("JOHN DIBARTOLOMEO · game");
   await row("KEATON WALLACE").click();
   await expect(panelBar(page)).toContainText(/Together 12:59 · \+\/- \+30 · Net \+115\.4/);
-  // Pinned to the bottom of the screen, collapsed until tapped.
+  // The panel stays closed, so the chart stays free for the next pick; its
+  // button names what a tap opens (user 2026-11-12: the arrow was missed).
+  await expect(panelBar(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".gf-m-open")).toHaveText(/^Lineups \(\d+\) ▲$/);
   const b = (await panelBar(page).boundingBox())!;
   expect(b.y + b.height).toBeLessThanOrEqual(844);
-  expect(b.y).toBeGreaterThan(740);
+  expect(b.y).toBeGreaterThan(720);
   await expect(page.locator(".gf-player-cards")).toHaveCount(0);
-  await setPanel(page, true);
+  await page.locator(".gf-m-open").click();
   await expect(page.locator(".gf-player-cards")).toBeInViewport();
+  await expect(page.locator(".gf-m-open")).toHaveText("Hide ▼");
   const list = page.getByRole("region", { name: "Shared lineups", exact: true });
   await expect(list.locator(".ibpl-ribbon-shared-lineup")).toHaveCount(3);
   await list.getByRole("button", { name: /^Show all \d+ lineups$/ }).click();
