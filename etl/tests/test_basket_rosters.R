@@ -71,3 +71,38 @@ test_that("the season's team pages are read off the stats page's menu", {
   expect_equal(basket_season_team_ids(html), c(2111L, 2112L))
   expect_error(basket_season_team_ids("<p></p>"), "no team pages")
 })
+
+test_that("both writers share one registration upsert; a stats row is never a roster row's to change", {
+  stats_cols <- c("game_year", "basket_player_id", "player_name", "run_id")
+  roster_cols <- c("game_year", "basket_player_id", "player_name", "height_m")
+  stats <- registration_upsert_sql("stats", "stage_s", stats_cols)
+  roster <- registration_upsert_sql("roster", "stage_r", roster_cols)
+  expect_match(stats, "INSERT INTO basketball_test.basket_player_registration", fixed = TRUE)
+  expect_match(stats, "ON CONFLICT (game_year, basket_player_id) DO UPDATE SET", fixed = TRUE)
+  expect_match(stats, "source = EXCLUDED.source", fixed = TRUE)
+  expect_match(stats, "'stats'", fixed = TRUE)
+  expect_false(grepl("WHERE basket_player_registration.source", stats, fixed = TRUE))
+  expect_match(roster, "'roster'", fixed = TRUE)
+  expect_match(roster, "WHERE basket_player_registration.source = 'roster'", fixed = TRUE)
+  expect_match(roster, "height_m = EXCLUDED.height_m", fixed = TRUE)
+  # A stats row taking over a roster row drops the roster's facts, so the row
+  # holds one source whichever writer ran first; the profile write refills them.
+  expect_match(stats, "height_m = CASE WHEN basket_player_registration.source = 'roster' THEN NULL ELSE basket_player_registration.height_m END", fixed = TRUE)
+  expect_match(stats, "jersey = CASE WHEN", fixed = TRUE)
+  expect_false(grepl("CASE WHEN", roster, fixed = TRUE))
+  # The matcher owns the link; no writer touches it.
+  expect_false(any(grepl("identity_", c(stats, roster), fixed = TRUE)))
+  expect_error(registration_upsert_sql("stats", "s", c("game_year", "identity_id")), "identity")
+  expect_error(registration_upsert_sql("other", "s", stats_cols))
+})
+
+test_that("a team's Basket spelling comes from its players' stats rows, or stays NA", {
+  rows <- data.frame(basket_team_id = c(2111L, 2111L, 2111L, 2112L),
+                     basket_player_id = c(1L, 2L, 3L, 9L))
+  stats <- data.frame(basket_player_id = c(1L, 2L, 3L),
+                      basket_team_name = c("מכבי", "מכבי", "הפועל"))
+  out <- roster_team_names(rows, stats)
+  expect_equal(out$basket_team_name, c("מכבי", "מכבי", "מכבי", NA))
+  # A new season before any stats page: every name NA, no error.
+  expect_true(all(is.na(roster_team_names(rows, stats[0, ])$basket_team_name)))
+})

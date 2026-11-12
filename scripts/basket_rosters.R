@@ -13,9 +13,9 @@
 # so run this for the current season only.
 #
 # Safe default: fetch, parse and validate only. --write upserts into
-# basketball_test.basket_player_roster (never deletes) and fills each row's
-# basket_team_name from the season-stat table's spelling for the same team,
-# which etl/basket_identity_match.R --table=roster then needs.
+# basketball_test.basket_player_registration as source = 'roster' (never
+# deletes, never touches a player the stats pages list) with each team's
+# Basket spelling, which etl/basket_identity_match.R then needs.
 
 if (!exists("BASKET_POSITION_EN")) local({
   here <- "scripts"
@@ -26,7 +26,6 @@ if (!exists("BASKET_POSITION_EN")) local({
   source(file.path(here, "backfill_basket_shooting_history.R"), local = parent.frame(2))
 })
 
-BASKET_ROSTER_TABLE <- "basketball_test.basket_player_roster"
 
 basket_team_url <- function(team_id, lang = "he") {
   paste0("https://basket.co.il/team.asp?TeamId=", as.integer(team_id),
@@ -140,41 +139,58 @@ fetch_team_page <- function(game_year, team_id, lang, cache_dir, refresh_cache,
        cache_hit = response$cache_hit, html = read_downloaded_html(response$path))
 }
 
+# Each team's name as the season-stat pages spell it -- the identity matcher
+# maps that spelling through schedule_team_dict -- taken from the players a
+# team page and the stats pages both list (most common spelling). NA when the
+# team shares no player with the stats pages, e.g. a new season before its
+# first stats page; the matcher then reports those rows unmatched.
+roster_team_names <- function(rows, stats) {
+  shared <- merge(rows[c("basket_team_id", "basket_player_id")],
+                  stats[c("basket_player_id", "basket_team_name")], by = "basket_player_id")
+  pick <- vapply(split(shared$basket_team_name, shared$basket_team_id), function(x) {
+    counts <- table(x)
+    names(counts)[which.max(counts)]
+  }, character(1))
+  rows$basket_team_name <- unname(pick[as.character(rows$basket_team_id)])
+  rows
+}
+
+ROSTER_REGISTRATION_COLUMNS <- c("game_year", "basket_player_id", "player_name",
+  "player_name_en", "basket_team_name", "basket_team_id", "jersey", "position_name",
+  "position_en", "height_m", "date_of_birth", "source_url", "source_content_md5", "fetched_at")
+
+# Upserts the roster rows into basket_player_registration as source = 'roster'.
+# A player the stats pages list keeps his stats row untouched.
 write_basket_rosters <- function(con, rows, game_year) {
   DBI::dbWithTransaction(con, {
     DBI::dbExecute(con, "SET LOCAL statement_timeout = '120s'")
-    DBI::dbExecute(con, paste0("CREATE TEMP TABLE basket_roster_stage (LIKE ", BASKET_ROSTER_TABLE,
-                               " INCLUDING DEFAULTS) ON COMMIT DROP"))
-    cols <- c("game_year", "basket_player_id", "basket_team_id", "jersey", "player_name",
-              "player_name_en", "position_name", "position_en", "height_m", "date_of_birth",
-              "source_url", "source_content_md5", "fetched_at")
-    DBI::dbAppendTable(con, DBI::Id(table = "basket_roster_stage"), rows[cols])
-    upserted <- DBI::dbExecute(con, sprintf("
-      INSERT INTO %s (%s)
-      SELECT %s FROM basket_roster_stage
-      ON CONFLICT (game_year, basket_player_id) DO UPDATE SET %s, updated_at = now()",
-      BASKET_ROSTER_TABLE, paste(cols, collapse = ", "), paste(cols, collapse = ", "),
-      paste(sprintf("%s = EXCLUDED.%s", cols[-(1:2)], cols[-(1:2)]), collapse = ", ")))
-    # Each team's name as the season-stat table spells it (the identity
-    # matcher maps it through schedule_team_dict), from the players both list.
-    DBI::dbExecute(con, sprintf("
-      UPDATE %1$s r SET basket_team_name = t.basket_team_name
-      FROM (SELECT r2.basket_team_id, mode() WITHIN GROUP (ORDER BY s.basket_team_name) AS basket_team_name
-            FROM %1$s r2
-            JOIN basketball_test.basket_player_season s
-              ON s.game_year = r2.game_year AND s.basket_player_id = r2.basket_player_id
-            WHERE r2.game_year = $1 GROUP BY r2.basket_team_id) t
-      WHERE r.game_year = $1 AND r.basket_team_id = t.basket_team_id", BASKET_ROSTER_TABLE),
+    stats <- DBI::dbGetQuery(con, paste(
+      "SELECT basket_player_id, basket_team_name FROM", BASKET_REGISTRATION_TABLE,
+      "WHERE game_year = $1 AND source = 'stats' AND basket_team_name IS NOT NULL"),
       params = list(as.integer(game_year)))
-    check <- DBI::dbGetQuery(con, sprintf("
-      SELECT count(*) AS rows, count(DISTINCT basket_team_id) AS teams,
-             count(*) FILTER (WHERE basket_team_name IS NULL) AS no_team_name,
-             count(height_m) AS with_height
-      FROM %s WHERE game_year = $1", BASKET_ROSTER_TABLE), params = list(as.integer(game_year)))
-    if (check$rows < nrow(rows)) stop("read back ", check$rows, " rows for ", nrow(rows), " parsed")
-    if (check$no_team_name > 0) stop(check$no_team_name, " roster rows have no team name; a team shares no player with the season-stat table")
-    sprintf("upserted %d rows; season %d now has %d rows over %d teams, %d with a height",
-            upserted, game_year, check$rows, check$teams, check$with_height)
+    rows <- roster_team_names(rows, stats)
+    DBI::dbExecute(con, paste0("CREATE TEMP TABLE basket_roster_stage (LIKE ", BASKET_REGISTRATION_TABLE,
+                               " INCLUDING DEFAULTS) ON COMMIT DROP"))
+    DBI::dbAppendTable(con, DBI::Id(table = "basket_roster_stage"), rows[ROSTER_REGISTRATION_COLUMNS])
+    upserted <- DBI::dbExecute(con, registration_upsert_sql("roster", "basket_roster_stage",
+                                                            ROSTER_REGISTRATION_COLUMNS))
+    check <- DBI::dbGetQuery(con, paste(
+      "SELECT count(*) FILTER (WHERE r.source = 'roster') AS roster_rows,",
+      "count(*) FILTER (WHERE r.source = 'stats') AS stats_rows,",
+      "count(*) FILTER (WHERE r.source = 'roster' AND r.basket_team_name IS NULL) AS no_team_name,",
+      "count(*) FILTER (WHERE r.source = 'roster' AND r.height_m IS DISTINCT FROM s.height_m) AS height_diffs",
+      "FROM", BASKET_REGISTRATION_TABLE, "r JOIN basket_roster_stage s USING (game_year, basket_player_id)"))
+    if (check$roster_rows + check$stats_rows != nrow(rows)) {
+      stop("read back ", check$roster_rows + check$stats_rows, " registrations for ", nrow(rows), " parsed")
+    }
+    if (check$roster_rows != upserted) stop("upserted ", upserted, " rows but ", check$roster_rows, " are roster rows")
+    if (check$height_diffs > 0) stop(check$height_diffs, " roster rows read back with a different height")
+    if (check$no_team_name > 0) {
+      warning(check$no_team_name, " roster rows have no Basket team spelling (their team shares no ",
+              "player with the stats pages); the identity matcher will report them unmatched")
+    }
+    sprintf("season %d: %d team-page players; %d written as roster rows, %d already stats rows",
+            game_year, nrow(rows), check$roster_rows, check$stats_rows)
   })
 }
 
@@ -215,7 +231,7 @@ main_rosters <- function() {
     cat("positions with no English code:", paste(unique(rows$position_name[is.na(rows$position_en)]), collapse = ", "), "\n")
   }
   if (!write) {
-    cat("Dry run only; pass --write to upsert into", BASKET_ROSTER_TABLE, "\n")
+    cat("Dry run only; pass --write to upsert into", BASKET_REGISTRATION_TABLE, "\n")
     return(invisible(rows))
   }
   con <- connect_etl_db()
