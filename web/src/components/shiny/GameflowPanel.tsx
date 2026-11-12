@@ -1025,8 +1025,9 @@ type CardStats = {
   score?: string;
   /** Credited-lineup ratings (shared_definitions.md, Gameflow stint rating). */
   ratings?: StintRatings;
-  /** Head to head: each team over the shared minutes, its +/- and ratings. */
-  teams?: { name: string; pm: string; ratings?: StintRatings }[];
+  /** Head to head over the shared minutes: the +/- and Net once, signed for
+   * the game log's team, and one ORtg per team. */
+  h2h?: { team: string; pm: string; net: number | null; ortg: { name: string; v: number | null }[] };
 };
 // Ratings only, no possession count (user 2026-11-11).
 const RATING_ROWS = [
@@ -1048,16 +1049,28 @@ function StintStats({ d }: { d: CardStats }) {
             <dd className="is-score">{d.score}</dd>
           </div>
         )}
-        {d.teams?.map((t) => (
-          <div className="gf-h2h-team" key={t.name}>
-            <dt>{t.name}</dt>
-            <dd>
-              +/- {t.pm}
-              {t.ratings &&
-                ` · Net ${netLabel(t.ratings.net)} · ORtg ${ratingLabel(t.ratings.ortg)} · DRtg ${ratingLabel(t.ratings.drtg)}`}
-            </dd>
-          </div>
-        ))}
+        {d.h2h && (
+          <>
+            <div>
+              <dt>{d.h2h.team} +/-</dt>
+              <dd>{d.h2h.pm}</dd>
+            </div>
+            {d.h2h.ortg.some((o) => o.v != null) && (
+              <>
+                <div>
+                  <dt>{d.h2h.team} Net</dt>
+                  <dd>{netLabel(d.h2h.net)}</dd>
+                </div>
+                <div className="gf-h2h-team">
+                  <dt>ORtg</dt>
+                  <dd>
+                    {d.h2h.ortg.map((o) => `${o.name} ${ratingLabel(o.v)}`).join(" · ")}
+                  </dd>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </dl>
     );
   return (
@@ -1201,26 +1214,35 @@ function GameflowDetails({
           },
         });
       } else {
-        // Both teams: no side to sign a +/- from, so the score from both, then
-        // each team over the shared minutes with its own +/- and ratings
-        // (user 2026-11-12), its selected players as the credited filter.
+        // Both teams: the score from both, then over the shared minutes one
+        // ORtg per team (its selected players as the credited filter) and
+        // the +/- and Net once, signed for the game log's team (user
+        // 2026-11-12: both teams' full lines were redundant). Net is the gap
+        // between the two ORtgs, so the card adds up.
         const d = windowsSummary("own", shared, data.steps);
-        const teams = (["own", "opp"] as const).map((side) => {
-          const mine = selected.filter((k) => bars(k)[0]?.side === side),
-            pm = d.pf == null ? null : side === "own" ? d.pf - d.pa! : d.pa! - d.pf;
-          return {
-            name: side === "own" ? data.meta.ownTeam : data.meta.oppTeam,
-            pm: pmLabel(pm) || "0",
-            ratings: rate(side, mine, undefined, shared),
-          };
-        });
+        const ortg = (["own", "opp"] as const).map((side) => ({
+          name: side === "own" ? data.meta.ownTeam : data.meta.oppTeam,
+          v:
+            rate(
+              side,
+              selected.filter((k) => bars(k)[0]?.side === side),
+              undefined,
+              shared,
+            )?.ortg ?? null,
+        }));
+        const h2h = {
+          team: data.meta.ownTeam,
+          pm: d.pf == null ? "" : pmLabel(d.pf - d.pa!) || "0",
+          net: ortg[0].v == null || ortg[1].v == null ? null : ortg[0].v - ortg[1].v,
+          ortg,
+        };
         cards.push({
           key: "h2h",
           title: "Head to head",
           aria: "Head to head detail",
           stats: {
             ...d,
-            teams,
+            h2h,
             score:
               d.pf == null
                 ? ""
