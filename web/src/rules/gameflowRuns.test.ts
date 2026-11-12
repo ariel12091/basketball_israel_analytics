@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   detectRuns,
   periodClock,
+  windowLabel,
   runExplanation,
+  runLineupGroups,
   runLineups,
   runStandouts,
 } from "./gameflowRuns";
@@ -24,6 +26,18 @@ const steps = (rows: [number, number, number][]): Score[] => {
     return { elapsed, order_key: i, own, margin: own - opp };
   });
 };
+
+describe("windowLabel", () => {
+  const b = model673.bounds;
+  it("names a window by period and game clock, as runs are named", () => {
+    expect(windowLabel({ start: 375, end: 552 }, b)).toBe("Q1 3:45 – Q1 0:48");
+    expect(windowLabel({ start: 1655, end: 2249 }, b)).toBe("Q3 2:25 – Q4 2:31");
+  });
+  it("starts a window on a period line in the period it opens", () => {
+    expect(windowLabel({ start: 0, end: 600 }, b)).toBe("Q1 10:00 – Q1 0:00");
+    expect(windowLabel({ start: 1200, end: 1566 }, b)).toBe("Q3 10:00 – Q3 3:54");
+  });
+});
 
 describe("periodClock", () => {
   it("reads the clock left in the period", () => {
@@ -243,5 +257,31 @@ describe("runStandouts", () => {
   });
   it("shows nothing on a short stretch", () => {
     expect(runStandouts(model673.events, { ...d, end: d.start + 30 })).toEqual([]);
+  });
+});
+
+describe("runLineupGroups", () => {
+  const d = detectRuns(model673.steps).find((r) => r.defining)!;
+  const groups = runLineupGroups(model673, d);
+  it("lists both teams' lineups, run team first", () => {
+    expect(groups[0].side).toBe("own");
+    expect(new Set(groups.map((g) => g.side))).toEqual(new Set(["own", "opp"]));
+  });
+  it("counts only the time inside the run", () => {
+    for (const side of ["own", "opp"] as const) {
+      const secs = groups.filter((g) => g.side === side).reduce((t, g) => t + g.duration, 0);
+      expect(secs).toBeCloseTo(d.end - d.start, 6);
+    }
+    for (const g of groups)
+      for (const w of g.windows) {
+        expect(w.start).toBeGreaterThanOrEqual(d.start);
+        expect(w.end).toBeLessThanOrEqual(d.end);
+      }
+  });
+  it("orders each team's lineups by time in the run", () => {
+    for (const side of ["own", "opp"] as const) {
+      const t = groups.filter((g) => g.side === side).map((g) => g.duration);
+      expect(t).toEqual([...t].sort((a, b) => b - a));
+    }
   });
 });

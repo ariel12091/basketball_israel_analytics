@@ -55,6 +55,11 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-gameflow-dialog .modal-title { margin: 0; }
 .ibpl-react-gameflow-panel { display: block; margin: 16px 0; }
 .ibpl-react-gameflow .ibpl-ribbon-quarter-frame > svg { width: 100%; max-width: 100%; height: auto; }
+/* mobile.css's `.ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact { width: auto }`
+   outranks the rule above, so a quarter's chart kept its layout width (316.5)
+   in a 298px frame and lost its last ~30 s to the frame's overflow (user
+   2026-11-11: runs across a quarter break were cut). Fit it to the card. */
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-frame > svg.ibpl-ribbon.is-compact { width: 100%; max-width: 100%; }
 .ibpl-react-gameflow .ibpl-gameflow-full { max-width: 100%; overflow-x: auto; }
 .ibpl-react-gameflow .ibpl-gameflow-full:has(.ibpl-gameflow-gutter) { display: flex; align-items: flex-start; }
 .ibpl-react-gameflow .ibpl-gameflow-full > svg { flex-shrink: 0; }
@@ -518,9 +523,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 /* Gameflow runs: a band over the chart and the rows in the run team's colour
    (own = accent, opp = muted, as the lanes), and a chip where it starts. The
    defining stretch is the strong band and the filled chip. */
-/* The band only marks the run: its explanation is the chip's (user
-   2026-11-11: a band-wide tip repeated it and opened off-screen). */
-.gf-run-band { pointer-events: none; fill-opacity: 0.12; }
+/* The band opens no tip (user 2026-11-11: it repeated the chip's and opened
+   off-screen); a click on it lists the run's lineups. Bars sit above it. */
+.gf-run-band { pointer-events: all; cursor: pointer; fill-opacity: 0.12; }
 .gf-run-band.is-own { fill: var(--ibpl-accent); }
 .gf-run-band.is-opp { fill: var(--ibpl-text-muted); }
 .gf-run-band.is-defining { fill-opacity: 0.22; }
@@ -529,6 +534,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
    lanes (user 2026-11-11). Dashed for runs other than the defining one. */
 /* Translucent, so the edges mark the run without drowning the bars (user
    2026-11-11: fully solid made the runs all you could see). */
+/* A clicked run: its stretch of the score line in full colour, the rest
+   faded, as a player selection shows his minutes. */
+.ibpl-ribbon.is-run-focused .ibpl-ribbon-margin-focus { opacity: 1; }
 .gf-run-edge { pointer-events: none; stroke-width: 1; stroke-dasharray: 3 3; stroke-opacity: 0.25; }
 .gf-run-edge.is-defining { stroke-dasharray: none; stroke-opacity: 0.35; }
 /* Quarter lines stay the strongest vertical lines on the chart, above the
@@ -546,21 +554,68 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-chip.is-defining.is-own rect { fill: var(--ibpl-accent); }
 .gf-run-chip.is-defining.is-opp rect { fill: var(--ibpl-text-muted); }
 .gf-run-chip.is-defining text { fill: var(--ibpl-bg); }
+/* A run carried over from the previous quarter: outlined, never filled. */
+.gf-run-chip.is-cont rect { fill: var(--ibpl-bg) !important; stroke-dasharray: 3 2; }
+.gf-run-chip.is-cont.is-own text { fill: var(--ibpl-accent); }
+.gf-run-chip.is-cont.is-opp text { fill: var(--ibpl-text-muted); }
 .gf-run-chip:focus { outline: none; }
 .gf-run-chip:focus rect, .gf-run-chip.is-open rect { stroke-width: 2; }
 .gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }
 .gf-run-tip .gf-run-tip-line:last-child { font-style: italic; }
-/* Phones: the Together summary pinned to the bottom of the screen. */
-.gf-together-bar {
-  position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 1040;
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 10px 14px; border-radius: 8px; border: 1px solid var(--ibpl-accent);
-  background: var(--ibpl-surface-2, var(--ibpl-bg)); color: var(--ibpl-text);
-  font-size: 13px; font-weight: 600; text-align: left;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-}
-.gf-together-bar > span:last-child { color: var(--ibpl-accent); font-size: 18px; }
 .gf-lineups-more { margin-top: 6px; width: 100%; }
+/* Phones (user 2026-11-11 mock-up): a header that stays on screen (the
+   whole-game strip with its runs, quarter tabs, Runs and the menu), one
+   quarter, and a bottom panel every tap reports to. */
+.gf-m { padding-bottom: 72px; }
+/* Horizontal moves on the quarter are swipes; vertical ones still scroll. */
+.gf-m .ibpl-ribbon-quarters { touch-action: pan-y; }
+.gf-m-head { position: sticky; top: 0; z-index: 20; background: var(--ibpl-bg);
+  padding: 4px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.gf-m-head .ibpl-ribbon-mobile-overview { margin: 0; position: relative; }
+.gf-m-head .gf-run-band { pointer-events: none; }
+/* The strip's side labels, readable over the line (a halo in the page colour). */
+.gf-m-side { font-size: 6.5px; font-weight: 700; pointer-events: none;
+  paint-order: stroke; stroke: var(--ibpl-bg); stroke-width: 3px; stroke-linejoin: round; }
+.gf-m-side.is-own { fill: var(--ibpl-accent); }
+.gf-m-side.is-opp { fill: var(--ibpl-text-muted); }
+.gf-m-tabs { display: flex; gap: 6px; align-items: stretch; }
+.gf-m-tab, .gf-m-runs, .gf-m-more { background: var(--ibpl-surface-2, var(--ibpl-surface));
+  border: 1px solid var(--ibpl-border); border-radius: 8px; color: var(--ibpl-text);
+  font-weight: 700; font-size: 13px; padding: 7px 0; }
+.gf-m-tab { flex: 1 1 0; min-width: 0; }
+.gf-m-tab.is-active { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+.gf-m-runs { flex: 0 0 auto; padding: 7px 10px; color: var(--ibpl-accent); border-color: var(--ibpl-accent); background: transparent; }
+.gf-m-runs.is-active { background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.gf-m-more { flex: 0 0 38px; display: flex; align-items: center; justify-content: center; }
+.gf-m-more svg { fill: currentColor; }
+.gf-m-menu { border: 1px solid var(--ibpl-border); border-radius: 10px; padding: 10px;
+  display: flex; flex-direction: column; gap: 8px; background: var(--ibpl-surface); }
+.gf-m-menu .ibpl-ribbon-inline-hint { margin: 0; }
+.gf-m-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040;
+  background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
+  max-height: 62vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.gf-m-panel-bar { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: 0; color: var(--ibpl-text); padding: 10px 16px; }
+.gf-m-sum { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 13.5px; }
+.gf-m-sub { display: block; font-weight: 400; font-size: 12px; color: var(--ibpl-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gf-m-chev { color: var(--ibpl-accent); font-size: 14px; }
+.gf-m-panel-body { overflow-y: auto; padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.gf-m-panel-body .gf-player-cards, .gf-m-panel-body .ibpl-ribbon-detail { margin: 0; }
+.gf-m-links { display: flex; justify-content: space-between; gap: 12px; }
+.gf-m-link { background: none; border: 0; padding: 4px 0; color: var(--ibpl-accent); font-weight: 700; text-align: left; }
+.gf-m-panel-body .gf-run-tip-line { margin: 0; font-size: 13px; }
+.gf-m-panel-body .gf-run-tip-line.is-cause { font-style: italic; color: var(--ibpl-text-muted); }
+.gf-m-runrow { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--ibpl-surface-2, var(--ibpl-bg)); border: 1px solid var(--ibpl-border);
+  border-radius: 8px; padding: 9px 10px; color: var(--ibpl-text); }
+.gf-m-runrow b { flex: 1 1 auto; min-width: 0; }
+.gf-m-when { color: var(--ibpl-text-muted); font-size: 12px; white-space: nowrap; }
+.gf-m-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ibpl-accent); }
+.gf-m-runrow.is-opp .gf-m-dot { border-color: var(--ibpl-text-muted); }
+.gf-m-runrow.is-defining .gf-m-dot { background: var(--ibpl-accent); }
+.gf-m-runrow.is-defining.is-opp .gf-m-dot { background: var(--ibpl-text-muted); }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 12px; line-height: 1.4; }
 .ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }

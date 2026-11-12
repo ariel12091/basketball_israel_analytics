@@ -48,7 +48,15 @@ export default function GameflowChart({
   runs = [],
   openRun = null,
   onRun,
+  selectedRun = null,
+  onRunSelect,
+  chips = true,
 }: {
+  /** false: no run chips. */
+  chips?: boolean;
+  /** The run whose band was clicked, and how a band click selects one. */
+  selectedRun?: Run | null;
+  onRunSelect?: (run: Run) => void;
   /** Scoring runs (detectRuns()): a band each, and a chip where it starts. */
   runs?: Run[];
   openRun?: Run | null;
@@ -117,18 +125,23 @@ export default function GameflowChart({
   const runBands = runs.filter((r) => r.end >= start && r.start <= end),
     rowRight = [-Infinity, -Infinity],
     runChips =
-      crop === "bottom"
+      crop === "bottom" || !chips
         ? []
         : runs
-            .filter((r) => r.start >= start && r.start < end)
+            // A run that began before this chart's window (a phone's earlier
+            // quarter) gets a "‹" chip at the left edge, so its band is never
+            // unlabelled.
+            .filter((r) => r.start < end && r.end >= start)
             .map((r) => {
-              const text = `${r.pts}-${r.oppPts} ›`,
+              const cont = r.start < start,
+                text = cont ? `‹ ${r.pts}-${r.oppPts}` : `${r.pts}-${r.oppPts} ›`,
                 w = text.length * CHIP_FONT * geometry.numberAdvance + 10,
-                left = Math.min(x(r.start), width - w - 1),
+                left = Math.min(x(Math.max(r.start, start)), width - w - 1),
                 row = left >= rowRight[0] + CHIP_GAP ? 0 : 1;
               rowRight[row] = left + w;
               return {
                 run: r,
+                cont,
                 text,
                 w,
                 left,
@@ -195,7 +208,9 @@ export default function GameflowChart({
         ? [{ start: Math.max(start, w.start), end: Math.min(end, w.end) }]
         : [],
     );
-  const focused = selected.length > 0 || active != null;
+  // A clicked run counts too: its stretch (or a lineup's part of it) is
+  // picked out of the score line (user 2026-11-11).
+  const focused = selected.length > 0 || active != null || selectedRun != null;
   const pinned = compact && !range;
   const gutter = (
     <>
@@ -334,7 +349,7 @@ export default function GameflowChart({
         </svg>
       )}
       <svg
-        className={`ibpl-ribbon${compact ? " is-compact" : ""}${selected.length ? " is-pair-focused" : active ? " is-focused" : ""}${lineupIndex != null ? " is-lineup-focused" : ""}`}
+        className={`ibpl-ribbon${compact ? " is-compact" : ""}${selected.length ? " is-pair-focused" : active ? " is-focused" : ""}${lineupIndex != null ? " is-lineup-focused" : ""}${selectedRun && !selected.length && !active ? " is-run-focused" : ""}`}
         viewBox={`0 ${y0} ${width} ${height}`}
         // A cropped half must not paint (or take clicks) outside its box.
         overflow="hidden"
@@ -373,13 +388,16 @@ export default function GameflowChart({
           return (
             <rect
               key={`${r.side}:${r.start}`}
-              className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${same(openRun, r) ? " is-open" : ""}`}
+              className={`gf-run-band is-${r.side}${r.defining ? " is-defining" : ""}${same(openRun, r) || same(selectedRun, r) ? " is-open" : ""}`}
               data-start={r.start}
               data-end={r.end}
               x={x(a)}
               y={geometry.padTop}
               width={Math.max(1, (b - a) * scale)}
               height={totalH - geometry.padTop}
+              // A pointer convenience over the empty lanes; the chip is the
+              // keyboard path to the run.
+              onClick={() => onRunSelect?.(r)}
             />
           );
         })}
@@ -423,16 +441,20 @@ export default function GameflowChart({
             key = laneKey(b),
             chosen = stintBar ? stintBar === b : selected.includes(key),
             window = { bar: b, start: from, end: to };
+          // With a run open, a lineup is marked only inside the run.
+          const segFrom = selectedRun ? Math.max(from, selectedRun.start) : from,
+            segTo = selectedRun ? Math.min(to, selectedRun.end) : to;
           const segments =
-            chosen || active?.bar === b || lineupIndex != null
+            (chosen || active?.bar === b || lineupIndex != null) &&
+            segTo > segFrom
               ? windowSegments(
                   data.lanes,
                   data.steps,
                   data.dict,
                   b.side,
                   b.player_key,
-                  from,
-                  to,
+                  segFrom,
+                  segTo,
                 )
               : [];
           return (
@@ -612,10 +634,10 @@ export default function GameflowChart({
         {runChips.map((c) => (
           <g
             key={`${c.run.side}:${c.run.start}`}
-            className={`gf-run-chip is-${c.run.side}${c.run.defining ? " is-defining" : ""}${same(openRun, c.run) ? " is-open" : ""}`}
+            className={`gf-run-chip is-${c.run.side}${c.run.defining ? " is-defining" : ""}${c.cont ? " is-cont" : ""}${same(openRun, c.run) || same(selectedRun, c.run) ? " is-open" : ""}`}
             role="button"
             tabIndex={0}
-            aria-label={runLabel(c.run)}
+            aria-label={`${runLabel(c.run)}${c.cont ? ", continued from the previous quarter" : ""}`}
             aria-expanded={same(openRun, c.run)}
             onClick={(e) =>
               onRun?.(c.run, e.currentTarget.getBoundingClientRect(), "tap")
