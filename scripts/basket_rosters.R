@@ -176,6 +176,25 @@ roster_team_names <- function(rows, stats) {
   rows
 }
 
+# Profile-page links of the season's team-page-only players: their other
+# registrations, which etl/basket_person_ids.R joins into one person. Only the
+# links are kept -- a roster row's facts stay the team page's. A failed fetch
+# is skipped with a warning; that row's links stay as they were.
+roster_profile_links <- function(keys, pause_seconds = 5,
+                                 fetch_profile = fetch_basket_player_profile) {
+  profiles <- scrape_basket_profiles(keys, pause_seconds = pause_seconds,
+                                     fetch_profile = fetch_profile)
+  if (is.null(profiles)) profiles <- data.frame(game_year = integer(), basket_player_id = integer(),
+                                                linked_basket_player_ids = character())
+  missed <- setdiff(paste(keys$game_year, keys$basket_player_id),
+                    paste(profiles$game_year, profiles$basket_player_id))
+  if (length(missed)) {
+    warning("no profile for ", length(missed), " team-page players (", paste(missed, collapse = ", "),
+            "); their links stay as they were")
+  }
+  profiles[c("game_year", "basket_player_id", "linked_basket_player_ids")]
+}
+
 ROSTER_REGISTRATION_COLUMNS <- c("game_year", "basket_player_id", "player_name",
   "player_name_en", "basket_team_name", "basket_team_id", "jersey", "position_name",
   "position_en", "height_m", "date_of_birth", "source_url", "source_content_md5", "fetched_at")
@@ -190,8 +209,11 @@ write_basket_rosters <- function(con, rows, game_year) {
       "WHERE game_year = $1 AND source = 'stats' AND basket_team_name IS NOT NULL"),
       params = list(as.integer(game_year)))
     rows <- roster_team_names(rows, stats)
-    DBI::dbExecute(con, paste0("CREATE TEMP TABLE basket_roster_stage (LIKE ", BASKET_REGISTRATION_TABLE,
-                               " INCLUDING DEFAULTS) ON COMMIT DROP"))
+    # The roster columns' types and nothing else: LIKE would copy NOT NULL
+    # source, which the upsert itself supplies.
+    DBI::dbExecute(con, paste0("CREATE TEMP TABLE basket_roster_stage ON COMMIT DROP AS SELECT ",
+                               paste(ROSTER_REGISTRATION_COLUMNS, collapse = ", "), " FROM ",
+                               BASKET_REGISTRATION_TABLE, " WITH NO DATA"))
     DBI::dbAppendTable(con, DBI::Id(table = "basket_roster_stage"), rows[ROSTER_REGISTRATION_COLUMNS])
     upserted <- DBI::dbExecute(con, registration_upsert_sql("roster", "basket_roster_stage",
                                                             ROSTER_REGISTRATION_COLUMNS))
@@ -256,6 +278,18 @@ main_rosters <- function() {
   con <- connect_etl_db()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   cat(write_basket_rosters(con, rows, season), "\n")
+
+  # Profile links of the team-page-only players, one polite request each.
+  keys <- DBI::dbGetQuery(con, paste("SELECT game_year, basket_player_id FROM", BASKET_REGISTRATION_TABLE,
+                                     "WHERE game_year = $1 AND source = 'roster' ORDER BY basket_player_id"),
+                          params = list(season))
+  cat(sprintf("profile links: %d team-page players, %.0f s apart\n", nrow(keys), pause_seconds))
+  fetch <- function(game_year, basket_player_id) fetch_basket_player_profile(
+    game_year, basket_player_id, cache_dir = cache_dir, refresh_cache = refresh_cache,
+    max_attempts = max_attempts, initial_backoff = initial_backoff)
+  links <- roster_profile_links(keys, pause_seconds = pause_seconds, fetch_profile = fetch)
+  written <- DBI::dbWithTransaction(con, write_basket_links(con, links))
+  cat(sprintf("profile links written for %d team-page players\n", written))
   invisible(rows)
 }
 

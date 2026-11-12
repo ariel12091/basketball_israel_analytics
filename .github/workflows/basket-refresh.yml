@@ -80,6 +80,11 @@ jobs:
           Rscript scripts/basket_rosters.R --season=${{ steps.season.outputs.season }}
           --refresh-cache --pause-seconds=5 --initial-backoff=15 --write
 
+      # Ties registrations across seasons (basket_person_id) from the profile
+      # links both scrapes wrote; the matcher reads it.
+      - name: Assign Basket person keys
+        run: Rscript etl/basket_person_ids.R --write
+
       # Links every registration -- stats-page and team-page rows -- in
       # basket_player_registration.
       - name: Link registrations to identities

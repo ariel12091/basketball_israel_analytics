@@ -648,14 +648,16 @@ parse_basket_player_links <- function(html, own_id) {
 }
 
 # Writes linked_basket_player_ids onto existing registration rows. `links` has
-# game_year, basket_player_id and linked_basket_player_ids (a list of integer
-# vectors). Runs inside the caller's transaction; every row must exist.
+# game_year, basket_player_id and linked_basket_player_ids -- a list of integer
+# vectors, or array literals ("{1,2}") as the profile fetcher returns them.
+# Runs inside the caller's transaction; every row must exist.
 write_basket_links <- function(con, links) {
   if (!nrow(links)) return(0L)
+  linked <- links$linked_basket_player_ids
   stage <- data.frame(
     game_year = as.integer(links$game_year),
     basket_player_id = as.integer(links$basket_player_id),
-    linked = vapply(links$linked_basket_player_ids, function(ids)
+    linked = if (is.character(linked)) linked else vapply(linked, function(ids)
       paste0("{", paste(as.integer(ids), collapse = ","), "}"), character(1))
   )
   DBI::dbExecute(con, paste("CREATE TEMP TABLE basket_links_stage",
@@ -684,10 +686,14 @@ fetch_basket_player_profile <- function(
     refresh_cache = refresh_cache, max_attempts = max_attempts,
     initial_backoff = initial_backoff, monitor = monitor
   )
+  html <- read_downloaded_html(response$path)
   profile <- parse_page_or_discard(
-    list(html = read_downloaded_html(response$path), path = response$path),
+    list(html = html, path = response$path),
     parse_basket_player_profile_html
   )
+  # His other registrations, as a Postgres array literal for write_basket_links().
+  profile$linked_basket_player_ids <- paste0(
+    "{", paste(parse_basket_player_links(html, basket_player_id), collapse = ","), "}")
   profile$game_year <- game_year
   profile$basket_player_id <- basket_player_id
   profile$source_url <- url
@@ -703,7 +709,9 @@ scrape_basket_profiles <- function(players, pause_seconds = 1,
   keys <- unique(players[c("game_year", "basket_player_id")])
   profiles <- vector("list", nrow(keys))
   for (i in seq_len(nrow(keys))) {
-    profiles[[i]] <- tryCatch(
+    # profiles[i] <- list(...), not profiles[[i]] <- ...: assigning NULL that
+    # way deletes the element, so one failed fetch broke the loop.
+    profiles[i] <- list(tryCatch(
       fetch_profile(keys$game_year[i], keys$basket_player_id[i]),
       error = function(e) {
         record_failure(failures, "profile", keys$game_year[i],
@@ -711,7 +719,7 @@ scrape_basket_profiles <- function(players, pause_seconds = 1,
                        conditionMessage(e))
         NULL
       }
-    )
+    ))
     # A failure still went to the network, so it still earns the pause.
     used_network <- is.null(profiles[[i]]) || !isTRUE(profiles[[i]]$cache_hit[1])
     if (!is.null(monitor) && !is.null(profiles[[i]])) {
@@ -1268,6 +1276,10 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           stop("Profile write touched ", updated, " rows of ", target, " for ", nrow(profiles),
                " parsed profiles; every profile must match a player-season row")
         }
+        }
+        # His other registrations, for etl/basket_person_ids.R.
+        if ("linked_basket_player_ids" %in% names(profiles)) {
+          write_basket_links(con, profiles[c("game_year", "basket_player_id", "linked_basket_player_ids")])
         }
       }
     })
