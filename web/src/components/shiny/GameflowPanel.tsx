@@ -475,6 +475,26 @@ export function GameflowView({
                   );
                 }}
                 onPointerLeave={() => setScore("")}
+                // A tap opens the run under it (user 2026-11-12), or else
+                // shows the quarter tapped.
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect(),
+                    t =
+                      ((e.clientX - r.left) / r.width) *
+                      data.margin.at(-1)!.elapsed;
+                  const hit = runs.find((x) => t >= x.start && t <= x.end);
+                  setFull(false);
+                  if (hit) {
+                    setQuarter(quarterOf(hit.start));
+                    if (!(run && run.start === hit.start && run.side === hit.side))
+                      selectRun(hit);
+                  } else {
+                    // An open run would be off screen: close it (a player
+                    // selection stays).
+                    setQuarter(quarterOf(t));
+                    if (run) clear();
+                  }
+                }}
               />
             </svg>
             {score && <output role="tooltip">{score}</output>}

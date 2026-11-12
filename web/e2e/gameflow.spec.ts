@@ -420,6 +420,24 @@ test("Together comes first and every card fits without scrolling", async ({
   }
   void answer;
 });
+test("Phone: a tap on the score strip opens a run, or the quarter tapped", async ({
+  page,
+}, info) => {
+  test.skip(!isPhone(info), "phone layout only");
+  await routeFixture(page, 673);
+  const strip = page.locator(".gf-m-head .ibpl-ribbon-overview-svg");
+  const box = (await strip.boundingBox())!;
+  const at = (elapsed: number) => page.mouse.click(box.x + (elapsed / 2400) * box.width, box.y + box.height / 2);
+  // Inside the 37-5 run (Q3 2:25 – Q4 2:31): the run opens, on its quarter.
+  await at(2000);
+  await expect(panelBar(page)).toContainText("Maccabi Tel-Aviv 37-5 run · defining stretch");
+  await expect(page.getByRole("tab", { name: "Q3", exact: true })).toHaveAttribute("aria-selected", "true");
+  // Outside every run (Q2 1:40): that quarter, nothing selected.
+  await setPanel(page, false);
+  await at(800);
+  await expect(page.getByRole("tab", { name: "Q2", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(panelBar(page)).toContainText("Nothing selected");
+});
 test("Phone: the panel sums up a selection on screen; short lineup list", async ({
   page,
 }, info) => {
