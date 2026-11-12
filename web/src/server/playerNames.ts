@@ -22,11 +22,11 @@ export type PlayerNames = Map<string, PlayerName>;
 const key = (team: unknown, player: unknown) =>
   `${Number(team)}:${Number(player)}`;
 
-// Height and position ride along from basket.co.il's season table, joined on
-// the identity the view already resolved (user 2026-11-12: lineups in height
-// order). Same cost as the names alone (0.4 s for 2026-27, cached).
+// The view owns basket.co.il's height and position too (2026-11-12,
+// sql/migrations/2026-11-12_player_display_names_size.sql): the lineups'
+// height order reads them here, as every other consumer will.
 const SQL =
-  "SELECT v.team_id,v.player_id,v.display_name AS name,v.display_name_he AS name_he,h.height_m,h.position_en FROM basketball_test.player_display_names_v v LEFT JOIN (SELECT game_year,identity_id,max(height_m) AS height_m,min(position_en) AS position_en FROM basketball_test.basket_player_season WHERE identity_match_status='verified' GROUP BY game_year,identity_id) h ON h.game_year=v.game_year AND h.identity_id=v.identity_id WHERE v.game_year=$1 AND v.display_name IS NOT NULL";
+  "SELECT team_id,player_id,display_name AS name,display_name_he AS name_he,height_m,position_en FROM basketball_test.player_display_names_v WHERE game_year=$1 AND display_name IS NOT NULL";
 const blank = (v: unknown) => v == null || String(v).trim() === "";
 const cache = new VersionedCache<{
   version: string;
