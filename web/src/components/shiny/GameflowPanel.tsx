@@ -883,8 +883,9 @@ function PhonePanel({
     </section>
   );
 }
-/** A listed lineup's Net over its windows, from the five's credited events. */
-function lineupNet(
+/** A listed lineup's ratings over its windows, from the five's credited
+ * events; null when the reader returned none. */
+function lineupRatings(
   data: GameflowPayload,
   g: ReturnType<typeof aggregateSegments>[number],
 ) {
@@ -897,7 +898,18 @@ function lineupNet(
         .map((l) => l.player_key),
     ),
   ];
-  return windowsRatings(data.events, g.side, five, g.windows).net;
+  return windowsRatings(data.events, g.side, five, g.windows);
+}
+/** " · Net +12.3 · ORtg 110.0 · DRtg 97.7" for a listed lineup (user
+ * 2026-11-12: Net with both ratings), or "" without events. */
+function lineupRatingText(
+  data: GameflowPayload,
+  g: ReturnType<typeof aggregateSegments>[number],
+) {
+  const r = lineupRatings(data, g);
+  return r
+    ? ` · Net ${netLabel(r.net)} · ORtg ${ratingLabel(r.ortg)} · DRtg ${ratingLabel(r.drtg)}`
+    : "";
 }
 /** What a hovered stint holds, floating clear of its bar: nothing moves. */
 function GameflowHoverTip({
@@ -957,6 +969,7 @@ function GameflowHoverTip({
           <div className="ibpl-ribbon-detail-meta">
             {clock(g.duration)}
             {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
+            {lineupRatingText(data, g)}
           </div>
         </div>
       ))}
@@ -1267,9 +1280,7 @@ function GameflowDetails({
                           {clock(g.duration)}{" "}
                           {run ? "in the run" : selected.length > 1 ? "shared" : "total"}
                           {g.hasPm ? ` · +/- ${pmLabel(g.pm)}` : ""}
-                          {data.events.length
-                            ? ` · Net ${netLabel(lineupNet(data, g))}`
-                            : ""}{" "}
+                          {lineupRatingText(data, g)}{" "}
                           ·{" "}
                           {g.windows
                             .map((w) => windowLabel(w, data.bounds))

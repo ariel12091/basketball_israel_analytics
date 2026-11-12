@@ -241,7 +241,7 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await expect(card).not.toContainText("poss");
   // Each lineup row of his game carries its Net too.
   const rows = page.getByRole("region", { name: "Stint lineups", exact: true }).getByRole("button");
-  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.]+|· Net –/);
+  await expect(rows.first()).toContainText(/ · Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
   await expect(card).toContainText("+/-");
   const wallace = answer.lanes.find((l) => l.player_label.includes("WALLACE"))!;
   await lane(`own:${wallace.player_key}`).click();
@@ -276,8 +276,9 @@ test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
   await expect(page.getByRole("tooltip")).not.toContainText("poss");
-  // At most two lineups in the tip (user 2026-11-11).
+  // At most two lineups in the tip (user 2026-11-11), each rated.
   expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
+  await expect(page.locator(".gf-hover-tip-row").first()).toContainText(/Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
 });
 test("EuroLeague Gameflow card shows ratings", async ({ page }, info) => {
   const { answer } = await routeFixture(page, 1147);
