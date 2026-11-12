@@ -380,6 +380,15 @@ export function windowsSummary(side: Side, windows: Window[], steps: Score[]) {
   };
 }
 export type WindowsSummary = ReturnType<typeof windowsSummary>;
+/**
+ * The players in every one of a team's listed lineups (user 2026-11-12: the
+ * lists dim them and mark who changes). Empty with fewer than two lineups,
+ * where there is nothing to compare.
+ */
+export function lineupCore(lineups: string[][]): Set<string> {
+  if (lineups.length < 2) return new Set();
+  return new Set(lineups[0].filter((p) => lineups.every((l) => l.includes(p))));
+}
 export function lineupDictionary(lanes: Lane[]): Dictionary {
   const groups = new Map<string, Lane[]>();
   for (const r of lanes) {

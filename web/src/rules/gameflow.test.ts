@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import {
+  lineupCore,
   ribbonModel,
   periodBounds,
   mergeWindows,
@@ -182,5 +183,15 @@ describe("ratingSeries", () => {
   it("is absent from the model when the reader sends no possessions", () => {
     const raw = { lanes: [], margin: [], n_periods: 4 };
     expect(ribbonModel(raw, 1, "euroleague", 1).ratings).toBeNull();
+  });
+});
+
+describe("lineupCore", () => {
+  it("is the players in every lineup listed", () => {
+    expect([...lineupCore([["A", "B", "C"], ["A", "B", "D"], ["B", "A", "E"]])].sort()).toEqual(["A", "B"]);
+  });
+  it("marks nobody when only one lineup is listed", () => {
+    expect(lineupCore([["A", "B"]]).size).toBe(0);
+    expect(lineupCore([]).size).toBe(0);
   });
 });

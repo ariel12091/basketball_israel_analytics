@@ -581,6 +581,17 @@ test("A run's band lists both teams' lineups inside the run", async ({ page }, i
   expect(heads.slice(1)).toEqual(["Maccabi Tel-Aviv", "Hapoel Tel-Aviv"]);
   await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText("in the run");
   for (const row of await list.locator(".ibpl-ribbon-shared-lineup").all()) await expectPoints(row);
+  // Who changes (user 2026-11-12): each team's core -- the players in every
+  // one of its rows -- is dimmed, and the rest are marked.
+  for (const block of await list.locator(".ibpl-ribbon-detail-list").all()) {
+    const rows = await block.locator(".ibpl-ribbon-shared-lineup").all();
+    if (rows.length < 2) continue;
+    const core = await rows[0].locator(".gf-lu-core").allTextContents();
+    for (const row of rows) {
+      expect(await row.locator(".gf-lu-core").allTextContents()).toEqual(core);
+      expect(await row.locator(".gf-lu-diff").count()).toBeGreaterThan(0);
+    }
+  }
   // Windows read as the run's own does: period and game clock (user 2026-11-12).
   await expect(list.locator(".ibpl-ribbon-shared-lineup").first()).toContainText(/Q\d \d+:\d\d – Q\d \d+:\d\d/);
   // The chart holding the run (a phone's quarter card, or the one chart).

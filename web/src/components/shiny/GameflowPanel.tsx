@@ -31,6 +31,7 @@ import {
   windowDetail,
   windowSegments,
   windowsSummary,
+  lineupCore,
   type Bar,
 } from "@/rules/gameflow";
 import type { Side, Window as Span } from "@/rules/gameflow";
@@ -900,6 +901,44 @@ function lineupRatings(
   ];
   return windowsRatings(data.events, g.side, five, g.windows);
 }
+type LineupGroup = ReturnType<typeof aggregateSegments>[number];
+const namesOf = (data: GameflowPayload, g: LineupGroup) =>
+  data.dict[g.dictIndex]?.members.split(" | ") ?? [];
+/** One team's core among the lineups listed: the players in every one. */
+const coreOf = (data: GameflowPayload, list: LineupGroup[], side: Side) =>
+  lineupCore(list.filter((g) => g.side === side).map((g) => namesOf(data, g)));
+/**
+ * A lineup's five, the team's core dimmed and the players who change marked
+ * (user 2026-11-12: which players are in the other lineups and which not).
+ */
+function LineupNames({
+  data,
+  g,
+  core,
+}: {
+  data: GameflowPayload;
+  g: LineupGroup;
+  core: Set<string>;
+}) {
+  const names = namesOf(data, g);
+  if (!names.length) return <>Lineup unavailable</>;
+  return (
+    <>
+      {names.map((n, i) => (
+        <Fragment key={n}>
+          {i > 0 && " · "}
+          <span
+            className={
+              core.size ? (core.has(n) ? "gf-lu-core" : `gf-lu-diff is-${g.side}`) : undefined
+            }
+          >
+            {n}
+          </span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 /** " · +/- +6 (20–14)" for a listed lineup: its raw points for and against
  * beside the +/-, their difference (user 2026-11-12). Floor-based, as the
  * +/- is, so the two always agree. */
@@ -976,8 +1015,7 @@ function GameflowHoverTip({
       {lineups.slice(0, TIP_ROWS).map((g) => (
         <div className="gf-hover-tip-row" key={g.dictIndex}>
           <div>
-            {data.dict[g.dictIndex]?.members.split(" | ").join(" · ") ??
-              "Lineup unavailable"}
+            <LineupNames data={data} g={g} core={coreOf(data, lineups, g.side)} />
           </div>
           <div className="ibpl-ribbon-detail-meta">
             {clock(g.duration)}
@@ -1323,9 +1361,11 @@ function GameflowDetails({
                         }
                       >
                         <span className="ibpl-ribbon-detail-members">
-                          {data.dict[g.dictIndex]?.members
-                            .split(" | ")
-                            .join(" · ") ?? "Lineup unavailable"}
+                          <LineupNames
+                            data={data}
+                            g={g}
+                            core={coreOf(data, groups, g.side)}
+                          />
                         </span>
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}

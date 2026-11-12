@@ -573,6 +573,12 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-run-tip .gf-run-tip-line + .gf-run-tip-line { margin-top: 4px; }
 .gf-run-tip .gf-run-tip-line:last-child { font-style: italic; }
 .gf-lineups-more { margin-top: 6px; width: 100%; }
+/* Lineup lists: the players in every listed lineup of a team dimmed, those
+   who change bold in the team's colour (user 2026-11-12). */
+.gf-lu-core { opacity: 0.55; }
+.gf-lu-diff { font-weight: 700; }
+.gf-lu-diff.is-own { color: var(--ibpl-accent); }
+.gf-lu-diff.is-opp { color: var(--ibpl-text); }
 /* Phones (user 2026-11-11 mock-up): a header that stays on screen (the
    whole-game strip with its runs, quarter tabs, Runs and the menu), one
    quarter, and a bottom panel every tap reports to. */
