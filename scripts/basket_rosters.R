@@ -127,6 +127,27 @@ validate_basket_roster <- function(r, team_id) {
   invisible(TRUE)
 }
 
+# The whole season's rows, before anything is written: a player on two team
+# pages would make the upsert touch one key twice and fail the transaction,
+# and a position with no English code would fail the table's CHECK. Both stop
+# here, naming what to look at.
+validate_season_roster <- function(rows) {
+  key <- paste(rows$game_year, rows$basket_player_id)
+  twice <- unique(key[duplicated(key)])
+  if (length(twice)) {
+    detail <- vapply(twice, function(k) sprintf("player %s on teams %s",
+      rows$basket_player_id[key == k][1], paste(rows$basket_team_id[key == k], collapse = ", ")),
+      character(1))
+    stop("a player is listed on more than one team page: ", paste(detail, collapse = "; "))
+  }
+  missing <- !is.na(rows$position_name) & is.na(rows$position_en)
+  if (any(missing)) {
+    stop("positions with no English code (add them to BASKET_POSITION_EN): ",
+         paste(unique(rows$position_name[missing]), collapse = ", "))
+  }
+  invisible(TRUE)
+}
+
 fetch_team_page <- function(game_year, team_id, lang, cache_dir, refresh_cache,
                             pause_seconds, max_attempts, initial_backoff) {
   url <- basket_team_url(team_id, lang)
@@ -227,9 +248,7 @@ main_rosters <- function() {
   }))
   cat(sprintf("downloads: %d (others from cache); roster rows: %d; with a height: %d; with an English name: %d\n",
               downloads, nrow(rows), sum(!is.na(rows$height_m)), sum(!is.na(rows$player_name_en))))
-  if (any(is.na(rows$position_en))) {
-    cat("positions with no English code:", paste(unique(rows$position_name[is.na(rows$position_en)]), collapse = ", "), "\n")
-  }
+  validate_season_roster(rows)
   if (!write) {
     cat("Dry run only; pass --write to upsert into", BASKET_REGISTRATION_TABLE, "\n")
     return(invisible(rows))

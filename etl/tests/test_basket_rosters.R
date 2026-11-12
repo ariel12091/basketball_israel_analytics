@@ -106,3 +106,28 @@ test_that("a team's Basket spelling comes from its players' stats rows, or stays
   # A new season before any stats page: every name NA, no error.
   expect_true(all(is.na(roster_team_names(rows, stats[0, ])$basket_team_name)))
 })
+
+test_that("a season's roster stops before writing on a player listed twice or a position with no code", {
+  rows <- data.frame(game_year = 2027L, basket_player_id = c(1L, 2L, 1L),
+                     basket_team_id = c(2111L, 2111L, 2112L), player_name = c("א", "ב", "א"),
+                     position_name = "רכז", position_en = "PG", stringsAsFactors = FALSE)
+  expect_error(validate_season_roster(rows), "player 1 .*2111.*2112")
+  ok <- rows[1:2, ]
+  expect_silent(validate_season_roster(ok))
+  ok$position_en[2] <- NA
+  expect_error(validate_season_roster(ok), "no English code")
+})
+
+test_that("a stats write without profiles may not take over roster rows", {
+  expect_error(assert_profiles_for_takeover(with_profiles = FALSE, roster_rows = 3L), "--with-profiles")
+  expect_silent(assert_profiles_for_takeover(with_profiles = FALSE, roster_rows = 0L))
+  expect_silent(assert_profiles_for_takeover(with_profiles = TRUE, roster_rows = 3L))
+})
+
+test_that("a failed roster step does not stop the identity link or the name rewrite", {
+  wf <- readLines(file.path("..", "..", ".github", "workflows", "basket-refresh.yml"), warn = FALSE)
+  at <- grep("name: Scrape and write team rosters", wf, fixed = TRUE)
+  expect_length(at, 1)
+  step <- wf[at:(at + 4)]
+  expect_true(any(grepl("continue-on-error: true", step, fixed = TRUE)))
+})

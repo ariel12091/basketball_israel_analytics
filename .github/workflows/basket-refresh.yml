@@ -72,7 +72,10 @@ jobs:
       # Team-page rosters: position, height and date of birth for players the
       # season-stat pages do not list yet (mostly new signings). Politely: the
       # 14 team pages in Hebrew and English, one request at a time, 5 s apart.
+      # A failure here (the step fails, the job ends red) must not stop the
+      # stats-page players from being linked and renamed below.
       - name: Scrape and write team rosters
+        continue-on-error: true
         run: >
           Rscript scripts/basket_rosters.R --season=${{ steps.season.outputs.season }}
           --refresh-cache --pause-seconds=5 --initial-backoff=15 --write

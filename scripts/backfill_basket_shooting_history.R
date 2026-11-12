@@ -961,6 +961,18 @@ registration_upsert_sql <- function(source = c("stats", "roster"), stage, column
   )
 }
 
+# A stats write takes over a player's roster row and clears the roster's facts
+# -- his team spelling among them, which the identity matcher needs -- for the
+# profile write to refill. Without profiles nothing refills them, so such a
+# write is refused while the seasons hold roster rows.
+assert_profiles_for_takeover <- function(with_profiles, roster_rows) {
+  if (!with_profiles && roster_rows > 0) {
+    stop(roster_rows, " team-page registrations in these seasons would lose their team and ",
+         "position to this write; rerun with --with-profiles")
+  }
+  invisible(TRUE)
+}
+
 SHOOTING_KEY_COLUMNS <- c("game_year", "basket_player_id")
 SHOOTING_VALUE_COLUMNS <- c(
   "player_name", "player_name_en", "games", "minutes", "points", "fg2_made", "fg2_attempted",
@@ -1302,10 +1314,14 @@ main <- function() {
   )
   if (write) {
     preflight_con <- connect_etl_db()
-    database_lines <- tryCatch(
-      database_preflight(preflight_con),
-      finally = DBI::dbDisconnect(preflight_con)
-    )
+    database_lines <- tryCatch({
+      roster_rows <- DBI::dbGetQuery(preflight_con, paste(
+        "SELECT count(*)::integer AS n FROM", BASKET_REGISTRATION_TABLE,
+        "WHERE source = 'roster' AND game_year = ANY($1::integer[])"),
+        params = list(paste0("{", paste(as.integer(seasons), collapse = ","), "}")))$n[[1]]
+      assert_profiles_for_takeover(with_profiles, roster_rows)
+      database_preflight(preflight_con)
+    }, finally = DBI::dbDisconnect(preflight_con))
     preflight <- c(preflight, database_lines)
   }
   write_sanity_report(monitor, "PREFLIGHT BEFORE SCRAPE/BACKFILL", preflight)
