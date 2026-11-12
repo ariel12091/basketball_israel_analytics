@@ -1,6 +1,7 @@
 // app/R/helpers.R ribbon_* / merge_adjacent_stints and app.js overlap rules.
 // Raw scoring events drive as-of values; completed margin is drawing-only.
 import { rRound } from "./round";
+import { compareBySize, type PlayerSize } from "./playerSize";
 import geometry from "../data/gameflowLayout.json";
 export type Side = "own" | "opp";
 export type Window = { start: number; end: number };
@@ -383,24 +384,14 @@ export function windowsSummary(side: Side, windows: Window[], steps: Score[]) {
   };
 }
 export type WindowsSummary = ReturnType<typeof windowsSummary>;
-/** Position order for a tie on height (basket.co.il's codes, guards first). */
-const POSITION_RANK: Record<string, number> = { PG: 1, G: 2, "G-F": 3, F: 4, "F-C": 5, C: 6 };
-export type PlayerSize = { height: number | null; position: string | null };
+export type { PlayerSize };
 /**
- * A lineup's names shortest to tallest (user 2026-11-12), a tie broken by
- * position and then by name; a player with no height goes last. Without any
- * sizes (EuroLeague) the order stays by name.
+ * A lineup's names shortest to tallest (`compareBySize`, shared with every
+ * lineup list). Without any sizes (EuroLeague) the order stays by name.
  */
 export function bySize(sizes: Map<string, PlayerSize>) {
-  const rank = (k: string) => {
-    const s = sizes.get(k);
-    return [s?.height ?? Infinity, POSITION_RANK[s?.position ?? ""] ?? 9] as const;
-  };
-  return (a: Lane, b: Lane) => {
-    const [ha, pa] = rank(laneKey(a)),
-      [hb, pb] = rank(laneKey(b));
-    return (ha === hb ? 0 : ha < hb ? -1 : 1) || pa - pb || cmp(a.player_label, b.player_label);
-  };
+  return (a: Lane, b: Lane) =>
+    compareBySize(sizes.get(laneKey(a)), sizes.get(laneKey(b)), a.player_label, b.player_label);
 }
 export function lineupDictionary(
   lanes: Lane[],

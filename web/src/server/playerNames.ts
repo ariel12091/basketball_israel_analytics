@@ -2,6 +2,7 @@ import "server-only";
 import type { Query } from "./db";
 import type { Row } from "../rules/gameLogs";
 import { playerIds } from "../rules/lineups";
+import { orderBySize } from "../rules/playerSize";
 import { readVersion } from "./dataVersion";
 import { VersionedCache } from "./versionedCache";
 
@@ -90,8 +91,10 @@ export function namedPicker<T extends Row>(
  * add the Hebrew name (`name_he`; `player_names_he_str` on lineup rows) for the
  * Ask chat. Rows without a (team_id, player_id) or an owner entry are returned
  * unchanged. Lineup rows rebuild `player_names` / `player_names_str` from
- * `player_ids`, in the same order and with the same ", " separator as
- * `refresh_sub_lineups`; the Hebrew list is set only when every player has one. */
+ * `player_ids` with the same ", " separator as `refresh_sub_lineups`, ordered
+ * shortest to tallest (`orderBySize`; a lineup with no heights keeps the ids'
+ * order); the Hebrew list, in the same order, is set only when every player
+ * has one. */
 export function applyPlayerNames<T extends Row>(
   rows: T[],
   names: PlayerNames,
@@ -113,8 +116,17 @@ export function applyPlayerNames<T extends Row>(
     if (r.player_names_str != null && r.player_ids != null) {
       const ids = playerIds(r.player_ids),
         old = Array.isArray(r.player_names) ? r.player_names : [];
-      const owned = ids.map((id) => names.get(key(r.team_id, id)));
-      const list = owned.map((n, i) => n?.en ?? String(old[i] ?? `#${ids[i]}`));
+      // Shortest to tallest, as Gameflow lists a lineup ("Lineup name order").
+      const members = orderBySize(
+        ids.map((id, i) => {
+          const n = names.get(key(r.team_id, id));
+          return { n, en: n?.en ?? String(old[i] ?? `#${id}`) };
+        }),
+        (m) => (m.n ? { height: m.n.height ?? null, position: m.n.position ?? null } : undefined),
+        (m) => m.en,
+      );
+      const owned = members.map((m) => m.n);
+      const list = members.map((m) => m.en);
       // Row types scalars only; the readers return this column as an array.
       (out as Record<string, unknown>).player_names = list;
       out.player_names_str = list.join(", ");

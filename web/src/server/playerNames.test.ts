@@ -35,6 +35,38 @@ describe("Player display name owner (D27)", () => {
     expect(e).not.toHaveBeenCalled();
   });
 
+  it("lists a lineup's names shortest to tallest, the Hebrew list in the same order", () => {
+    const sized = new Map([
+      ["1:10", { en: "Tall", he: "גבוה", height: 2.1, position: "C" }],
+      ["1:11", { en: "Short", he: "נמוך", height: 1.85, position: "PG" }],
+      ["1:12", { en: "Middle", he: "בינוני", height: 2.0, position: "F" }],
+    ]);
+    const [r] = applyPlayerNames(
+      [
+        {
+          team_id: 1,
+          player_ids: "{10,99,12,11}",
+          player_names: ["a", "Roster Ninety", "c", "d"],
+          player_names_str: "a, Roster Ninety, c, d",
+          Players: "a, Roster Ninety, c, d",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      ],
+      sized,
+    );
+    expect(r.player_names).toEqual(["Short", "Middle", "Tall", "Roster Ninety"]);
+    expect(r.player_names_str).toBe("Short, Middle, Tall, Roster Ninety");
+    expect(r.Players).toBe("Short, Middle, Tall, Roster Ninety");
+    // 99 has no owner name, so there is no full Hebrew list.
+    expect(r.player_names_he_str).toBeUndefined();
+    const [he] = applyPlayerNames(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [{ team_id: 1, player_ids: "{10,12,11}", player_names: [], player_names_str: "" } as any],
+      sized,
+    );
+    expect(he.player_names_he_str).toBe("נמוך, בינוני, גבוה");
+  });
+
   it("rebuilds lineup names in player_ids order, keeping unknown players", () => {
     const [r] = applyPlayerNames(
       [
