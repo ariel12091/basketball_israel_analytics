@@ -24,7 +24,15 @@ view <- "basketball_test.player_display_names_v"
 cols <- function() q(sprintf(
   "SELECT attname FROM pg_attribute WHERE attrelid = '%s'::regclass AND attnum > 0 AND NOT attisdropped ORDER BY attnum", view))$attname
 snapshot <- function() q(sprintf(
-  "SELECT game_year, team_id, player_id, md5(row(game_year, team_id, player_id, identity_id, display_name, display_name_he, name_source)::text) AS names, height_m, position_en FROM %s", view))
+  "SELECT game_year, team_id, player_id, md5(row(game_year, team_id, player_id, identity_id, display_name, display_name_he, name_source)::text) AS names, identity_id, display_name, name_source, height_m, position_en FROM %s", view))
+# Players whose registration is a team-page row (source = 'roster'): newly
+# linked, so the view's "Basket name first" rule may now give them Basket's
+# spelling. No other row may change a name.
+roster_linked <- function() q(paste(
+  "SELECT r.game_year, d.team_id_rosters AS team_id, r.identity_id",
+  "FROM basketball_test.basket_player_registration r",
+  "JOIN basketball_test.schedule_team_dict d ON d.game_year = r.game_year AND d.team_name_basket = r.basket_team_name",
+  "WHERE r.source = 'roster' AND r.identity_match_status = 'verified'"))
 
 cat("mode:", if (confirm_apply) "APPLY (commits)" else "DRY RUN (rolls back)", "\n")
 x("BEGIN")
@@ -54,11 +62,22 @@ tryCatch({
   m <- merge(before, after, by = c("game_year", "team_id", "player_id"), suffixes = c(".b", ".a"))
   cat("rows before:", nrow(before), " after:", nrow(after), " matched:", nrow(m), "\n")
   if (nrow(m) != nrow(before) || nrow(after) != nrow(before)) stop("row set changed")
-  if (any(m$names.b != m$names.a)) stop("a name or identity column changed")
+  renamed <- m$names.b != m$names.a
+  linked <- paste(m$game_year, m$team_id, m$identity_id.b) %in%
+    with(roster_linked(), paste(game_year, team_id, identity_id))
+  allowed <- linked & m$name_source.b != "basket" & m$name_source.a == "basket" &
+    !is.na(m$identity_id.b) & m$identity_id.b == m$identity_id.a
+  if (any(renamed & !allowed)) {
+    print(m[renamed & !allowed, c("game_year", "team_id", "player_id", "display_name.b", "display_name.a")])
+    stop("a name or identity changed for a player who is not a newly linked team-page registration")
+  }
+  cat(sprintf("names now from Basket for %d newly linked team-page players; English spelling changes:\n", sum(renamed)))
+  spelled <- renamed & m$display_name.b != m$display_name.a
+  print(m[spelled, c("game_year", "team_id", "display_name.b", "display_name.a")], row.names = FALSE)
   kept <- !is.na(m$height_m.b)
   if (any(m$height_m.a[kept] != m$height_m.b[kept])) stop("a season-stat height changed")
   if (any(!is.na(m$position_en.b) & (is.na(m$position_en.a) | m$position_en.a != m$position_en.b))) stop("a season-stat position changed")
-  cat("names, identities and every existing height/position unchanged\n")
+  cat("every other name and identity, and every existing height/position, unchanged\n")
   for (gy in c(2026, 2027)) {
     s <- m[m$game_year == gy, ]
     cat(sprintf("%d: players %d, with a height %d -> %d\n", gy, nrow(s), sum(!is.na(s$height_m.b)), sum(!is.na(s$height_m.a))))

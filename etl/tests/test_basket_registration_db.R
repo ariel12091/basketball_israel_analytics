@@ -31,8 +31,8 @@ test_that("a stats row wins and the identity link survives, in either writer ord
   run_id <- q("SELECT min(run_id) AS r FROM basketball_test.basket_shooting_import_runs")$r
   identity <- q(paste("SELECT identity_id, canonical_player_id FROM", BASKET_REGISTRATION_TABLE,
                       "WHERE identity_match_status = 'verified' LIMIT 1"))
-  x(paste0("CREATE TEMP TABLE stage_stats (LIKE ", BASKET_REGISTRATION_TABLE, ") ON COMMIT DROP"))
-  x(paste0("CREATE TEMP TABLE stage_roster (LIKE ", BASKET_REGISTRATION_TABLE, ") ON COMMIT DROP"))
+  x(paste0("CREATE TEMP TABLE stage_stats (LIKE ", BASKET_REGISTRATION_TABLE, " INCLUDING DEFAULTS) ON COMMIT DROP"))
+  x(paste0("CREATE TEMP TABLE stage_roster (LIKE ", BASKET_REGISTRATION_TABLE, " INCLUDING DEFAULTS) ON COMMIT DROP"))
   x(paste("INSERT INTO stage_stats (game_year, basket_player_id, source, player_name, player_name_en,",
           "source_url, source_content_md5, fetched_at, run_id) VALUES",
           "(1991, 1, 'stats', 'א סטטס', 'A Stats', 'u-stats', md5('s'), now(), $1)"),
