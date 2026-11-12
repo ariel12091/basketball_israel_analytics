@@ -85,13 +85,32 @@ assert_seasons_matchable <- function(seasons) {
   invisible(seasons)
 }
 
+# The English name a registration is matched on: its own, or -- when Basket
+# has none yet (new registrations) -- the person's English name from another
+# of his registrations (basket_person_id, etl/basket_person_ids.R). A borrowed
+# name is only a candidate: the same rules decide as for a row's own name.
+registration_english_names <- function(rows) {
+  own <- !is.na(rows$player_name_en) & nzchar(trimws(rows$player_name_en))
+  borrowed <- !own & !is.na(rows$borrowed_name_en)
+  rows$name_en_borrowed <- borrowed
+  rows$norm_en <- normalize_person_name(ifelse(own, rows$player_name_en, rows$borrowed_name_en))
+  rows
+}
+
 # One row per Basket season registration, with the team already resolved
 # through schedule_team_dict. A registration whose team string is unmapped is
 # returned with team_id NA and reported rather than silently dropped.
 fetch_basket_registrations <- function(con, seasons) {
   rows <- db_query(con, sprintf("
     SELECT s.game_year, s.basket_player_id, s.player_name, s.player_name_en,
-           s.basket_team_name, d.team_id_rosters AS team_id
+           s.basket_team_name, d.team_id_rosters AS team_id,
+           (SELECT o.player_name_en
+              FROM basketball_test.basket_player_registration o
+             WHERE o.basket_person_id = s.basket_person_id
+               AND o.basket_player_id <> s.basket_player_id
+               AND o.player_name_en IS NOT NULL
+             ORDER BY o.game_year DESC, o.basket_player_id DESC
+             LIMIT 1) AS borrowed_name_en
     FROM basketball_test.basket_player_registration s
     LEFT JOIN basketball_test.schedule_team_dict d
       ON d.game_year = s.game_year
@@ -99,7 +118,7 @@ fetch_basket_registrations <- function(con, seasons) {
     WHERE s.game_year IN (%s)
     ORDER BY s.game_year, s.basket_player_id",
     paste(as.integer(seasons), collapse = ", ")))
-  rows$norm_en <- normalize_person_name(rows$player_name_en)
+  rows <- registration_english_names(rows)
   rows$norm_he <- normalize_person_name(rows$player_name)
   rows
 }
