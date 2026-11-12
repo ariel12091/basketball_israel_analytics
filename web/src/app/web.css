@@ -572,7 +572,7 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-head .ibpl-ribbon-mobile-overview { margin: 0; position: relative; }
 .gf-m-head .gf-run-band { pointer-events: none; }
 /* The strip's side labels, readable over the line (a halo in the page colour). */
-.gf-m-side { font-size: 8px; font-weight: 700; pointer-events: none;
+.gf-m-side { font-size: 6.5px; font-weight: 700; pointer-events: none;
   paint-order: stroke; stroke: var(--ibpl-bg); stroke-width: 3px; stroke-linejoin: round; }
 .gf-m-side.is-own { fill: var(--ibpl-accent); }
 .gf-m-side.is-opp { fill: var(--ibpl-text-muted); }

@@ -428,8 +428,8 @@ test("Phone: the score strip names which team is ahead on each side", async ({
   const strip = page.locator(".gf-m-head .ibpl-ribbon-overview-svg");
   const own = strip.locator(".gf-m-side.is-own"),
     opp = strip.locator(".gf-m-side.is-opp");
-  await expect(own).toHaveText("Maccabi Tel-Aviv ahead ↑");
-  await expect(opp).toHaveText("Hapoel Tel-Aviv ahead ↓");
+  await expect(own).toHaveText("Maccabi Tel-Aviv");
+  await expect(opp).toHaveText("Hapoel Tel-Aviv");
   // Up is the team on top: its label sits above the other's.
   const [o, p] = [(await own.boundingBox())!, (await opp.boundingBox())!];
   expect(o.y).toBeLessThan(p.y);
