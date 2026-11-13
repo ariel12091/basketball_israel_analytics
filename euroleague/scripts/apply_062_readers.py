@@ -164,6 +164,88 @@ OBJECTS: dict[str, ReaderSwitch] = {
                                        WHERE fr.game_id = ms.game_id AND fr.team_id = ms.team_id
                                          AND fr.source_player_name = ANY(ms.own_lineup))) = c.is_on)""")],
     ),
+    # Player stats inside a custom clutch window. Possessions on the floor
+    # follow the credited lineup; games played and minutes follow the floor
+    # (the Israeli Task 7 lost five players' games played by switching both).
+    # The view over the per-action fact gains credit_own_lineup, appended last.
+    "get_player_traditional_custom_clutch": ReaderSwitch(
+        signature=("euroleague.get_player_traditional_custom_clutch(text, integer, date, date, text, text, "
+                   "text, text, text, text, integer, text, integer, text, integer, boolean, integer, integer, integer)"),
+        pre=["CREATE OR REPLACE VIEW euroleague.player_stats_action_context AS SELECT game_id, team_id, "
+             "own_lineup, segment_id, source_event_order, event_elapsed_seconds, type_lineup, possession_flag, "
+             "action_player_id, points, play_type, turnovers, fgm, fga, fg3_made, fg3_att, ft_attempts, "
+             "ts_possessions, is_overtime, regulation_seconds_remaining, pre_margin, pre_abs_margin, pre_status, "
+             "credit_own_lineup FROM euroleague.player_stats_actions_by_game"],
+        edits=[
+            ("    a.ft_attempts,a.ts_possessions\n  FROM euroleague.player_stats_action_context a\n"
+             "  JOIN games_filtered gf USING(game_id,team_id)\n  WHERE NOT a.is_overtime",
+             "    a.ft_attempts,a.ts_possessions,a.credit_own_lineup\n  FROM euroleague.player_stats_action_context a\n"
+             "  JOIN games_filtered gf USING(game_id,team_id)\n  WHERE NOT a.is_overtime"),
+            ("    a.ft_attempts,a.ts_possessions\n  FROM euroleague.player_stats_action_context a\n"
+             "  JOIN games_filtered gf USING(game_id,team_id)\n  WHERE a.is_overtime",
+             "    a.ft_attempts,a.ts_possessions,a.credit_own_lineup\n  FROM euroleague.player_stats_action_context a\n"
+             "  JOIN games_filtered gf USING(game_id,team_id)\n  WHERE a.is_overtime"),
+            ("  SELECT DISTINCT game_id,team_id,own_lineup FROM acts WHERE own_lineup IS NOT NULL\n),",
+             "  SELECT game_id,team_id,own_lineup FROM acts WHERE own_lineup IS NOT NULL\n"
+             "  UNION SELECT game_id,team_id,credit_own_lineup FROM acts WHERE credit_own_lineup IS NOT NULL\n),"),
+            ("  SELECT DISTINCT game_id,team_id,own_lineup,source_event_order poss_end_id\n",
+             "  SELECT DISTINCT game_id,team_id,own_lineup,credit_own_lineup,source_event_order poss_end_id\n"),
+            ("  SELECT lm.player_id,pe.team_id,count(DISTINCT pe.game_id)::integer gp,\n"
+             "    count(DISTINCT (pe.game_id,pe.team_id,pe.poss_end_id))::numeric poss_on_floor\n"
+             "  FROM poss_end pe JOIN lineup_map lm USING(game_id,team_id,own_lineup)\n"
+             "  GROUP BY lm.player_id,pe.team_id\n),",
+             "  -- Migration 062: games played follow the floor lineup, possessions on\n"
+             "  -- the floor the credited one.\n"
+             "  SELECT player_id,team_id,coalesce(g.gp,0)::integer gp,coalesce(p.poss_on_floor,0)::numeric poss_on_floor\n"
+             "  FROM (SELECT lm.player_id,pe.team_id,count(DISTINCT pe.game_id)::integer gp\n"
+             "          FROM poss_end pe JOIN lineup_map lm USING(game_id,team_id,own_lineup)\n"
+             "         GROUP BY lm.player_id,pe.team_id) g\n"
+             "  FULL JOIN (SELECT lm.player_id,pe.team_id,\n"
+             "                    count(DISTINCT (pe.game_id,pe.team_id,pe.poss_end_id))::numeric poss_on_floor\n"
+             "               FROM poss_end pe JOIN lineup_map lm\n"
+             "                 ON lm.game_id=pe.game_id AND lm.team_id=pe.team_id AND lm.own_lineup=pe.credit_own_lineup\n"
+             "              GROUP BY lm.player_id,pe.team_id) p USING (player_id,team_id)\n),"),
+        ],
+        checks=["get_player_traditional_custom_clutch_clutch"],
+    ),
+    # The player traditional table reads tables 062 already switched
+    # (lineup_totals_by_game, player/team Four Factors), so its possessions on
+    # the floor follow credit. Games played must follow the floor: a player
+    # subbed in for a free throw and out before the clock ran had 0 seconds and
+    # his only possession was that free throw's -- now credited away. He still
+    # played: a row is kept when he was on the floor (physically) at any
+    # possession end, which is what poss_on_floor > 0 meant before 062.
+    "player_traditional_by_game": ReaderSwitch(
+        signature="euroleague.refresh_player_traditional_by_game_for_games(bigint[])",
+        edits=[
+            ("  ), player_usage AS MATERIALIZED (\n    SELECT pf.game_id",
+             "  ), floor_poss AS MATERIALIZED (\n"
+             "    -- Migration 062: on the floor at a possession end = played the\n"
+             "    -- game, whichever lineup the possession is credited to.\n"
+             "    SELECT DISTINCT a.game_id, a.team_id, u.player_id\n"
+             "    FROM euroleague.player_stats_actions_by_game a\n"
+             "    JOIN euroleague.lineup_totals_by_game l\n"
+             "      ON l.game_id = a.game_id AND l.team_id = a.team_id\n"
+             "     AND l.own_lineup = a.own_lineup AND l.type_lineup = 'offense'\n"
+             "    CROSS JOIN LATERAL unnest(l.player_ids) AS u(player_id)\n"
+             "    WHERE a.type_lineup = 'offense' AND a.possession_flag = 1\n"
+             "      AND (p_game_ids IS NULL OR a.game_id = ANY(p_game_ids))\n"
+             "  ), player_usage AS MATERIALIZED (\n    SELECT pf.game_id"),
+            ("      coalesce(t.team_poss, 0)::numeric AS team_poss\n    FROM roster r",
+             "      coalesce(t.team_poss, 0)::numeric AS team_poss,\n"
+             "      (fp.player_id IS NOT NULL) AS on_floor_at_poss\n    FROM roster r"),
+            ("    LEFT JOIN team_usage t\n      ON t.game_id = r.game_id AND t.team_id = r.team_id\n  )",
+             "    LEFT JOIN team_usage t\n      ON t.game_id = r.game_id AND t.team_id = r.team_id\n"
+             "    LEFT JOIN floor_poss fp\n"
+             "      ON fp.game_id = r.game_id AND fp.team_id = r.team_id AND fp.player_id = r.player_id\n  )"),
+            ("  WHERE minutes > 0 OR poss_on_floor > 0\n",
+             "  WHERE minutes > 0 OR poss_on_floor > 0 OR on_floor_at_poss\n"),
+        ],
+        refresh="SELECT euroleague.refresh_player_traditional_by_game_for_games(%s::bigint[])",
+        checks=["player_traditional_by_game"],
+        moved=("euroleague.player_traditional_by_game", ["game_id", "team_id", "player_id"],
+               ["poss_on_floor", "gp", "minutes"]),
+    ),
     # Direct lineups read the per-action fact for both events and event-span
     # time. Starters filters leave the shared acts CTE: events filter on the
     # credited starters, time on the physical ones. Events group on the
