@@ -271,6 +271,28 @@ OBJECTS: dict[str, ReaderSwitch] = {
         moved=("euroleague.team_four_factors_by_game", ["game_id", "team_id", "own_starters", "opp_starters"],
                ["off_pts", "off_poss", "def_pts"]),
     ),
+    # Gameflow events carry each event's credited five (the web's stint
+    # ratings read them), closing D39; bars, +/- and score come from
+    # ribbon_segments_v / ribbon_margin_v, which stay physical.
+    "ribbon_events_v": ReaderSwitch(
+        signature="view:euroleague.ribbon_events_v",
+        edits=[("l.own_lineup = a.own_lineup", "l.own_lineup = a.credit_own_lineup")],
+        asserts=[
+            ("event rows without a credited five", """
+                SELECT count(*) FROM euroleague.ribbon_events_v WHERE player_ids IS NULL"""),
+            ("event perspectives listed twice", """
+                SELECT count(*) FROM (SELECT 1 FROM euroleague.ribbon_events_v
+                  GROUP BY game_id, team_id, source_event_order HAVING count(*) > 1) d"""),
+            ("events whose five is not their credited lineup's", """
+                SELECT count(*) FROM euroleague.ribbon_events_v r
+                JOIN euroleague.action_team_context_actions a USING (game_id, team_id, source_event_order)
+                WHERE NOT EXISTS (SELECT 1 FROM euroleague.lineup_totals_by_game l
+                  WHERE l.game_id = a.game_id AND l.team_id = a.team_id
+                    AND l.own_lineup = a.credit_own_lineup AND l.player_ids = r.player_ids)"""),
+        ],
+        moved=("euroleague.ribbon_events_v", ["game_id", "team_id", "source_event_order"],
+               ["points", "player_ids"]),  # first value is summed: must be numeric
+    ),
     # Direct lineups read the per-action fact for both events and event-span
     # time. Starters filters leave the shared acts CTE: events filter on the
     # credited starters, time on the physical ones. Events group on the
@@ -439,8 +461,13 @@ def main() -> int:
         cur.execute("BEGIN")
         cur.execute("SET LOCAL lock_timeout = '10s'")
         cur.execute("SET LOCAL statement_timeout = '600s'")
-        cur.execute("SELECT pg_get_functiondef(%s::regprocedure)", (sw.signature,))
-        live = cur.fetchone()[0]
+        if sw.signature.startswith("view:"):
+            view = sw.signature[len("view:"):]
+            cur.execute("SELECT pg_get_viewdef(%s::regclass, true)", (view,))
+            live = f"CREATE OR REPLACE VIEW {view} AS {cur.fetchone()[0]}"
+        else:
+            cur.execute("SELECT pg_get_functiondef(%s::regprocedure)", (sw.signature,))
+            live = cur.fetchone()[0]
         new = apply_edits(live, sw.edits)
         (REPO / "sql" / f"062_{a.object}_before.sql").write_text(header(a.object, "Definition before") + live.rstrip() + ";\n", encoding="utf-8")
         (REPO / "sql" / f"062_{a.object}.sql").write_text(header(a.object, "Credit-attribution definition") + new, encoding="utf-8")
