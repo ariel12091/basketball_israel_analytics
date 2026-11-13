@@ -276,11 +276,11 @@ match_basket_identities <- function(registrations, identities) {
 manual_basket_identity_matches <- function() {
   data.frame(
     game_year = c(2025L, 2025L, 2025L, 2026L, 2026L, 2026L, 2026L, 2026L, 2026L,
-                  2027L),
+                  2027L, 2027L),
     basket_player_id = c(17479L, 17528L, 17578L, 21840L, 21923L, 24865L,
-                         24876L, 25974L, 25990L, 26089L),
+                         24876L, 25974L, 25990L, 26089L, 25996L),
     canonical_player_id = c(1780L, 2669L, 14359L, 1060L, 1121L, 1640L,
-                            1887L, 2147L, 2172L, 2284L),
+                            1887L, 2147L, 2172L, 2284L, 1640L),
     note = c(
       "John/Jon Dibartolomeo; only Dibartolomeo in the league",
       "Ben/Meron Ruina; only Ruina in the league, confirmed by the user",
@@ -291,7 +291,8 @@ manual_basket_identity_matches <- function() {
       "Isaiah/ISAHIAH Mobley, a typo in the roster",
       "Ishmael 'Ish' El-Amin, nickname plus hyphen",
       "Hen/Chen Halfon, the same heth",
-      "Ran Solomon/SALOMON (HaEmek), both spellings differ; confirmed by the user 2026-11-01"
+      "Ran Solomon/SALOMON (HaEmek), both spellings differ; confirmed by the user 2026-11-01",
+      "Gabriel 'Iffe' Lundberg again (Maccabi Tel Aviv): same identity and basket_person_id as 2026's 24865, same date of birth; confirmed by the user 2026-11-13"
     ),
     stringsAsFactors = FALSE
   )
