@@ -1809,6 +1809,47 @@ build_checks <- function(con, schema) {
     ),
 
     list(
+      id = "N15_free_throw_credit_not_the_fouls_lineup",
+      title = "A free throw's credited lineup is not the lineup that drew the foul",
+      severity = "error",
+      purpose = paste(
+        "Regression guard for migration 062 (docs/shared_definitions.md, Credited lineup).",
+        "A free throw counts for the lineup on its parent action's row -- the foul, or the",
+        "made shot of an and-one -- from the same team's perspective; every other row for",
+        "its own lineup. refresh_actions_consumer_candidates fills the credit columns on",
+        "every load, so a row here means a load wrote the fact without them, or the parent",
+        "link changed. Every lineup, on/off, clutch and Gameflow reader groups events on",
+        "these columns."
+      ),
+      required_tables = c("action_team_context_actions", "actions", "schedule"),
+      sql = sprintf(
+        "WITH expected AS (
+           SELECT f.game_id, f.team_id, f.source_event_order, f.play_type,
+                  CASE WHEN f.play_type IN ('FTM', 'FTA') AND p.play_type IS NOT NULL
+                            AND p.play_type NOT IN ('FTM', 'FTA')
+                       THEN p.own_lineup ELSE f.own_lineup END AS lineup,
+                  CASE WHEN f.play_type IN ('FTM', 'FTA') AND p.play_type IS NOT NULL
+                            AND p.play_type NOT IN ('FTM', 'FTA')
+                       THEN p.own_starters ELSE f.own_starters END AS starters,
+                  f.credit_own_lineup, f.credit_own_starters
+             FROM %s f
+             JOIN %s a ON a.game_id = f.game_id AND a.source_event_order = f.source_event_order
+             LEFT JOIN %s p
+               ON p.game_id = f.game_id AND p.source_event_order = a.synthetic_parent_order
+              AND p.team_id = f.team_id AND a.synthetic_parent_order <> f.source_event_order
+         )
+         SELECT s.competition, s.season, s.gamecode, e.game_id, e.team_id,
+                e.source_event_order, e.play_type
+           FROM expected e
+           JOIN %s s ON s.game_id = e.game_id
+          WHERE e.credit_own_lineup IS DISTINCT FROM e.lineup
+             OR e.credit_own_starters IS DISTINCT FROM e.starters
+          ORDER BY 1, 2, 3, 6",
+        atc, act, atc, sch
+      )
+    ),
+
+    list(
       id = "N8_possession_endpoint_vocabulary",
       title = "Possession endpoints carry an unrecognised reason",
       severity = "warning",
