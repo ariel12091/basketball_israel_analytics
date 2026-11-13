@@ -323,13 +323,18 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     # roster fan-out -- a player-level equivalent would fan every event across
     # the roster, over a million rows for a season -- so this is cheap enough to
     # run on every load while exercising the same fact columns.
+    #
+    # Twin of refresh_team_four_factors_by_game_for_games: since migration 062
+    # (2026-11-13) that table groups events on the CREDITED starters (a free
+    # throw counts with the lineup that drew the foul), so this check must too.
     fact_only = q(
         "WITH from_fact AS ("
-        "  SELECT atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters, "
+        "  SELECT atc.game_id, atc.team_id, atc.credit_own_starters AS own_starters, "
+        "         atc.credit_opp_starters AS opp_starters, "
         "         coalesce(sum(atc.points) FILTER "
         "                  (WHERE atc.type_lineup = 'offense'), 0) AS off_pts "
         "    FROM euroleague.action_team_context_actions atc "
-        "   GROUP BY atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters"
+        "   GROUP BY atc.game_id, atc.team_id, atc.credit_own_starters, atc.credit_opp_starters"
         ") SELECT count(*) FROM ("
         "  SELECT game_id, team_id, own_starters, opp_starters, off_pts::numeric "
         "    FROM from_fact "

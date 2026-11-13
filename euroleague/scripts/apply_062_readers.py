@@ -370,9 +370,9 @@ OBJECTS: dict[str, ReaderSwitch] = {
     ),
     # Clutch lineups: event_counts groups on the credited lineup and starters;
     # clutch time (clutch_segment_durations joined to segments) stays physical.
-    # A free throw inside the window whose foul's lineup has no clutch time is
-    # not matched by the LEFT JOIN from duration -- the Israeli accepted
-    # deviation (Review Focus 5); the clutch G2 check measures it.
+    # The final join becomes a FULL JOIN (last edit below), so a free throw
+    # inside the window whose foul's lineup has no clutch time is kept with 0
+    # seconds -- the Israeli readers drop it (their accepted deviation).
     "clutch_team_game_facts": ReaderSwitch(
         signature="euroleague.clutch_team_game_facts(bigint[], integer, text, integer, boolean)",
         edits=[

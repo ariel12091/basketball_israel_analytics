@@ -189,7 +189,9 @@ GATES: list[tuple[str, str]] = [
           JOIN euroleague.action_team_context_actions atc
             ON atc.game_id = un.game_id
            AND atc.team_id = un.team_id
-           AND atc.own_lineup @> un.names
+           -- Events follow credit (migration 062): a free throw counts with
+           -- the lineup that drew the foul, as lineup_totals_by_game does.
+           AND atc.credit_own_lineup @> un.names
           WHERE atc.type_lineup IS NOT NULL
           GROUP BY 1, 2, 3, 4
         )
