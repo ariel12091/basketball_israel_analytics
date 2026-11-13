@@ -41,11 +41,14 @@ class ReaderSwitch:
     signature: str                 # regprocedure text of the function to edit
     edits: list[tuple[str, str]]   # exact (old, new) pairs on the live definition
     refresh: str | None = None     # per-batch call, %s = bigint[] of game ids
+    pre: list[str] = field(default_factory=list)     # statements before the function is replaced
     after: list[str] = field(default_factory=list)   # statements once the refresh is done
     checks: list[str] = field(default_factory=list)  # verify_062 spec names
     # (relation, key columns, value columns): counted before and after, to show
     # that values moved, which the totals-unchanged gates cannot.
     moved: tuple[str, list[str], list[str]] | None = None
+    expect_moved: bool = True      # False: the listed values must NOT change
+    asserts: list[tuple[str, str]] = field(default_factory=list)  # (label, SQL returning a count that must be 0)
 
 
 OBJECTS: dict[str, ReaderSwitch] = {
@@ -70,6 +73,48 @@ OBJECTS: dict[str, ReaderSwitch] = {
         moved=("euroleague.lineup_totals_by_game",
                ["game_id", "team_id", "lineup_key", "type_lineup", "opp_starters"],
                ["points", "possessions", "ts_possessions"]),
+    ),
+    # The per-action player fact carries the credited lineup and starters next
+    # to the physical ones (the Israeli player_stats_actions_by_game gained
+    # credit_lineup_hash the same way). Nothing reads them until the clutch and
+    # direct lineup readers switch; every value it already had is unchanged.
+    "player_stats_actions_by_game": ReaderSwitch(
+        signature="euroleague.refresh_player_stats_actions_for_games(bigint[])",
+        pre=["ALTER TABLE euroleague.player_stats_actions_by_game\n"
+             "  ADD COLUMN credit_own_lineup text[],\n"
+             "  ADD COLUMN credit_own_starters smallint,\n"
+             "  ADD COLUMN credit_opp_starters smallint"],
+        edits=[
+            ("  own_starters,opp_starters,fg2_made,fg2_att,orebounds,oreb_opportunities,steals)",
+             "  own_starters,opp_starters,fg2_made,fg2_att,orebounds,oreb_opportunities,steals,\n"
+             "  credit_own_lineup,credit_own_starters,credit_opp_starters)"),
+            ("  atc.orebounds,atc.oreb_opportunities,atc.steals\n FROM euroleague.action_team_context_actions atc",
+             "  atc.orebounds,atc.oreb_opportunities,atc.steals,\n"
+             "  atc.credit_own_lineup,atc.credit_own_starters,atc.credit_opp_starters\n"
+             " FROM euroleague.action_team_context_actions atc"),
+        ],
+        refresh="SELECT euroleague.refresh_player_stats_actions_for_games(%s::bigint[])",
+        after=["ALTER TABLE euroleague.player_stats_actions_by_game\n"
+               "  ALTER COLUMN credit_own_lineup SET NOT NULL,\n"
+               "  ALTER COLUMN credit_own_starters SET NOT NULL,\n"
+               "  ALTER COLUMN credit_opp_starters SET NOT NULL"],
+        checks=["player_stats_actions_by_game"],
+        moved=("euroleague.player_stats_actions_by_game",
+               ["game_id", "team_id", "source_event_order"],
+               ["points", "own_lineup", "segment_id", "possession_flag"]),
+        expect_moved=False,
+        asserts=[("action rows whose credit columns differ from the event fact's", """
+            SELECT count(*) FROM euroleague.player_stats_actions_by_game a
+            JOIN euroleague.action_team_context_actions f
+              USING (game_id, team_id, source_event_order)
+            WHERE a.credit_own_lineup IS DISTINCT FROM f.credit_own_lineup
+               OR a.credit_own_starters IS DISTINCT FROM f.credit_own_starters
+               OR a.credit_opp_starters IS DISTINCT FROM f.credit_opp_starters"""),
+                 ("action rows without a fact row", """
+            SELECT count(*) FROM euroleague.player_stats_actions_by_game a
+            WHERE NOT EXISTS (SELECT 1 FROM euroleague.action_team_context_actions f
+              WHERE f.game_id = a.game_id AND f.team_id = a.team_id
+                AND f.source_event_order = a.source_event_order)""")],
     ),
 }
 
@@ -112,6 +157,9 @@ def main() -> int:
         if sw.moved:
             rel, keys, vals = sw.moved
             cur.execute(f"CREATE TEMP TABLE moved_before ON COMMIT DROP AS SELECT {', '.join(keys + vals)} FROM {rel}")
+        for s in sw.pre:
+            cur.execute(s)
+            print(f"  {s.splitlines()[0][:90]}", flush=True)
         cur.execute(new)
         print(f"  {sw.signature} replaced ({len(sw.edits)} edits)", flush=True)
         if sw.refresh:
@@ -139,8 +187,16 @@ def main() -> int:
                               FROM moved_before b FULL JOIN {rel} a ON {on}""")
             rows_changed, half_abs, total = cur.fetchone()
             print(f"  moved: {rows_changed} of {total} rows changed; {vals[0]} moved between rows: {half_abs}", flush=True)
-            if not rows_changed:
+            if sw.expect_moved and not rows_changed:
                 raise RuntimeError("nothing moved: the switch did not take effect")
+            if not sw.expect_moved and rows_changed:
+                raise RuntimeError("existing values changed, which this step must not do")
+        for label, sql in sw.asserts:
+            cur.execute(sql)
+            n = cur.fetchone()[0]
+            print(f"  {'ok  ' if n == 0 else 'FAIL'} {label}: {n}", flush=True)
+            if n:
+                raise RuntimeError(f"{label}: {n}")
         failed = verify.check(conn, sw.checks)
         if failed:
             raise RuntimeError(f"{failed} gate(s) failed")
