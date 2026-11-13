@@ -434,7 +434,7 @@ RIBBON_LEAGUES <- list(
              WHERE game_year = 2026 ORDER BY game_id LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM basketball_test.player_four_factors_by_game
-               WHERE game_id = ?game_id AND team_id = ?team_id
+               WHERE game_id = ?game_id::int4 AND team_id = ?team_id::int4
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id"),
   euroleague = list(
@@ -442,7 +442,7 @@ RIBBON_LEAGUES <- list(
              FROM euroleague.final_schedule ORDER BY game_id DESC LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM euroleague.player_four_factors_by_game
-               WHERE game_id = ?game_id AND team_id = ?team_id
+               WHERE game_id = ?game_id::bigint AND team_id = ?team_id::bigint
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id")
 )

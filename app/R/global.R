@@ -268,10 +268,13 @@ cached_season_df <- function(key_parts, query_fun) {
 # Lanes and margin return as JSON in one row so each open costs one pooler
 # round trip.
 
+# Keep the ID casts in both readers: bigint="numeric" IDs quoted by
+# DBI::sqlInterpolate become float8 literals, which bypass integer indexes
+# and prevent single-game predicates from reaching the lineup view joins.
 RIBBON_SQL_ISRAEL <- "
 WITH gy AS (
   SELECT game_year FROM basketball_test.final_schedule_mv
-  WHERE game_id = $1 LIMIT 1
+  WHERE game_id = $1::int4 LIMIT 1
 ),
 segs AS (
   SELECT team_id, segment_id, lineup_hash,
@@ -279,7 +282,7 @@ segs AS (
          MAX(segment_end_elapsed_seconds)   AS end_elapsed,
          BOOL_OR(type IS DISTINCT FROM 'substitution') AS has_gameplay
   FROM basketball_test.df_pts_poss_lineups_longer_mv
-  WHERE game_id = $1
+  WHERE game_id = $1::int4
   GROUP BY team_id, segment_id, lineup_hash
   HAVING MAX(segment_seconds) > 0
 ),
@@ -298,7 +301,7 @@ substitution_events AS (
   SELECT game_id, team_id, quarter,
          quarter * 600.0 - end_quarter_seconds_remaining AS elapsed
   FROM basketball_test.subs
-  WHERE game_id = $1
+  WHERE game_id = $1::int4
     AND quarter BETWEEN 2 AND 4
     AND end_quarter_seconds_remaining IS NOT NULL
 ),
@@ -334,7 +337,7 @@ lanes AS (
     ON lp.lineup_hash = s.lineup_hash AND lp.team_id = s.team_id
   CROSS JOIN LATERAL unnest(lp.player_ids) AS p(player_id)
   LEFT JOIN basketball_test.full_rosters r
-    ON r.game_id = $1
+    ON r.game_id = $1::int4
    AND r.team_id = s.team_id
    AND r.player_id = p.player_id
 ),
@@ -348,7 +351,7 @@ marg AS (
          own_team_score AS own,
          id AS order_key
   FROM basketball_test.df_pts_poss_lineups_longer_mv
-  WHERE game_id = $1 AND team_id = $2
+  WHERE game_id = $1::int4 AND team_id = $2::int4
 ),
 poss AS (
   -- Possession ends, with the score on their row, for each team's ORtg
@@ -362,7 +365,7 @@ poss AS (
          own_team_score AS own,
          opp_team_score AS opp
   FROM basketball_test.df_pts_poss_lineups_longer_mv
-  WHERE game_id = $1 AND team_id = $2
+  WHERE game_id = $1::int4 AND team_id = $2::int4
     AND final_end_poss IS TRUE
     AND type_lineup IN ('offense', 'defense')
 ),
@@ -394,7 +397,7 @@ events AS (
     -- vanishing (as euroleague.ribbon_events_v does).
     LEFT JOIN lineup_players lp
       ON lp.lineup_hash = d.credit_lineup_hash AND lp.team_id = d.team_id
-    WHERE d.game_id = $1
+    WHERE d.game_id = $1::int4
       AND d.type_lineup IN ('offense', 'defense')
   ) e
   WHERE poss_end OR pts > 0 OR kind IS NOT NULL
@@ -405,7 +408,7 @@ SELECT
   (SELECT jsonb_agg(to_jsonb(poss) ORDER BY elapsed, order_key) FROM poss) AS poss,
   (SELECT jsonb_agg(to_jsonb(events) ORDER BY elapsed, order_key) FROM events) AS events,
   (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
-    WHERE game_id = $1) AS n_periods,
+    WHERE game_id = $1::int4) AS n_periods,
   (SELECT COUNT(*) FROM segs s
     WHERE s.has_gameplay
       AND NOT EXISTS (SELECT 1 FROM lineup_players lp
@@ -422,7 +425,7 @@ WITH segs AS (
          start_elapsed_seconds AS start_elapsed,
          end_elapsed_seconds   AS end_elapsed
   FROM euroleague.ribbon_segments_v
-  WHERE game_id = $1
+  WHERE game_id = $1::bigint
 ),
 lanes AS (
   SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
@@ -431,7 +434,7 @@ lanes AS (
   FROM segs s
   CROSS JOIN LATERAL unnest(s.player_ids) AS p(player_id)
   LEFT JOIN euroleague.full_rosters r
-    ON r.game_id = $1
+    ON r.game_id = $1::bigint
    AND r.team_id = s.team_id
    AND r.player_id = p.player_id
 ),
@@ -444,7 +447,7 @@ marg AS (
          own_team_score AS own,
          source_event_order AS order_key
   FROM euroleague.ribbon_margin_v
-  WHERE game_id = $1 AND team_id = $2
+  WHERE game_id = $1::bigint AND team_id = $2::bigint
 ),
 poss AS (
   -- Possession ends with the score on their row, as the Israeli poss CTE
@@ -456,7 +459,7 @@ poss AS (
          own_team_score AS own,
          opp_team_score AS opp
   FROM euroleague.ribbon_events_v
-  WHERE game_id = $1 AND team_id = $2
+  WHERE game_id = $1::bigint AND team_id = $2::bigint
     AND final_end_poss IS TRUE
 ),
 events AS (
@@ -483,14 +486,14 @@ events AS (
          END AS made,
          (final_end_poss IS TRUE) AS poss_end
   FROM euroleague.ribbon_events_v
-  WHERE game_id = $1
+  WHERE game_id = $1::bigint
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
   (SELECT jsonb_agg(to_jsonb(poss) ORDER BY elapsed, order_key) FROM poss) AS poss,
   (SELECT jsonb_agg(to_jsonb(events) ORDER BY elapsed, order_key) FROM events) AS events,
-  (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
+  (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1::bigint) AS n_periods,
   0 AS excluded_segments,
   0 AS false_straddle_segments,
   0 AS false_straddle_seconds
