@@ -36,3 +36,13 @@ def test_equivalence_is_per_season():
 def test_an_unlisted_older_version_still_fails():
     rows = [("U", 2025, "0.2.0"), ("U", 2025, "0.2.4")]
     assert m.mixed_parser_versions(rows) == {("U", 2025): ["0.2.0", "0.2.4"]}
+
+
+def test_the_team_grain_check_uses_the_owners_credited_starters():
+    # team_four_factors_by_game groups on the credited starters since migration
+    # 062; rebuilding it on the physical ones fails every load (9,322 rows on
+    # 2026-11-13).
+    src = (Path(m.__file__)).read_text(encoding="utf-8")
+    check = src[src.index("WITH from_fact AS ("):src.index('"team grain reproduces from the fact"')]
+    assert "atc.credit_own_starters, atc.credit_opp_starters" in check
+    assert "atc.own_starters" not in check
