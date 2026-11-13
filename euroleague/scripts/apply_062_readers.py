@@ -116,6 +116,54 @@ OBJECTS: dict[str, ReaderSwitch] = {
               WHERE f.game_id = a.game_id AND f.team_id = a.team_id
                 AND f.source_event_order = a.source_event_order)""")],
     ),
+    # Player on/off and Four Factors: the counts CTE decides ON/OFF from the
+    # event's lineup and groups on its starters -- both move to credit. Player
+    # minutes (segments) stay physical. A credited event always lands on an
+    # (is_on, starters) cell that has minutes: its foul's own segment gives it.
+    "player_four_factors_by_game": ReaderSwitch(
+        signature="euroleague.refresh_player_four_factors_by_game_for_games(bigint[])",
+        edits=[
+            ("      CASE WHEN rr.source_player_name = ANY(atc.own_lineup)\n"
+             "           THEN 1 ELSE 0 END::smallint AS is_on_key,\n"
+             "      atc.type_lineup,\n      atc.own_starters,\n      atc.opp_starters,\n",
+             "      CASE WHEN rr.source_player_name = ANY(atc.credit_own_lineup)\n"
+             "           THEN 1 ELSE 0 END::smallint AS is_on_key,\n"
+             "      atc.type_lineup,\n      atc.credit_own_starters AS own_starters,\n"
+             "      atc.credit_opp_starters AS opp_starters,\n"),
+            ("   GROUP BY atc.game_id, atc.team_id, rr.player_id,\n"
+             "            CASE WHEN rr.source_player_name = ANY(atc.own_lineup)\n"
+             "                 THEN 1 ELSE 0 END,\n"
+             "            atc.type_lineup, atc.own_starters, atc.opp_starters\n",
+             "   GROUP BY atc.game_id, atc.team_id, rr.player_id,\n"
+             "            CASE WHEN rr.source_player_name = ANY(atc.credit_own_lineup)\n"
+             "                 THEN 1 ELSE 0 END,\n"
+             "            atc.type_lineup, atc.credit_own_starters, atc.credit_opp_starters\n"),
+        ],
+        refresh="SELECT euroleague.refresh_player_four_factors_by_game_for_games(%s::bigint[])",
+        after=["REFRESH MATERIALIZED VIEW euroleague.player_onoff_default_mv",
+               "REFRESH MATERIALIZED VIEW euroleague.player_advanced_stats_mv",
+               "REFRESH MATERIALIZED VIEW euroleague.player_traditional_stats_mv"],
+        checks=["player_four_factors_by_game", "player_onoff_default_mv", "player_advanced_stats_mv",
+                "player_traditional_stats_mv"],
+        moved=("euroleague.player_four_factors_by_game",
+               ["game_id", "team_id", "player_id", "is_on_key", "type_lineup", "own_starters", "opp_starters"],
+               ["total_points", "total_poss", "ts_poss_count"]),
+        asserts=[("credited counts with no minutes cell (would be dropped by the LEFT JOIN)", """
+            SELECT count(*) FROM (
+              SELECT DISTINCT atc.game_id, atc.team_id, rr.player_id,
+                     (rr.source_player_name = ANY(atc.credit_own_lineup)) AS is_on,
+                     atc.credit_own_starters, atc.credit_opp_starters
+                FROM euroleague.action_team_context_actions atc
+                JOIN euroleague.full_rosters rr ON rr.game_id = atc.game_id AND rr.team_id = atc.team_id
+               WHERE atc.type_lineup IS NOT NULL AND atc.credit_own_lineup <> atc.own_lineup) c
+            WHERE NOT EXISTS (
+              SELECT 1 FROM euroleague.matchup_segments_actions ms
+               WHERE ms.game_id = c.game_id AND ms.team_id = c.team_id
+                 AND ms.own_starters = c.credit_own_starters AND ms.opp_starters = c.credit_opp_starters
+                 AND (c.player_id IN (SELECT fr.player_id FROM euroleague.full_rosters fr
+                                       WHERE fr.game_id = ms.game_id AND fr.team_id = ms.team_id
+                                         AND fr.source_player_name = ANY(ms.own_lineup))) = c.is_on)""")],
+    ),
     # Direct lineups read the per-action fact for both events and event-span
     # time. Starters filters leave the shared acts CTE: events filter on the
     # credited starters, time on the physical ones. Events group on the
