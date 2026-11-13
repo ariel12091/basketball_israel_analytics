@@ -28,12 +28,25 @@ describe("autoShare", () => {
 });
 
 describe("autoBars", () => {
-  it("shows three in four of a team's rows (Summary)", () => {
-    const rows = summaryRows(20);
+  it.each(["summary", "four_factors", "shot_profile"] as const)(
+    "clears both bars at 20 players with ON data (%s)",
+    (view) => {
+      const rows = [
+        ...summaryRows(20).map((r) => ({ ...r, off_on_poss: r["ON Poss"] })),
+        { team_id: 2, "ON Poss": null, off_on_poss: null },
+      ];
+      expect(autoBars(rows, view, autoShare([2]))).toEqual({
+        minOn: 0,
+        minAll: 0,
+      });
+    },
+  );
+
+  it("applies the team cutoff starting at 21 rows", () => {
+    const rows = summaryRows(21);
     const bars = autoBars(rows, "summary", autoShare([2]))!;
     const shown = filterSummaryRows(rows, [], bars.minAll, bars.minOn);
-    expect(shown.length / rows.length).toBeGreaterThanOrEqual(0.75);
-    expect(shown.length / rows.length).toBeLessThanOrEqual(0.8);
+    expect(shown).toHaveLength(16);
   });
 
   it("holds the whole league to the harder 60% floor", () => {
@@ -46,15 +59,15 @@ describe("autoBars", () => {
   });
 
   it("raises the bar above the 300 default for a team of heavy-minute players", () => {
-    const rows = summaryRows(16, 10, 100); // 100..1600 ON possessions
+    const rows = summaryRows(24, 10, 100); // 100..2400 ON possessions
     const bars = autoBars(rows, "summary", autoShare([10]))!;
     expect(bars.minOn).toBeGreaterThan(300);
     const shown = filterSummaryRows(rows, [], bars.minAll, bars.minOn);
-    expect(shown.length).toBe(12);
+    expect(shown).toHaveLength(18);
   });
 
   it("measures Four Factors' all-side bar on the same top rows as the ON bar", () => {
-    const rows = Array.from({ length: 8 }, (_, i) => ({
+    const rows = Array.from({ length: 24 }, (_, i) => ({
       team_id: 2,
       off_on_poss: (i + 1) * 100,
       off_off_poss: 900,
@@ -63,7 +76,7 @@ describe("autoBars", () => {
     }));
     const bars = autoBars(rows, "four_factors", autoShare([2]))!;
     const shown = filterFfRows(rows, [], bars.minAll, bars.minOn);
-    expect(shown).toHaveLength(6);
+    expect(shown).toHaveLength(18);
   });
 
   it("returns null when there is nothing to measure", () => {

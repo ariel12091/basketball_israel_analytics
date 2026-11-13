@@ -86,11 +86,8 @@ function statGroups(cols: { col: string }[]) {
   ];
 }
 
-/** Auto min-poss (web-only, deviation D34): while auto is on, both bars are
- * set to fit the rows in view (autoBars, keeping the top `share`: 35% of the
- * league, 75% under a team filter), raising as well as lowering. A hand move
- * turns auto off; any filter, season or view change turns it back on.
- * Shiny's setup_onoff_auto_min only lowers. */
+/** Auto min-poss (D34) sets both bars using autoBars. A manual change turns
+ * auto off until the game context, team selection, season or view changes. */
 function useAutoMin(args: {
   enabled: boolean;
   base: Row[] | null;

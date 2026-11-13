@@ -5,8 +5,9 @@ import { loadGolden } from "../test/onoffGoldens";
 import ui from "../src/data/shinyUi.json";
 import layout from "../src/data/layoutUi.json";
 import { autoBars, autoShare } from "../src/rules/onoff";
+import type { League } from "../src/rules/gameLogs";
 
-async function stub(page: Page, league = "il") {
+async function stub(page: Page, league: League = "il") {
   const requests: URL[] = [];
   await page.route("**/api/v1/**", (route) => {
     const url = new URL(route.request().url());
@@ -177,6 +178,40 @@ test("a stepper tap turns auto min-poss off; a filter change turns it back on", 
   await pickTeam(page, String(team.Team));
   await expect(input).toHaveValue(String(expected));
 });
+
+for (const [league, teamName] of [
+  ["il", "RISHON LEZION"],
+  ["euroleague", "Anadolu Efes Istanbul"],
+  ["eurocup", "Aris Thessaloniki"],
+] as const) {
+  test(`${league}: a small On/Off roster clears both auto minimums`, async ({ page }) => {
+    await stub(page, league);
+    const prefix = league === "il" ? "" : "euro_";
+    const minOn = page.locator(`#${prefix}min_on_poss`);
+    const minAll = page.locator(`#${prefix}min_all_poss`);
+    await expect(minOn).not.toHaveValue("0");
+
+    await filtersButton(page).click();
+    await pickTeam(page, teamName);
+    await page.keyboard.press("Escape");
+    await expect(minOn).toHaveValue("0");
+    await expect(minAll).toHaveValue("0");
+
+    const { answer } = loadGolden(`${league}_summary_default.json`);
+    const players = answer.rows.filter(
+      (r) => r.Team === teamName && r["ON Poss"] != null,
+    );
+    await expect(
+      page.locator('.ibpl-dt-scroll tbody td[data-column="Player"]'),
+    ).toHaveCount(players.length);
+
+    await page.getByRole("button", { name: "Increase Min ON Poss" }).click();
+    await expect(minOn).toHaveValue("10");
+    await page.getByRole("tab", { name: "Four Factors" }).click();
+    await expect(minOn).toHaveValue("0");
+    await expect(minAll).toHaveValue("0");
+  });
+}
 
 test("possession columns are on screen without scrolling sideways", async ({
   page,

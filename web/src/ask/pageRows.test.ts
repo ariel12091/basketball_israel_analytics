@@ -43,9 +43,19 @@ describe("pageRows: the rows a freshly opened link shows", () => {
     expect(autoBar("0", 300, 450)).toBe(0);
   });
 
-  it("onoff: the bars fit the team-filtered base, raising above the default", () => {
-    // Team 2 holds 10 players on 200..2000 ON possessions; team 3 is light.
-    const rows = Array.from({ length: 20 }, (_, i) => ({
+  it("onoff: a team with 20 player rows clears both automatic bars", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => ({
+      team_id: i % 2 ? 2 : 3,
+      "ON Poss": (i + 1) * 10,
+      "OFF Poss": 4000,
+    }));
+    const payload = { rows, meta: { view: "summary" } };
+    expect(pageRows("onoff", "il", payload, q("teams=2"))).toHaveLength(20);
+    expect(pageRows("onoff", "il", payload, q("teams=2&min_on=300"))).toHaveLength(6);
+  });
+
+  it("onoff: the bars can rise above the default for a large team-filtered group", () => {
+    const rows = Array.from({ length: 48 }, (_, i) => ({
       team_id: i % 2 ? 2 : 3,
       "ON Poss": i % 2 ? (i + 1) * 100 : 20,
       "OFF Poss": 4000,
@@ -65,7 +75,7 @@ describe("pageRows: the rows a freshly opened link shows", () => {
       { rows, league3p: null, meta: { view: "summary", filtered: false } },
       q("teams=2"),
     );
-    expect(got).toHaveLength(8); // ceil(10 x 0.75) top rows
+    expect(got).toHaveLength(18); // ceil(24 x 0.75) top rows
     expect(got.every((r) => Number(r[cols.on]) >= bars.minOn)).toBe(true);
   });
 

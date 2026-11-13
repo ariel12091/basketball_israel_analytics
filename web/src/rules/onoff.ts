@@ -19,6 +19,7 @@ const RANKING_MIN_PCT = 0.25; // global.R
  * in four of the team's players show after the bar is rounded down. */
 export const AUTO_TOP_PCT = 0.6;
 export const AUTO_TOP_PCT_TEAMS = 0.75;
+const AUTO_MIN_PLAYER_COUNT = 20;
 /** The share auto keeps for the rows in view: relaxed under a team filter. */
 export const autoShare = (teams: readonly number[]) =>
   teams.length ? AUTO_TOP_PCT_TEAMS : AUTO_TOP_PCT;
@@ -327,17 +328,18 @@ export function autoMinAll(
   return Math.floor(Math.min(...v) / step) * step;
 }
 
-/** Both auto bars for the rows in view (teams filtered, no possession bars),
- * keeping `share` of them (autoShare). Web-only (D34): applied as computed, up
- * or down, on every filter change, and both bars measure the same top rows.
- * (Shiny measures Four Factors' all-side bar on the rows that clear the ON
- * bar, which at a 75% share would show only about 56%.) */
+/** Clear both possession bars when at most 20 player rows have ON data.
+ * For larger groups, both bars measure the same top rows (D34). */
 export function autoBars(
   rows: Row[],
   view: View,
   share: number,
 ): { minOn: number; minAll: number } | null {
+  if (!rows.length) return null;
   const cols = possCols(view);
+  const playerCount = rows.filter((r) => num(r[cols.on]) != null).length;
+  if (playerCount <= AUTO_MIN_PLAYER_COUNT)
+    return { minOn: 0, minAll: 0 };
   const minOn = autoMinOn(rows, cols.on, share);
   const minAll = autoMinAll(rows, cols.on, cols.on, cols.off, share);
   return minOn == null || minAll == null ? null : { minOn, minAll };
