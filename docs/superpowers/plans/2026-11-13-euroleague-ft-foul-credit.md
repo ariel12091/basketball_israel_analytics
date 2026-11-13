@@ -214,3 +214,41 @@ Moved-points report: points and trips per competition and season that changed li
 ## Order and stopping points
 
 Tasks run in order. Stop for the user's yes before Task 1 Step 5 (baseline writes), Task 2 Step 4, and each reader task's first `--apply`. Tasks 3-6 can each be merged on their own; the numbers then move in steps, and that is acceptable because each step is correct on its own surface. Task 7's web change goes out only on "deploy".
+
+## As executed (2026-11-13)
+
+All tasks were applied the same day. **Where this section differs from the tasks above, it is the truth.**
+
+- **Order.** Readers switched in dependency order, not task order:
+  1. lineup totals (plus `sub_lineups_stats_mv`);
+  2. `player_stats_actions_by_game` credit columns;
+  3. the default-clutch rebuild;
+  4. clutch lineups;
+  5. direct lineups;
+  6. player on/off;
+  7. player stats;
+  8. team Four Factors;
+  9. `ribbon_events_v`.
+
+  `fetch_lineups_dynamic`, `select_team_game_facts`, `filtered_team_game_facts`, `get_player_traditional_standard_clutch`, `get_team_minutes_pergame` and `get_team_traditional_pergame` needed no edit: they read switched tables or measure time only.
+- **Found on the way:**
+  - `default_clutch_lineup_totals_by_game` was stale against its own function before 062. It was rebuilt first, and its baseline was re-taken.
+  - `fetch_lineups_direct` on a whole season exceeds 10 minutes, so its presets take two teams.
+- **Better than the Israeli run:** the clutch and direct lineup readers FULL JOIN events to time, so no event in a clutch window is dropped.
+- **Games played follow the floor** in `player_traditional_by_game` and the custom-clutch reader. In the standard-clutch reader they follow credited possessions: deviation D40, 6 of 285 E 2025-26 players move by one.
+- **No EuroLeague Gameflow fixtures exist** (673/440/1147 are Israeli). `test-gameflow-events-db.R` pins EuroLeague events against On/Off and passes.
+- **Review fix:** `load_games.py`'s team-grain check rebuilt the team table on physical starters; every weekly load would have failed (9,322 rows). Fixed, with a test.
+- **Results** (every step: team totals and floor time unchanged against the baseline):
+
+  | Step | Moved |
+  |---|---|
+  | Lineup totals | 27,483 of 160,970 rows; 19,538 points |
+  | Clutch lineups | 2,156 of 7,061 rows; 1,555 points |
+  | Player on/off | 263,788 of 1,075,112 rows |
+  | Player stats | 6,695 rows; 3,814 possessions |
+  | Team starters | 16,270 of 36,396 rows; 7,709 points |
+  | Gameflow events | 19,816 events with a new five |
+
+- **Left to do:**
+  1. After the next weekly load: N15 = 0 on the new games, then drop the scratch schema `euroleague_ftc_baseline`.
+  2. Deferred: the comments in `app/R/global.R` and `web/src/data/gameflowSql.json` still describe D39.
