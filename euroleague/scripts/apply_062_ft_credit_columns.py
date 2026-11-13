@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+"""Apply and verify EuroLeague migration 062: credit columns on the event fact
+(docs/superpowers/plans/2026-11-13-euroleague-ft-foul-credit.md, Task 2).
+
+Dry run by default: one transaction, every gate, then ROLLBACK.
+CONFIRM_EL_062_APPLY=1 commits.
+
+Steps, all inside the transaction:
+1. sql/062_ft_credit_columns.sql: the five columns and
+   refresh_ft_credit_fields_for_games().
+2. refresh_actions_consumer_candidates, rebuilt from its LIVE definition with
+   three exact edits (each must match once): the INSERT lists the credit
+   columns, the SELECT writes the row's own lineup into them, and the function
+   calls refresh_ft_credit_fields_for_games() before returning.
+   The DDL that ran is written to sql/062_ft_credit_refresh_function.sql.
+3. Backfill every game in batches, then SET NOT NULL on the five columns.
+4. Gates: G1 and G3 (verify_062_ft_credit.py), the moved-points report, and a
+   one-game refresh through the new function that must reproduce the backfilled
+   credit columns; its time is printed.
+
+Holds the fact's table lock until COMMIT/ROLLBACK: EuroLeague Gameflow reads
+wait for a few minutes. Do not run during the weekly load (18-23 UTC Tue-Fri).
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "src"))
+
+from euroleague_possessions.postgres_backend import (  # noqa: E402
+    _split_sql_statements,
+    connect_from_env_file,
+    inspect_target,
+)
+
+DDL_PATH = REPO / "sql" / "062_ft_credit_columns.sql"
+GENERATED_PATH = REPO / "sql" / "062_ft_credit_refresh_function.sql"
+ENV_PATH = REPO.parent / "etl" / ".Renviron"
+FACT = "euroleague.action_team_context_actions"
+CREDIT = ["credit_own_lineup", "credit_opp_lineup", "credit_own_starters",
+          "credit_opp_starters", "credit_segment_id"]
+BATCH = 100
+
+_spec = importlib.util.spec_from_file_location("verify_062", REPO / "scripts" / "verify_062_ft_credit.py")
+verify = importlib.util.module_from_spec(_spec)
+sys.modules["verify_062"] = verify
+_spec.loader.exec_module(verify)
+
+# (old, new) pairs for refresh_actions_consumer_candidates; each old string
+# must occur exactly once in the live definition.
+REFRESH_EDITS = [
+    ("    own_team_score, opp_team_score, load_run_id, derivation_version\n  )",
+     "    own_team_score, opp_team_score, load_run_id, derivation_version,\n"
+     "    credit_own_lineup, credit_opp_lineup, credit_own_starters,\n"
+     "    credit_opp_starters, credit_segment_id\n  )"),
+    ("    'actions-v2'\n  FROM sided sd",
+     "    'actions-v2',\n"
+     "    sd.own_lineup,\n    sd.opp_lineup,\n    sd.own_starters,\n    sd.opp_starters,\n"
+     "    ms.segment_id\n  FROM sided sd"),
+    ("  GET DIAGNOSTICS inserted_count = ROW_COUNT;\n  RETURN inserted_count;",
+     "  GET DIAGNOSTICS inserted_count = ROW_COUNT;\n"
+     "  -- Migration 062: a free throw counts for the lineup that drew the foul.\n"
+     "  PERFORM euroleague.refresh_ft_credit_fields_for_games(game_ids);\n"
+     "  RETURN inserted_count;"),
+]
+
+
+def edit_refresh(definition: str) -> str:
+    out = definition.replace("\r\n", "\n")
+    for old, new in REFRESH_EDITS:
+        hits = out.count(old)
+        if hits != 1:
+            raise RuntimeError(f"expected one match, found {hits}: {old[:60]!r}")
+        out = out.replace(old, new)
+    return out.rstrip().rstrip(";") + ";\n"
+
+
+def validate_ddl(ddl: str) -> list[str]:
+    if "EUROLEAGUE SHADOW SCHEMA" not in ddl.upper():
+        raise ValueError("missing EuroLeague safety marker")
+    body = "\n".join(l for l in ddl.splitlines() if not l.strip().startswith("--")).upper()
+    if re.search(r"\bBASKETBALL(?:_TEST)?\s*\.", body):
+        raise ValueError("forbidden Israeli schema reference")
+    if re.search(r"\b(?:DROP|TRUNCATE|CASCADE)\b", body):
+        raise ValueError("migration must be additive")
+    return _split_sql_statements(ddl)
+
+
+def main() -> int:
+    apply = os.environ.get("CONFIRM_EL_062_APPLY") == "1"
+    statements = validate_ddl(DDL_PATH.read_text(encoding="utf-8"))
+    conn = connect_from_env_file(ENV_PATH, direct_port=5432)
+    cur = conn.cursor()
+    try:
+        if inspect_target(conn)["euroleague_schema"] != "euroleague":
+            raise RuntimeError("EuroLeague schema unavailable")
+        print("mode=" + ("EXECUTE" if apply else "DRY RUN (CONFIRM_EL_062_APPLY=1 to commit)"), flush=True)
+        cur.execute("BEGIN")
+        cur.execute("SET LOCAL lock_timeout = '5s'")
+        cur.execute("SET LOCAL statement_timeout = '600s'")
+        for s in statements:
+            cur.execute(s)
+
+        cur.execute("SELECT pg_get_functiondef('euroleague.refresh_actions_consumer_candidates(bigint[])'::regprocedure)")
+        refresh_ddl = edit_refresh(cur.fetchone()[0])
+        GENERATED_PATH.write_text(
+            "-- Generated by scripts/apply_062_ft_credit_columns.py from the live definition\n"
+            "-- of euroleague.refresh_actions_consumer_candidates (migration 062, EUROLEAGUE\n"
+            "-- SHADOW SCHEMA): the fact's refresh fills the credit columns.\n\n" + refresh_ddl,
+            encoding="utf-8")
+        cur.execute(refresh_ddl)
+        print("refresh_actions_consumer_candidates rebuilt with 3 edits", flush=True)
+
+        cur.execute(f"SELECT DISTINCT game_id FROM {FACT} ORDER BY 1")
+        games = [r[0] for r in cur.fetchall()]
+        t0 = time.perf_counter()
+        recredited = 0
+        for i in range(0, len(games), BATCH):
+            cur.execute("SELECT euroleague.refresh_ft_credit_fields_for_games(%s::bigint[])", (games[i:i + BATCH],))
+            recredited += cur.fetchone()[0]
+        print(f"backfill: {len(games)} games, {recredited} free-throw rows from a parent, "
+              f"{time.perf_counter() - t0:.1f}s", flush=True)
+        for c in CREDIT:
+            cur.execute(f"ALTER TABLE {FACT} ALTER COLUMN {c} SET NOT NULL")
+        print("credit columns NOT NULL", flush=True)
+
+        failed = verify.check_fact(conn)
+        if failed:
+            raise RuntimeError("G1/G3 failed")
+
+        # The weekly load's path: refresh one 2025-26 game through the new
+        # function and require the same credit columns as the backfill.
+        cur.execute("""SELECT s.game_id FROM euroleague.schedule s
+                        WHERE s.competition = 'E' AND s.season = 2025
+                          AND EXISTS (SELECT 1 FROM euroleague.action_team_context_actions f WHERE f.game_id = s.game_id)
+                        ORDER BY s.game_id DESC LIMIT 1""")
+        gid = cur.fetchone()[0]
+        snap = f"""SELECT team_id, source_event_order, {', '.join(CREDIT)}
+                     FROM {FACT} WHERE game_id = {int(gid)} ORDER BY 1, 2"""
+        cur.execute(snap)
+        before = cur.fetchall()
+        t0 = time.perf_counter()
+        cur.execute("SELECT euroleague.refresh_actions_consumer_candidates(%s::bigint[])", ([gid],))
+        seconds = time.perf_counter() - t0
+        cur.execute(snap)
+        after = cur.fetchall()
+        print(f"one-game refresh (game {gid}): {len(after)} rows, {seconds:.2f}s, "
+              f"credit columns equal to the backfill: {before == after}", flush=True)
+        if before != after:
+            raise RuntimeError("the refresh does not reproduce the backfill")
+
+        if apply:
+            cur.execute("COMMIT")
+            print("migration 062 applied")
+        else:
+            cur.execute("ROLLBACK")
+            print("DRY RUN passed and rolled back")
+        return 0
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
