@@ -116,6 +116,64 @@ OBJECTS: dict[str, ReaderSwitch] = {
               WHERE f.game_id = a.game_id AND f.team_id = a.team_id
                 AND f.source_event_order = a.source_event_order)""")],
     ),
+    # Not a switch: default_clutch_lineup_totals_by_game was stale against its
+    # own refresh function before 062 (2026-11-13: rebuilding every game with
+    # the unchanged function moved 1,480 floor-time rows and 22 team totals).
+    # Rebuilt first, so the clutch switch is measured on its own.
+    "default_clutch_rebuild": ReaderSwitch(
+        signature="euroleague.refresh_default_clutch_for_games(bigint[])",
+        edits=[],
+        refresh="SELECT euroleague.refresh_default_clutch_for_games(%s::bigint[])",
+        asserts=[("default-clutch rows that differ from clutch_team_game_facts", """
+            WITH g AS (SELECT array_agg(DISTINCT game_id) ids FROM euroleague.default_clutch_lineup_totals_by_game),
+            f AS (SELECT game_id, team_id, own_lineup, own_starters, opp_starters, type_lineup,
+                         possessions, points, ts_possessions, seconds
+                    FROM g, euroleague.clutch_team_game_facts(g.ids, 5, 'all', 300, false)),
+            t AS (SELECT game_id, team_id, own_lineup, own_starters, opp_starters, type_lineup,
+                         possessions, points, ts_possessions, seconds
+                    FROM euroleague.default_clutch_lineup_totals_by_game)
+            SELECT count(*) FROM ((SELECT * FROM f EXCEPT SELECT * FROM t)
+                                  UNION ALL (SELECT * FROM t EXCEPT SELECT * FROM f)) d""")],
+    ),
+    # Clutch lineups: event_counts groups on the credited lineup and starters;
+    # clutch time (clutch_segment_durations joined to segments) stays physical.
+    # A free throw inside the window whose foul's lineup has no clutch time is
+    # not matched by the LEFT JOIN from duration -- the Israeli accepted
+    # deviation (Review Focus 5); the clutch G2 check measures it.
+    "clutch_team_game_facts": ReaderSwitch(
+        signature="euroleague.clutch_team_game_facts(bigint[], integer, text, integer, boolean)",
+        edits=[
+            (" SELECT game_id,team_id,own_lineup,own_starters,opp_starters,type_lineup,\n  sum(possession_flag)",
+             " SELECT game_id,team_id,credit_own_lineup AS own_lineup,credit_own_starters AS own_starters,\n"
+             "  credit_opp_starters AS opp_starters,type_lineup,\n  sum(possession_flag)"),
+            (" GROUP BY game_id,team_id,own_lineup,own_starters,opp_starters,type_lineup\n), duration AS (",
+             " GROUP BY game_id,team_id,credit_own_lineup,credit_own_starters,credit_opp_starters,type_lineup\n"
+             "), duration AS ("),
+            # Keep events whose credited lineup has no clutch time (a free throw
+            # inside the window whose foul came just before it): FULL JOIN, so
+            # clutch team totals are exactly the events in the window. The
+            # Israeli readers accepted this loss; here it is closed.
+            ("SELECT i.game_id,i.team_id,i.own_lineup,i.own_starters,i.opp_starters,s.type_lineup,",
+             "SELECT game_id,team_id,own_lineup,own_starters,opp_starters,type_lineup,"),
+            (" CASE WHEN s.type_lineup = 'offense' THEN i.seconds END\n"
+             "FROM duration i CROSS JOIN (VALUES ('offense'::text),('defense'::text)) s(type_lineup)\n"
+             "LEFT JOIN event_counts e USING(game_id,team_id,own_lineup,own_starters,opp_starters,type_lineup)\n"
+             "WHERE i.seconds > 0 OR e.game_id IS NOT NULL;",
+             # An event-only row's lineup had no clutch time: 0, not NULL (the
+             # table requires seconds on every offense row).
+             " CASE WHEN type_lineup = 'offense' THEN coalesce(d.seconds, 0) END\n"
+             "FROM (SELECT i.*, s.type_lineup\n"
+             "        FROM duration i CROSS JOIN (VALUES ('offense'::text),('defense'::text)) s(type_lineup)) d\n"
+             "FULL JOIN event_counts e USING(game_id,team_id,own_lineup,own_starters,opp_starters,type_lineup)\n"
+             "WHERE d.seconds > 0 OR e.game_id IS NOT NULL;"),
+        ],
+        refresh="SELECT euroleague.refresh_default_clutch_for_games(%s::bigint[])",
+        checks=["default_clutch_lineup_totals_by_game", "clutch_team_game_facts_clutch",
+                "fetch_lineups_dynamic_clutch"],
+        moved=("euroleague.default_clutch_lineup_totals_by_game",
+               ["game_id", "team_id", "own_lineup", "own_starters", "opp_starters", "type_lineup"],
+               ["points", "possessions", "ts_possessions"]),
+    ),
 }
 
 

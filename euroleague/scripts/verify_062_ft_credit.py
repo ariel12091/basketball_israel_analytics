@@ -326,6 +326,7 @@ def main() -> int:
     ap.add_argument("--check-fact", action="store_true")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--probe", action="store_true")
+    ap.add_argument("--retake", nargs="+", help="drop and retake these objects' baseline")
     a = ap.parse_args()
     if a.list:
         for s in SPECS:
@@ -334,6 +335,16 @@ def main() -> int:
     conn = connect()
     if a.probe:
         return 1 if probe(conn, [s.name for s in SPECS]) else 0
+    if a.retake:
+        unknown = [n for n in a.retake if n not in SPEC_BY_NAME]
+        if unknown:
+            raise SystemExit(f"unknown objects: {unknown}")
+        if os.environ.get("CONFIRM_EL_062_BASELINE") != "1":
+            raise SystemExit("set CONFIRM_EL_062_BASELINE=1 to retake baseline tables")
+        for name in a.retake:
+            for suffix in ("team", "time"):
+                conn.execute(f"DROP TABLE IF EXISTS {BASELINE_SCHEMA}.{name}__{suffix}")
+        take_baseline(conn, a.retake)
     if a.baseline:
         take_baseline(conn, [s.name for s in SPECS])
     failed = 0
