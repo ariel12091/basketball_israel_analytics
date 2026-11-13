@@ -116,6 +116,62 @@ OBJECTS: dict[str, ReaderSwitch] = {
               WHERE f.game_id = a.game_id AND f.team_id = a.team_id
                 AND f.source_event_order = a.source_event_order)""")],
     ),
+    # Direct lineups read the per-action fact for both events and event-span
+    # time. Starters filters leave the shared acts CTE: events filter on the
+    # credited starters, time on the physical ones. Events group on the
+    # credited lineup; the lineup list takes credited lineups too; facts is a
+    # FULL JOIN, as in clutch_team_game_facts, so no event is dropped.
+    "fetch_lineups_direct": ReaderSwitch(
+        signature=("euroleague.fetch_lineups_direct(text, integer, date, date, text, text, text, text, text, "
+                   "text, integer, text, integer, text, integer, boolean, integer, integer, integer, integer, "
+                   "integer, integer, integer, integer, text, text, integer)"),
+        edits=[
+            ("  a.own_starters\n FROM euroleague.player_stats_actions_by_game a",
+             "  a.own_starters,a.opp_starters,a.credit_own_lineup,a.credit_own_starters,a.credit_opp_starters\n"
+             " FROM euroleague.player_stats_actions_by_game a"),
+            ("  AND (p_num_starters_off_min IS NULL OR a.own_starters>=p_num_starters_off_min)\n"
+             "  AND (p_num_starters_off_max IS NULL OR a.own_starters<=p_num_starters_off_max)\n"
+             "  AND (p_num_starters_def_min IS NULL OR a.opp_starters>=p_num_starters_def_min)\n"
+             "  AND (p_num_starters_def_max IS NULL OR a.opp_starters<=p_num_starters_def_max)\n"
+             "),lineup_identity",
+             "),lineup_identity"),
+            (" FROM (SELECT DISTINCT game_id,team_id,own_lineup FROM acts) a",
+             " FROM (SELECT game_id,team_id,own_lineup FROM acts\n"
+             "       UNION SELECT game_id,team_id,credit_own_lineup FROM acts) a"),
+            (" SELECT game_id,team_id,own_lineup,type_lineup,sum(possession_flag)::bigint possessions",
+             " SELECT game_id,team_id,credit_own_lineup AS own_lineup,type_lineup,sum(possession_flag)::bigint possessions"),
+            ("max(own_starters)::smallint own_starters\n"
+             " FROM acts WHERE type_lineup IS NOT NULL GROUP BY game_id,team_id,own_lineup,type_lineup",
+             "max(credit_own_starters)::smallint own_starters\n"
+             " FROM acts WHERE type_lineup IS NOT NULL\n"
+             "  AND (p_num_starters_off_min IS NULL OR credit_own_starters>=p_num_starters_off_min)\n"
+             "  AND (p_num_starters_off_max IS NULL OR credit_own_starters<=p_num_starters_off_max)\n"
+             "  AND (p_num_starters_def_min IS NULL OR credit_opp_starters>=p_num_starters_def_min)\n"
+             "  AND (p_num_starters_def_max IS NULL OR credit_opp_starters<=p_num_starters_def_max)\n"
+             " GROUP BY game_id,team_id,credit_own_lineup,type_lineup"),
+            (" FROM acts GROUP BY game_id,team_id,own_lineup,segment_id",
+             " FROM acts\n"
+             " WHERE (p_num_starters_off_min IS NULL OR own_starters>=p_num_starters_off_min)\n"
+             "  AND (p_num_starters_off_max IS NULL OR own_starters<=p_num_starters_off_max)\n"
+             "  AND (p_num_starters_def_min IS NULL OR opp_starters>=p_num_starters_def_min)\n"
+             "  AND (p_num_starters_def_max IS NULL OR opp_starters<=p_num_starters_def_max)\n"
+             " GROUP BY game_id,team_id,own_lineup,segment_id"),
+            (" SELECT d.game_id,d.team_id,d.own_lineup,s.type_lineup,",
+             " SELECT game_id,team_id,own_lineup,type_lineup,"),
+            ("CASE WHEN s.type_lineup='offense' THEN d.seconds END seconds\n"
+             " FROM duration d CROSS JOIN(VALUES('offense'::text),('defense'::text))s(type_lineup)\n"
+             " LEFT JOIN event_counts e USING(game_id,team_id,own_lineup,type_lineup)\n"
+             " WHERE d.seconds>0 OR e.game_id IS NOT NULL",
+             "CASE WHEN type_lineup='offense' THEN coalesce(d.seconds,0) END seconds\n"
+             " FROM (SELECT x.*,s.type_lineup FROM duration x\n"
+             "       CROSS JOIN(VALUES('offense'::text),('defense'::text))s(type_lineup)) d\n"
+             " FULL JOIN event_counts e USING(game_id,team_id,own_lineup,type_lineup)\n"
+             " WHERE d.seconds>0 OR e.game_id IS NOT NULL"),
+        ],
+        checks=["fetch_lineups_direct_season"],
+        asserts=[("units where direct and per-game lineup event counts differ (two teams, E 2025-26)",
+                  None)],  # filled in by _direct_vs_pergame() below
+    ),
     # Not a switch: default_clutch_lineup_totals_by_game was stale against its
     # own refresh function before 062 (2026-11-13: rebuilding every game with
     # the unchanged function moved 1,480 floor-time rows and 22 team totals).
@@ -175,6 +231,27 @@ OBJECTS: dict[str, ReaderSwitch] = {
                ["points", "possessions", "ts_possessions"]),
     ),
 }
+
+
+def _direct_vs_pergame() -> str:
+    """Both lineup readers count the same events per unit once both credit the
+    same way. Units with no event on either side are listed differently (floor
+    time only), so both sides keep only units with an event; a missing side
+    counts as zero."""
+    events = ["off_poss", "off_pts", "off_ts_poss", "off_fga", "off_fta",
+              "def_poss", "def_pts", "def_ts_poss", "def_fga", "def_fta"]
+    cols = ", ".join(f"coalesce({c}, 0) AS {c}" for c in events)
+    has_event = " + ".join(f"coalesce({c}, 0)" for c in events) + " > 0"
+    side = lambda src: f"SELECT unit_key, {cols} FROM ({src}) q WHERE {has_event}"
+    d = side(verify.SPEC_BY_NAME["fetch_lineups_direct_season"].source)
+    p = side(verify.SPEC_BY_NAME["fetch_lineups_pergame_season"].source)
+    return (f"WITH d AS ({d}), p AS ({p}) SELECT count(*) FROM "
+            "((SELECT * FROM d EXCEPT SELECT * FROM p) UNION ALL (SELECT * FROM p EXCEPT SELECT * FROM d)) x")
+
+
+OBJECTS["fetch_lineups_direct"] = ReaderSwitch(
+    **{**OBJECTS["fetch_lineups_direct"].__dict__,
+       "asserts": [(OBJECTS["fetch_lineups_direct"].asserts[0][0], _direct_vs_pergame())]})
 
 
 def apply_edits(definition: str, edits: list[tuple[str, str]]) -> str:
