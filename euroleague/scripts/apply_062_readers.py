@@ -246,6 +246,31 @@ OBJECTS: dict[str, ReaderSwitch] = {
         moved=("euroleague.player_traditional_by_game", ["game_id", "team_id", "player_id"],
                ["poss_on_floor", "gp", "minutes"]),
     ),
+    # Team Four Factors per (game, team, starters on the floor): events, so the
+    # starters split follows credit. Team totals are unchanged; only a
+    # starters-filtered team reading moves. get_team_minutes_pergame (segment
+    # time) and get_team_traditional_pergame (no starters filter, switched
+    # sources) need no edit.
+    "team_four_factors_by_game": ReaderSwitch(
+        signature="euroleague.refresh_team_four_factors_by_game_for_games(bigint[])",
+        edits=[
+            ("    s.season::smallint,\n    atc.own_starters,\n    atc.opp_starters,\n",
+             "    s.season::smallint,\n    atc.credit_own_starters,\n    atc.credit_opp_starters,\n"),
+            (" GROUP BY atc.game_id, atc.team_id, s.season,\n          atc.own_starters, atc.opp_starters;",
+             " GROUP BY atc.game_id, atc.team_id, s.season,\n          atc.credit_own_starters, atc.credit_opp_starters;"),
+        ],
+        refresh="SELECT euroleague.refresh_team_four_factors_by_game_for_games(%s::bigint[])",
+        after=["REFRESH MATERIALIZED VIEW euroleague.team_four_factors_mv",
+               "REFRESH MATERIALIZED VIEW euroleague.team_ppp_ratings_mv",
+               "REFRESH MATERIALIZED VIEW euroleague.player_traditional_stats_mv"],
+        checks=["team_four_factors_by_game", "team_four_factors_mv", "team_ppp_ratings_mv",
+                "player_traditional_stats_mv", "get_team_traditional_pergame_season",
+                "get_team_minutes_pergame_season", "filtered_team_game_facts_season",
+                "select_team_game_facts_season", "filtered_team_game_facts_starters",
+                "get_team_minutes_pergame_starters"],
+        moved=("euroleague.team_four_factors_by_game", ["game_id", "team_id", "own_starters", "opp_starters"],
+               ["off_pts", "off_poss", "def_pts"]),
+    ),
     # Direct lineups read the per-action fact for both events and event-span
     # time. Starters filters leave the shared acts CTE: events filter on the
     # credited starters, time on the physical ones. Events group on the
