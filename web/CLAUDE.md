@@ -24,7 +24,9 @@ the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 ## Gameflow (since 2026-11-12, live)
 
 Runs, credited-lineup ratings and the phone layout are live (PRs #24-#26).
-Contract rows: Gameflow stint rating, run, run standout, run cause (D39).
+Contract rows: Gameflow stint rating, run, run standout, run cause. EuroLeague
+credits a free throw to the lineup that drew the foul too since migration 062
+(2026-11-13; D39 closed).
 - Readers return `events` (each with its credited five) and `poss`;
   EuroLeague reads `euroleague.ribbon_events_v` (migration 061).
 - Rules: `rules/gameflowRatings.ts` (`stintRatings`, `windowsRatings`),

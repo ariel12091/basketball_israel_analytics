@@ -1,6 +1,6 @@
 # CLAUDE.md — EuroLeague sub-project
 
-> **`docs/shared_definitions.md` (repo root) is the contract for both leagues.** A EuroLeague number or control means what that document says. The legitimate league differences are the season convention, round vs game number, phase text vs game type, schema and function names, and feature flags. Any other difference is a bug or an entry in that document's deviation register (today: D1, the free-throw credit rule, and D13, rules not yet re-verified here).
+> **`docs/shared_definitions.md` (repo root) is the contract for both leagues.** A EuroLeague number or control means what that document says. The legitimate league differences are the season convention, round vs game number, phase text vs game type, schema and function names, and feature flags. Any other difference is a bug or an entry in that document's deviation register (today: D13, rules not yet re-verified here, and D40, clutch games played; the free-throw credit rule, D1, was aligned by migration 062 on 2026-11-13).
 
 Operating notes and review remarks for the EuroLeague shadow project. Read
 `euroleague/PROJECT.md` (status and plan) and `euroleague/AGENTS.md` (rules)
