@@ -68,7 +68,8 @@ OBJECTS: dict[str, ReaderSwitch] = {
              "      atc.type_lineup, atc.credit_opp_starters"),
         ],
         refresh="SELECT euroleague.refresh_lineup_totals_by_game(%s::bigint[])",
-        after=["REFRESH MATERIALIZED VIEW euroleague.sub_lineups_stats_mv"],
+        # A table since migration 063; NULL rebuilds every competition-season.
+        after=["SELECT euroleague.refresh_sub_lineups_stats(NULL)"],
         checks=["lineup_totals_by_game", "sub_lineups_stats_mv", "fetch_lineups_pergame_season"],
         moved=("euroleague.lineup_totals_by_game",
                ["game_id", "team_id", "lineup_key", "type_lineup", "opp_starters"],
