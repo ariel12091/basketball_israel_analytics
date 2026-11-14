@@ -1025,6 +1025,17 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     mark_phase_failed("Phase 3", conditionMessage(e))
   })
 
+  # Sort memory for Phases 4-5 (materialized-view rebuilds, per-game and
+  # sub-lineup refreshes), this session only, reset before Phase 6. At the
+  # server default (3.5 MB) the three full rebuilds alone wrote ~1.1 GB of
+  # temp files on every night with games, which counts against Supabase's
+  # disk I/O budget; at 256 MB they write none (measured 2026-11-14 with
+  # EXPLAIN ANALYZE on each definition: lineup_four_factors_by_game 408 MB,
+  # mv_lineup_totals_by_day 242 MB, player_traditional_stats_mv 448 MB -> 0).
+  # A full rebuild is kept on purpose: it also picks up historical games
+  # corrected outside the ETL (see the stale team-minutes check below).
+  if (!dry_run) DBI::dbExecute(pg, "SET work_mem = '256MB'")
+
   # =========================================================================
   # Phase 4: MV Refresh + Incremental Table Refresh
   # =========================================================================
@@ -1500,6 +1511,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       mark_phase_failed("Phase 5", conditionMessage(e))
     })
   }
+
+  if (!dry_run) DBI::dbExecute(pg, "RESET work_mem")
 
   # =========================================================================
   # Phase 6: Validation (per-game row count checks)
