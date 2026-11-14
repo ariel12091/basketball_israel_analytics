@@ -182,6 +182,12 @@ for (const [league, season] of [
 // on 2026-11-01 (EuroLeague migration 057: 34 s; Israeli fetch_lineups_all:
 // 90 s+). Every request must answer within the 20 s budget, and no group may
 // show more starters than players. Twin of app/tests/testthat/test-lineup-starters-db.R.
+// Weekly only (LIVE_HEAVY=1, the workflow's Sunday run against production):
+// the ten requests carry no data version, so the CDN never keeps them, and on
+// every Preview push they cost about 2 GiB of database temp writes and reads
+// (2026-11-14: 43 runs were ~95% of all filtered 2-3 player Lineups calls).
+// SQL reaches the database without a web push, so a per-push run caught nothing
+// a weekly one would miss.
 for (const [league, season, filter] of [
   ["il", 2026, "&home_away=away"],
   ["il", 2026, "&clutch=true"],
@@ -191,6 +197,7 @@ for (const [league, season, filter] of [
 ] as const)
   for (const size of [2, 3])
     test(`live ${league}: ${size}-player lineups${filter} within budget`, async ({ page }, info) => {
+      test.skip(process.env.LIVE_HEAVY !== "1", "Weekly heavy check (LIVE_HEAVY=1)");
       test.skip(info.project.name !== "desktop", "API check, once per run");
       const t0 = Date.now();
       const response = await page.goto(`/api/v1/${league}/lineups?season=${season}&size=${size}${filter}`);
