@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -670,7 +671,14 @@ def finish_load_run(
     successful_games: int | None = None,
     failed_games: int | None = None,
     errors: Sequence[Mapping[str, Any]] | None = None,
+    game_ids: Sequence[int] | None = None,
 ) -> None:
+    """Refresh the read layer and record the run's outcome, in one transaction.
+
+    ``game_ids``: the games this run published. The Lineups table
+    (sub_lineups_stats_mv, migration 063) is rebuilt only for their
+    competition-seasons; None rebuilds every season, an empty list none.
+    """
     successful = (
         int(successful_games) if successful_games is not None else (1 if success else 0)
     )
@@ -694,7 +702,22 @@ def finish_load_run(
         # reports success while the app serves stale aggregates. Lift the
         # timeout for this statement only; SET LOCAL reverts at COMMIT.
         cursor.execute("SET LOCAL statement_timeout = 0")
+        # Migration 063: the Lineups table is a table rebuilt per season. Until
+        # 2026-11-14 it was a view this function rebuilt for every season after
+        # every load (~85 s, ~2.8 GB of temp files each time).
+        scope = None if game_ids is None else sorted({int(g) for g in game_ids})
+        started = time.perf_counter()
+        cursor.execute(
+            "SELECT euroleague.refresh_sub_lineups_stats(%s::bigint[])",
+            (scope,),
+        )
+        lineups_seconds = time.perf_counter() - started
+        started = time.perf_counter()
         cursor.execute("SELECT euroleague.refresh_app_materialized_views()")
+        print(
+            f"refresh_sub_lineups_stats_seconds={lineups_seconds:.1f} "
+            f"refresh_app_materialized_views_seconds={time.perf_counter() - started:.1f}"
+        )
         cursor.execute(
             "UPDATE euroleague.load_runs SET status = %s, completed_at = now(), "
             "successful_games = %s, failed_games = %s, error_summary = %s::jsonb "
