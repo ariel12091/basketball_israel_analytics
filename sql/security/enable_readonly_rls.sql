@@ -130,6 +130,14 @@ BEGIN
     RAISE EXCEPTION 'Required role app_readonly does not exist';
   END IF;
 
+  -- PostgreSQL gives PUBLIC EXECUTE on every new function by a GLOBAL
+  -- default, which the per-schema ALTER DEFAULT PRIVILEGES below cannot
+  -- revoke. Without this, a function created by a migration is executable by
+  -- app_readonly, anon and authenticated until the next apply (2026-11-13:
+  -- euroleague.refresh_ft_credit_fields_for_games failed the nightly audit).
+  -- Applies to functions the applying role creates, which is every migration.
+  EXECUTE 'ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+
   FOR v_schema IN
     SELECT nspname
     FROM pg_namespace
