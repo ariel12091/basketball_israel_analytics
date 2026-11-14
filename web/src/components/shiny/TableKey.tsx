@@ -6,6 +6,7 @@ import ui from "@/data/shinyUi.json";
 import text from "@/data/layoutUi.json";
 import { Runs, type Block } from "./Blocks";
 import MoreInfo from "./MoreInfo";
+import { heatStyle } from "./DataTable";
 import { TagWhy } from "./OnOffTables";
 import type { League } from "@/rules/gameLogs";
 import { useFrame } from "./TabKit";
@@ -33,7 +34,7 @@ export default function TableLegend({
       <span className="tl-item">
         <span className="tl-scale" aria-hidden="true">
           {SWATCHES.map((c) => (
-            <i key={c} style={{ background: c }} />
+            <i key={c} className="ibpl-heat" style={heatStyle(c)} />
           ))}
         </span>
         <span className="tl-ends">

@@ -8,3 +8,116 @@
 .nav-theme-btn .nav-theme-label { display: none; }
 body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { margin-right: 0; }
 body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn .nav-theme-label { display: inline; }
+
+/* ---- Tokens: app.css :root, light values ----
+   Text values are checked against white and --ibpl-bg for WCAG AA (4.5:1):
+   accent 5.0, dim 5.2, muted 6.9, pos 5.3, neg 5.8. Faint is decoration only. */
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --ibpl-bg: #FAF8F4;
+  --ibpl-bg-rgb: 250, 248, 244;
+  --ibpl-bg-sunken: #F2EEE7;
+  --ibpl-surface: #FFFFFF;
+  --ibpl-surface-alt: #F6F3EE;
+  --ibpl-surface-2: #F2EEE7;
+  --ibpl-surface-3: #EFEAE2;
+  --ibpl-surface-hover: #EAE3D8;
+  --ibpl-surface-selected: #F6E7C8;
+  --ibpl-border: #DDD6CC;
+
+  --ibpl-text-faint: #A39B90;
+  --ibpl-text-dim: #736B60;
+  --ibpl-text-muted: #5E574E;
+  --ibpl-text-body: #2E2924;
+  --ibpl-text: #1F1A14;
+  /* Heat cells are tinted toward white in light (.ibpl-heat below), so the
+     text on them is dark. */
+  --ibpl-cell-text: #1F1A14;
+  --ibpl-cell-text-2: #3A332B;
+
+  --ibpl-accent: #9A630C;
+  --ibpl-accent-rgb: 154, 99, 12;
+  --ibpl-accent-hover: #7E5009;
+
+  --ibpl-pos: #0F7A54;
+  --ibpl-neg: #B8352F;
+  --ibpl-neg-rgb: 184, 53, 47;
+  --ibpl-info: #2563B0;
+
+  --ibpl-side-a: #4B5BB5;
+  --ibpl-side-a-rgb: 75, 91, 181;
+  --ibpl-fg2: #3A6A9E;
+  --ibpl-fg3: #A85E1C;
+  --ibpl-chip-game-border: #7FA6CC;
+  --ibpl-chip-game-text: #2B5F8F;
+
+  /* ---- Bootstrap (vendor/bootstrap.min.css was compiled dark, with white
+     and black swapped) ---- */
+  --bs-white: #FFFFFF;
+  --bs-white-rgb: 255, 255, 255;
+  --bs-black: #1F1A14;
+  --bs-black-rgb: 31, 26, 20;
+  --bs-body-bg: #FAF8F4;
+  --bs-body-bg-rgb: 250, 248, 244;
+  --bs-body-color: #2E2924;
+  --bs-body-color-rgb: 46, 41, 36;
+  --bs-emphasis-color: #1F1A14;
+  --bs-emphasis-color-rgb: 31, 26, 20;
+  --bs-secondary-color: rgba(46, 41, 36, 0.75);
+  --bs-secondary-color-rgb: 46, 41, 36;
+  --bs-secondary-bg: #F2EEE7;
+  --bs-secondary-bg-rgb: 242, 238, 231;
+  --bs-tertiary-color: rgba(46, 41, 36, 0.5);
+  --bs-tertiary-color-rgb: 46, 41, 36;
+  --bs-tertiary-bg: #F6F3EE;
+  --bs-tertiary-bg-rgb: 246, 243, 238;
+  --bs-border-color: #DDD6CC;
+  --bs-border-color-translucent: rgba(31, 26, 20, 0.12);
+  --bs-link-color: #9A630C;
+  --bs-link-color-rgb: 154, 99, 12;
+  --bs-link-hover-color: #7E5009;
+  --bs-link-hover-color-rgb: 126, 80, 9;
+  --bs-primary: #9A630C;
+  --bs-primary-rgb: 154, 99, 12;
+  --bs-secondary: #EFEAE2;
+  --bs-secondary-rgb: 239, 234, 226;
+  --bs-success: #0F7A54;
+  --bs-success-rgb: 15, 122, 84;
+  --bs-danger: #B8352F;
+  --bs-danger-rgb: 184, 53, 47;
+  --bs-info: #2563B0;
+  --bs-info-rgb: 37, 99, 176;
+  --bs-light: #F6F3EE;
+  --bs-light-rgb: 246, 243, 238;
+  --bs-dark: #1F1A14;
+  --bs-dark-rgb: 31, 26, 20;
+  --bs-gray: #6F675C;
+  --bs-gray-dark: #3A332B;
+  --bs-gray-100: #F6F3EE;
+  --bs-gray-200: #EFEAE2;
+  --bs-gray-300: #DDD6CC;
+  --bs-gray-400: #C7BFB3;
+  --bs-gray-500: #A39B90;
+  --bs-gray-600: #857D72;
+  --bs-gray-700: #5E574E;
+  --bs-gray-800: #3A332B;
+  --bs-gray-900: #1F1A14;
+  --bs-form-valid-color: #0F7A54;
+  --bs-form-valid-border-color: #0F7A54;
+  --bs-form-invalid-color: #B8352F;
+  --bs-form-invalid-border-color: #B8352F;
+}
+html[data-theme="light"] body { background-color: var(--ibpl-bg); color: var(--ibpl-text-body); }
+
+/* ---- Colours computed in TypeScript ----
+   DataTable.tsx keeps the dark colour inline (dark output is unchanged) and
+   also exposes it as a custom property plus a class, which light re-derives:
+   heat backgrounds tinted toward white, shot-accuracy text darkened. */
+html[data-theme="light"] .ibpl-heat {
+  background-color: color-mix(in srgb, var(--ibpl-heat) 35%, #FFFFFF) !important;
+  color: var(--ibpl-cell-text);
+}
+html[data-theme="light"] .ibpl-acc {
+  color: color-mix(in srgb, var(--ibpl-acc) 55%, #000000) !important;
+}

@@ -80,3 +80,34 @@ test.describe("the toggle", () => {
     }
   });
 });
+
+/** WCAG contrast ratio of two computed "rgb(r, g, b)" colours. */
+function contrast(a: string, b: string) {
+  const lum = (c: string) => {
+    const [r, g, bl] = (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+test("light heat cells are tinted and their numbers stay legible", async ({ page }) => {
+  const rows = [0, 1].map((rank, i) => ({ game_id: i + 1, team_id: 2, team_name: "Audit team", opp_team_name: "Opponent", game_date: "2026-01-01", gn: i + 1, round_number: i + 1, off_ppp: 100, def_ppp: 100, pr_off_ppp: rank, pr_def_ppp: rank, off_poss: 50, def_poss: 50, has_scores: false }));
+  await page.route("**/api/v1/**", (route) => route.fulfill({ json: route.request().url().includes("/version") ? { leagues: [] } : { rows, meta: { version: "audit", view: "summary", teams: [], rounds: [], phases: [], shot_averages: null } } }));
+  await page.addInitScript(() => localStorage.setItem("ibpl_theme", "light"));
+  await page.goto("/il/game-logs?season=2026");
+  const cell = page.locator('tr[data-game-id="1"] td[data-column="off_ppp"]');
+  await expect(cell).toBeVisible();
+  const { bg, fg, body } = await cell.evaluate((el) => ({
+    bg: getComputedStyle(el).backgroundColor,
+    fg: getComputedStyle(el).color,
+    body: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(body).toBe("rgb(250, 248, 244)");
+  expect(bg).not.toBe("rgb(110, 38, 34)");
+  expect(contrast(bg, "rgb(255, 255, 255)")).toBeLessThan(2); // a light tint
+  expect(contrast(bg, fg)).toBeGreaterThanOrEqual(4.5);
+});
