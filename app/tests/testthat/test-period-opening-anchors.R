@@ -303,7 +303,7 @@ test_that("the SQL twin returns exactly the pure helper's anchors on Postgres", 
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   skip_if_not_installed("RPostgres")
-  con <- DBI::dbConnect(
+  con <- db_test_connect(
     RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT", "6543")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
@@ -633,7 +633,7 @@ test_that("compute_lineups_lookup() with anchors unioned in plans on Postgres", 
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   skip_if_not_installed("RPostgres")
-  con <- DBI::dbConnect(
+  con <- db_test_connect(
     RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT", "6543")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),

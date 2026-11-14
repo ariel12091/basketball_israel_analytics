@@ -17,7 +17,7 @@ if (length(missing_env)) {
 
 .game_type_defs <- global_defs("GAME_TYPE_LABELS", "GAME_TYPE_CHOICES_UI")
 
-con <- DBI::dbConnect(
+con <- db_test_connect(
   RPostgres::Postgres(),
   host = Sys.getenv("PG_HOST"),
   port = as.integer(Sys.getenv("PG_PORT")),

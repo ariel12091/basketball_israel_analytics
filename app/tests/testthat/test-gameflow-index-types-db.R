@@ -4,7 +4,7 @@
 test_that("Game Flow double-valued IDs retain indexed single-game reads", {
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
-  con <- DBI::dbConnect(RPostgres::Postgres(),
+  con <- db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = 5432L,
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = "require", bigint = "numeric",

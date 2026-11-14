@@ -201,17 +201,19 @@ test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data b
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
-  con <- DBI::dbConnect(RPostgres::Postgres(),
+  con <- db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
     connect_timeout = 15L, bigint = "numeric")
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
+  # One pass: the view scans every EuroLeague action row, and two separate
+  # COUNTs read the whole table twice (about 4 GB of pages a night in 2026-11).
   counts <- DBI::dbGetQuery(con, "
-    SELECT
-      (SELECT COUNT(*) FROM euroleague.ribbon_margin_v WHERE margin IS NULL) AS null_margin,
-      (SELECT COUNT(*) FROM euroleague.ribbon_margin_v) AS total_rows")
+    SELECT COUNT(*) FILTER (WHERE margin IS NULL) AS null_margin,
+           COUNT(*) AS total_rows
+    FROM euroleague.ribbon_margin_v")
   expect_identical(as.numeric(counts$null_margin[1]), 0)
   expect_gt(counts$total_rows[1], 1000)
 })
@@ -220,7 +222,7 @@ test_that("games with no score data are identified dynamically", {
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
-  con <- DBI::dbConnect(RPostgres::Postgres(),
+  con <- db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
@@ -252,7 +254,7 @@ test_that("euro segment lineups resolve to one player-id set", {
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
-  con <- DBI::dbConnect(RPostgres::Postgres(),
+  con <- db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
@@ -289,7 +291,7 @@ test_that("the ribbon segment count matches type-lineup-absent grouping", {
   skip_if_not(identical(Sys.getenv("RUN_DB_TESTS"), "1"), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
-  con <- DBI::dbConnect(RPostgres::Postgres(),
+  con <- db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
@@ -434,7 +436,7 @@ RIBBON_LEAGUES <- list(
              WHERE game_year = 2026 ORDER BY game_id LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM basketball_test.player_four_factors_by_game
-               WHERE game_id = ?game_id::int4 AND team_id = ?team_id::int4
+               WHERE game_id = $1::int4 AND team_id = $2::int4
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id"),
   euroleague = list(
@@ -442,41 +444,33 @@ RIBBON_LEAGUES <- list(
              FROM euroleague.final_schedule ORDER BY game_id DESC LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM euroleague.player_four_factors_by_game
-               WHERE game_id = ?game_id::bigint AND team_id = ?team_id::bigint
+               WHERE game_id = $1::bigint AND team_id = $2::bigint
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id")
 )
 
 ribbon_db_con <- function() {
-  DBI::dbConnect(RPostgres::Postgres(),
+  db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
     connect_timeout = 15L, bigint = "numeric")
 }
 
-# Supabase's transaction pooler does not guarantee that an unnamed prepared
-# statement survives onto the backend used by the next bind. Interpolate the
-# two trusted numeric fixtures client-side so these live checks test the query
-# result rather than backend affinity.
-ribbon_fixture_sql <- function(con, league, game_id, team_id) {
-  sql <- ribbon_sql_for(league)
-  sql <- gsub("$1", "?game_id", sql, fixed = TRUE)
-  sql <- gsub("$2", "?team_id", sql, fixed = TRUE)
-  DBI::sqlInterpolate(
-    con,
-    sql,
-    game_id = game_id,
-    team_id = team_id
-  )
+# Call the reader the way the app does (fetch_stint_ribbon): bound integer
+# parameters. These tests used to paste the ids into the SQL text to dodge the
+# port-6543 pooler; EuroLeague ids read with bigint = "numeric" were then
+# written as float8, every call scanned all games (~55 s, 15 calls a night),
+# and that drained Supabase's disk I/O budget in November 2026. The tests run
+# on port 5432 now, where bound parameters are safe.
+ribbon_reader_row <- function(con, league, game_id, team_id) {
+  DBI::dbGetQuery(con, ribbon_sql_for(league),
+                  params = list(as.integer(game_id), as.integer(team_id)))
 }
 
 # Run the real query and rebuild what the builder would draw.
 ribbon_fixture <- function(con, league, game_id, team_id) {
-  row <- DBI::dbGetQuery(
-    con,
-    ribbon_fixture_sql(con, league, game_id, team_id)
-  )
+  row <- ribbon_reader_row(con, league, game_id, team_id)
   lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
   marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
   steps <- data.frame(elapsed = as.numeric(marg_raw$elapsed),
@@ -494,10 +488,7 @@ ribbon_fixture <- function(con, league, game_id, team_id) {
 # of this file need the rows those bars were merged FROM, so this stops short
 # of merge_adjacent_stints() and of the side flip.
 ribbon_raw_fixture <- function(con, league, game_id, team_id) {
-  row <- DBI::dbGetQuery(
-    con,
-    ribbon_fixture_sql(con, league, game_id, team_id)
-  )
+  row <- ribbon_reader_row(con, league, game_id, team_id)
   lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
   marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
   list(lanes = ribbon_normalise_lanes(lanes_raw, team_id),
@@ -528,13 +519,9 @@ test_that("ribbon floor time equals the app's published per-game minutes", {
       tot <- ribbon_player_totals(fx$lanes)
       tot <- tot[tot$side == "own", , drop = FALSE]
 
-      minutes_sql <- DBI::sqlInterpolate(
-        con,
-        cfg$minutes,
-        game_id = games$game_id[[i]],
-        team_id = games$team_id[[i]]
-      )
-      mv <- DBI::dbGetQuery(con, minutes_sql)
+      mv <- DBI::dbGetQuery(con, cfg$minutes,
+        params = list(as.integer(games$game_id[[i]]),
+                      as.integer(games$team_id[[i]])))
 
       both <- merge(tot, mv, by = "player_key")
       # info = so a failure names the league and game rather than just a row.
