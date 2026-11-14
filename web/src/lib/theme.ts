@@ -9,7 +9,10 @@ export const THEME_KEY = "ibpl_theme";
 const LIGHT_QUERY = "(prefers-color-scheme: light)";
 
 /** The visitor's stored choice, else the device setting, else dark. */
-export function resolveTheme(stored: string | null, prefersLight: boolean): Theme {
+export function resolveTheme(
+  stored: string | null,
+  prefersLight: boolean,
+): Theme {
   if (stored === "light" || stored === "dark") return stored;
   return prefersLight ? "light" : "dark";
 }

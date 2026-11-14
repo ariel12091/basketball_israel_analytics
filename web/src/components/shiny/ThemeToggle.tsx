@@ -1,16 +1,20 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { applyTheme, currentTheme, type Theme } from "@/lib/theme";
 
-/**
- * The navbar's light/dark switch. The theme lives on <html data-theme>
- * (set before paint by ThemeScript); this button only reads and flips it.
- * The server and the first client render show the dark-state icon, then an
- * effect syncs to the real attribute, so hydration always matches.
- */
+/** <html data-theme> as an external store: ThemeScript sets it before paint,
+ * applyTheme() flips it. The server snapshot is dark, so hydration matches
+ * and React then re-renders with the real attribute. */
+function subscribe(onChange: () => void) {
+  const mo = new MutationObserver(onChange);
+  mo.observe(document.documentElement, { attributeFilter: ["data-theme"] });
+  return () => mo.disconnect();
+}
+const serverTheme = (): Theme => "dark";
+
+/** The navbar's light/dark switch. */
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("dark");
-  useEffect(() => setTheme(currentTheme()), []);
+  const theme = useSyncExternalStore(subscribe, currentTheme, serverTheme);
   const next: Theme = theme === "light" ? "dark" : "light";
   const label = `Switch to ${next} theme`;
   return (
@@ -20,10 +24,7 @@ export default function ThemeToggle() {
       type="button"
       aria-label={label}
       title={label}
-      onClick={() => {
-        applyTheme(next);
-        setTheme(next);
-      }}
+      onClick={() => applyTheme(next)}
     >
       <i
         className={`bi ${theme === "light" ? "bi-moon" : "bi-sun"}`}

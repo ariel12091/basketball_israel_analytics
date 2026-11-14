@@ -18,7 +18,10 @@ describe("resolveTheme", () => {
 
 /** Runs the pre-paint script against stubbed browser globals. */
 function runScript(stored: string | null | Error, prefersLight: boolean) {
-  const el = { dataset: {} as Record<string, string>, style: {} as Record<string, string> };
+  const el = {
+    dataset: {} as Record<string, string>,
+    style: {} as Record<string, string>,
+  };
   const storage = {
     getItem: (k: string) => {
       if (stored instanceof Error) throw stored;
