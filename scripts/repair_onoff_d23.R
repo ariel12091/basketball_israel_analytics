@@ -7,6 +7,11 @@ apply <- "--apply" %in% args
 year_arg <- grep("^--year=", args, value = TRUE)
 year <- if (length(year_arg)) as.integer(sub("--year=", "", year_arg)) else 2027L
 stopifnot(length(year) == 1L, !is.na(year), year >= 2025L)
+# --games=398,406,651 refreshes only those games of the season (e.g. the ones
+# onoff_stale_games() in etl/onoff_roster_refresh.R names); default: all.
+games_arg <- grep("^--games=", args, value = TRUE)
+only_games <- if (length(games_arg)) as.integer(strsplit(sub("--games=", "", games_arg), ",")[[1]]) else NULL
+stopifnot(is.null(only_games) || (length(only_games) > 0L && !anyNA(only_games)))
 
 main <- function() {
   con <- dbConnect(Postgres(), host = Sys.getenv("PG_HOST"), port = 5432L,
@@ -28,6 +33,10 @@ main <- function() {
   ids <- dbGetQuery(con, "SELECT DISTINCT game_id FROM final_schedule_mv WHERE game_year = $1 ORDER BY game_id",
     params = list(year))$game_id
   stopifnot(length(ids) > 0L)
+  if (!is.null(only_games)) {
+    if (!all(only_games %in% ids)) stop("--games not in season ", year, ": ", paste(setdiff(only_games, ids), collapse = ","))
+    ids <- sort(only_games)
+  }
   message(sprintf("D23 %s: season %d, %d games", if (apply) "APPLY" else "TRIAL", year, length(ids)))
 
   # Reuse the nightly pin's numeric comparison and its documented tolerances.
