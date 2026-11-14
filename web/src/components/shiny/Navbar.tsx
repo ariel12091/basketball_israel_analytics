@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
+import ThemeToggle from "./ThemeToggle";
 
 export type TabId =
   | "home"
@@ -279,6 +280,7 @@ export default function Navbar({
       }}
     >
       {showing}
+      <ThemeToggle />
       <button
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
         id="open_glossary"

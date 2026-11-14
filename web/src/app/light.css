@@ -1,0 +1,10 @@
+/* Light theme (docs/superpowers/specs/2026-11-15-web-light-theme-design.md).
+   Loaded last. Dark is Shiny's look and needs no rules here: every light rule
+   is scoped under html[data-theme="light"], set before paint by ThemeScript.
+   The only unscoped rules are the toggle's own, which apply in both themes. */
+
+/* ---- The toggle (ThemeToggle.tsx), both themes ---- */
+.nav-theme-btn { margin-right: 4px; padding: 2px 7px; line-height: 1.2; }
+.nav-theme-btn .nav-theme-label { display: none; }
+body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { margin-right: 0; }
+body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn .nav-theme-label { display: inline; }

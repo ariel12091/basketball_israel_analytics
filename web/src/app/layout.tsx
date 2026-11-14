@@ -18,6 +18,7 @@ import "@/styles/shiny/vendor/jquery.dataTables.min.css";
 import "@/styles/shiny/vendor/jquery.dataTables.extra.css";
 import "@/styles/shiny/vendor/buttons.dataTables.min.css";
 import "./web.css";
+import "./light.css";
 import AskProvider from "@/components/AskProvider";
 import BodyClassScript from "@/components/shiny/BodyClassScript";
 import ThemeScript from "@/components/shiny/ThemeScript";
