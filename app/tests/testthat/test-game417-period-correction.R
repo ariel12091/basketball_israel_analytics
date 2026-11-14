@@ -114,7 +114,7 @@ game417_sql_replay <- function(env, pg, corrected) {
 test_that("the real SQL restores Q2/Q3 openings and passes all gameplay coverage", {
   skip_if(Sys.getenv("RUN_DB_TESTS", "0") != "1", "RUN_DB_TESTS not enabled")
   readRenviron(repo_file(".Renviron"))
-  pg <- DBI::dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
+  pg <- db_test_connect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
     port = as.integer(Sys.getenv("PG_PORT", "6543")), dbname = Sys.getenv("PG_DB"),
     user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
     sslmode = Sys.getenv("PG_SSLMODE", "require"), bigint = "numeric")

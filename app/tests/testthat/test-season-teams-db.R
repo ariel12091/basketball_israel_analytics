@@ -17,7 +17,7 @@ if (length(missing_env)) {
 
 .season_team_defs <- global_defs("STATIC_TEAM_ROSTERS")
 
-con <- DBI::dbConnect(
+con <- db_test_connect(
   RPostgres::Postgres(),
   host = Sys.getenv("PG_HOST"),
   port = as.integer(Sys.getenv("PG_PORT")),

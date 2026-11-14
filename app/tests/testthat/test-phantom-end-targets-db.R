@@ -21,7 +21,7 @@ if (length(missing_env)) {
   skip(paste("Missing DB env:", paste(missing_env, collapse = ", ")))
 }
 
-con <- DBI::dbConnect(
+con <- db_test_connect(
   RPostgres::Postgres(),
   host = Sys.getenv("PG_HOST"),
   port = as.integer(Sys.getenv("PG_PORT")),

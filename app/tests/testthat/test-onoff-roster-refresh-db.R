@@ -5,7 +5,7 @@ test_that("a retry recovers old OFF games even after the roster was committed", 
   skip_if_not_installed("RPostgres")
   keys <- c("PG_HOST", "PG_DB", "PG_USER", "PG_PASS")
   skip_if_not(all(nzchar(Sys.getenv(keys))))
-  con <- DBI::dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
+  con <- db_test_connect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
     port = 5432L, dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE", "require"))
   on.exit(DBI::dbDisconnect(con), add = TRUE)

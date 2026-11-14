@@ -44,7 +44,7 @@ skip_if_not_installed("DBI")
 skip_if_not_installed("RPostgres")
 
 source(repo_file("..", "etl", "dq_consecutive_possessions.R"), local = TRUE)
-con <- DBI::dbConnect(
+con <- db_test_connect(
   RPostgres::Postgres(),
   host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
   dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),

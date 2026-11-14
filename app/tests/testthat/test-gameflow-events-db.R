@@ -5,7 +5,7 @@
 # equal team_metrics_by_game_mv. Run with RUN_DB_TESTS=1 on port 5432.
 
 events_db_con <- function() {
-  DBI::dbConnect(RPostgres::Postgres(),
+  db_test_connect(RPostgres::Postgres(),
     host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
     dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
@@ -24,14 +24,16 @@ events_reader_sql <- function(league) {
   eval(parse(text = assign_txt))
 }
 
-# Trusted integer fixtures, interpolated client-side (pooler-safe).
+# Bound integer parameters, as the app calls the reader. Pasting the ids into
+# the SQL wrote EuroLeague ids read as doubles as float8, which turned each
+# call into a scan of every game (see test-stint-ribbon-readers.R).
+events_reader_row <- function(con, league, game_id, team_id) {
+  DBI::dbGetQuery(con, events_reader_sql(league),
+                  params = list(as.integer(game_id), as.integer(team_id)))
+}
+
 events_for <- function(con, league, game_id, team_id) {
-  sql <- events_reader_sql(league)
-  sql <- gsub("$1", "?game_id", sql, fixed = TRUE)
-  sql <- gsub("$2", "?team_id", sql, fixed = TRUE)
-  row <- DBI::dbGetQuery(con, DBI::sqlInterpolate(con, sql,
-                                                  game_id = game_id,
-                                                  team_id = team_id))
+  row <- events_reader_row(con, league, game_id, team_id)
   expect_true("events" %in% names(row), info = "reader returns an events column")
   if (!"events" %in% names(row) || is.na(row$events[1])) return(NULL)
   jsonlite::fromJSON(row$events[1], simplifyVector = FALSE)
@@ -134,9 +136,7 @@ test_that("EuroLeague Gameflow reader returns possession ends", {
   gid <- as.integer(EVENTS_LEAGUES$euroleague$games(con)[1])
   tid <- DBI::dbGetQuery(con, sprintf(
     "SELECT team_id FROM euroleague.final_schedule_mv WHERE game_id = %d LIMIT 1", gid))$team_id
-  sql <- events_reader_sql("euroleague")
-  sql <- gsub("$2", "?team_id", gsub("$1", "?game_id", sql, fixed = TRUE), fixed = TRUE)
-  row <- DBI::dbGetQuery(con, DBI::sqlInterpolate(con, sql, game_id = gid, team_id = tid))
+  row <- events_reader_row(con, "euroleague", gid, tid)
   expect_false(is.na(row$poss[1]))
   poss <- jsonlite::fromJSON(row$poss[1])
   expect_setequal(names(poss), c("elapsed", "order_key", "off", "own", "opp"))

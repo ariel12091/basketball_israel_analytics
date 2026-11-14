@@ -182,6 +182,32 @@ jobs:
             throw "Database security audit reported violations (ETL itself succeeded); see the table above and re-run scripts/apply_db_security.R."
           }
 
+      # A table whose file is over 2x what its rows need: updated rows leave
+      # dead copies that VACUUM frees but never returns, and every full scan
+      # still reads them. euroleague.action_team_context_actions sat at 3x
+      # and cost a nightly test 1.2 GiB of Supabase disk I/O per call
+      # (2026-11-14) with nothing reporting it. Reads the catalog only; runs
+      # as the ETL role because pg_stats hides tables a role cannot read.
+      # A failure means the data published fine: rewrite the table it names.
+      - name: Audit table bloat
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env:
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_PORT: ${{ secrets.PG_PORT }}
+          PG_DB: ${{ secrets.PG_DB }}
+          PG_USER: ${{ secrets.PG_USER }}
+          PG_PASS: ${{ secrets.PG_PASS }}
+          PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Rscript scripts/audit_table_bloat.R
+          $bloatExit = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($bloatExit -ne 0) {
+            throw "Table bloat audit flagged tables (ETL itself succeeded); see the table above for the VACUUM (FULL, ANALYZE) to run at a quiet hour."
+          }
+
       - name: Upload ETL logs
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
