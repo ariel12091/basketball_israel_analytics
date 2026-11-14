@@ -229,16 +229,27 @@ test_that("games with no score data are identified dynamically", {
     connect_timeout = 15L, bigint = "numeric")
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  bad <- DBI::dbGetQuery(con, "
-    SELECT game_id, team_id
-    FROM basketball_test.df_pts_poss_lineups_longer_mv
-    GROUP BY game_id, team_id
-    HAVING COUNT(own_team_score) = 0")
+  # The app's reader (fetch_scoreless_games() in global.R).
+  bad <- DBI::dbGetQuery(con, global_defs("SCORELESS_GAMES_SQL")$SCORELESS_GAMES_SQL)
 
   # Not an equality against a fixed list: these four are what the condition
   # catches today, not the definition of it. The ETL can produce more.
   expect_gt(nrow(bad), 0)
   expect_true(all(c(139L, 140L, 141L, 143L) %in% as.integer(bad$game_id)))
+
+  # Weekly: the reader probes the schedule's team-games, so it equals the
+  # definition (every team-game of the view with no scored row) only while the
+  # schedule holds every game the view does. The GROUP BY reads the whole view
+  # (~150 MB), which is why it is not run nightly.
+  if (db_test_full_scope()) {
+    definition <- DBI::dbGetQuery(con, "
+      SELECT game_id, team_id
+      FROM basketball_test.df_pts_poss_lineups_longer_mv
+      GROUP BY game_id, team_id
+      HAVING COUNT(own_team_score) = 0")
+    pairs <- function(d) sort(paste(as.integer(d$game_id), as.integer(d$team_id)))
+    expect_identical(pairs(bad), pairs(definition))
+  }
 })
 
 # This guard deliberately reads euroleague.ribbon_segments_v, NOT the base

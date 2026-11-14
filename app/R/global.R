@@ -738,26 +738,39 @@ fetch_player_display_names <- function(gy) {
 
 # (game_id, team_id) pairs with zero non-NULL own_team_score -- the stint
 # ribbon has no margin to draw for these (Israeli games 139/140/141/143
-# today; the ETL can produce more). Deliberately NOT one-per-season like the
-# four lookups above: measured 2026-09-07, the underlying query is a full
-# sequential scan of df_pts_poss_lineups_longer_mv (21,240 buffer pages,
-# 2.56s) whose cost does NOT fall when filtered by season -- it must still
-# visit the whole relation to find rows with zero non-null own_team_score
-# per (game_id, team_id). A per-season key would mean re-running that same
-# scan once per season for an 8-row answer. Do NOT "fix" this into a
-# per-season key. `ver` is the ETL data version (shared_data_version()); it
-# rides in the cache key only so a new ETL run gets a fresh key rather than
-# an explicit invalidation call, matching cached_season_df()'s convention
-# elsewhere (see hub_fetch_team_ratings()).
+# today; the ETL can produce more). One cached answer per data version, not
+# per season: the set is tiny and spans seasons.
+#
+# Two index probes per scheduled team-game (idx_df_longer_game_team_segment):
+# does the team-game have any row, and does it have a scored one. A scored
+# team-game stops at its first row. Until 2026-11-14 this was a GROUP BY over
+# the whole of df_pts_poss_lineups_longer_mv (~2 s, ~150 MB of pages per call;
+# 35 GiB in eleven days, mostly the nightly parity test, which builds a fresh
+# app per preset). Same rows, ~15 ms. The team-games come from
+# final_schedule_mv, which holds every game the view does (checked
+# 2026-11-14: 500 of 500); test-stint-ribbon-readers.R pins the result to
+# the GROUP BY definition weekly. Twin: QUERIES.scoreless in
+# web/src/server/gameLogsRepo.ts.
+#
+# `ver` is the ETL data version (shared_data_version()); it rides in the
+# cache key only so a new ETL run gets a fresh key rather than an explicit
+# invalidation call, matching cached_season_df()'s convention elsewhere
+# (see hub_fetch_team_ratings()).
+SCORELESS_GAMES_SQL <- "
+SELECT k.game_id, k.team_id
+FROM (SELECT DISTINCT game_id, team_id FROM basketball_test.final_schedule_mv) k
+WHERE (SELECT 1 FROM basketball_test.df_pts_poss_lineups_longer_mv d
+        WHERE d.game_id = k.game_id AND d.team_id = k.team_id LIMIT 1) IS NOT NULL
+  AND (SELECT 1 FROM basketball_test.df_pts_poss_lineups_longer_mv d
+        WHERE d.game_id = k.game_id AND d.team_id = k.team_id
+          AND d.own_team_score IS NOT NULL LIMIT 1) IS NULL"
+
 fetch_scoreless_games <- function(ver = NULL) {
   cached_ref_query(
     key = sprintf("scoreless_games_%s", ver %||% "na"),
     query_fun = function() db_get_query(
       pg_pool,
-      "SELECT game_id, team_id
-         FROM basketball_test.df_pts_poss_lineups_longer_mv
-        GROUP BY game_id, team_id
-        HAVING COUNT(own_team_score) = 0"
+      SCORELESS_GAMES_SQL
     )
   )
 }

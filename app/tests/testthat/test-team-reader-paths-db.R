@@ -40,19 +40,27 @@ same_table <- function(a, b, key = "team_id") {
 }
 
 test_that("the Traditional reader's per-game path equals its action-row path, both sides", {
-  presets <- c("", ", p_home_away := 'home'", ", p_last_n_games := 5", ", p_end_date := '2026-03-20'",
-               ", p_opp_rank_side := 'top', p_opp_rank_n := 4", ", p_min_gn := 5, p_max_gn := 12")
-  for (side in c("offense", "defense")) for (args in presets) {
-    call <- function(extra) dbq(sprintf(
-      "SELECT * FROM basketball_test.get_team_traditional_dynamic(2026%s, p_side := '%s'%s)", args, side, extra))
-    fast <- call("")
-    expect_gt(nrow(fast), 0, label = paste(side, args, "rows"))
-    expect_identical(same_table(fast, call(", p_use_game_totals := FALSE")), "same", label = paste(side, args))
+  # Current season nightly, every season weekly (helper-db-connect.R). Early in
+  # the current season a narrow preset (rounds 5-12, top-4 opponents) can
+  # legitimately match no game, so only a finished season must have rows for
+  # every preset; the two paths must agree either way.
+  current <- max(db_test_seasons())
+  for (gy in db_test_seasons()) {
+    presets <- c("", ", p_home_away := 'home'", ", p_last_n_games := 5",
+                 sprintf(", p_end_date := '%d-03-20'", gy),
+                 ", p_opp_rank_side := 'top', p_opp_rank_n := 4", ", p_min_gn := 5, p_max_gn := 12")
+    for (side in c("offense", "defense")) for (args in presets) {
+      call <- function(extra) dbq(sprintf(
+        "SELECT * FROM basketball_test.get_team_traditional_dynamic(%d%s, p_side := '%s'%s)", gy, args, side, extra))
+      fast <- call("")
+      if (!nzchar(args) || gy != current) expect_gt(nrow(fast), 0, label = paste(gy, side, args, "rows"))
+      expect_identical(same_table(fast, call(", p_use_game_totals := FALSE")), "same", label = paste(gy, side, args))
+    }
   }
 })
 
 test_that("the team views behind Tab 3's default state equal their dynamic readers", {
-  for (gy in c(2026, 2027)) for (pair in list(c("team_ppp_ratings_mv", "get_team_ratings_dynamic"),
+  for (gy in db_test_seasons()) for (pair in list(c("team_ppp_ratings_mv", "get_team_ratings_dynamic"),
                                               c("team_four_factors_mv", "get_team_four_factors_dynamic"))) {
     view <- dbq(sprintf("SELECT * FROM basketball_test.%s WHERE game_year::int = %d", pair[1], gy))
     reader <- dbq(sprintf("SELECT * FROM basketball_test.%s(%d)", pair[2], gy))

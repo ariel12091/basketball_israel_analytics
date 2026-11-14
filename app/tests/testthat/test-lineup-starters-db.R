@@ -28,9 +28,8 @@ con <- db_test_connect(
 )
 on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-season <- 2026L
-
-readers <- function(size, extra = "") DBI::dbGetQuery(con, sprintf(
+# Current season nightly, every season weekly (helper-db-connect.R).
+readers <- function(season, size, extra = "") DBI::dbGetQuery(con, sprintf(
   "SELECT team_id, sub_lineup_hash, num_starters, off_poss, def_poss
    FROM basketball_test.fetch_lineups_all(p_num_lineup := %d::int2, p_game_year := %d,
                                            p_min_poss := 0%s)", size, season, extra))
@@ -44,29 +43,32 @@ test_that("no stored group shows more starters than it has players", {
 
 test_that("the fast and filtered paths give the same # Starters", {
   # Every game type selected: the same games, through the filtered branch.
-  types <- DBI::dbGetQuery(con, sprintf(
-    "SELECT string_agg(DISTINCT game_type::text, ',') AS t FROM basketball_test.schedule WHERE game_year = %d",
-    season))$t
-  for (size in c(3L, 5L)) {
-    fast <- readers(size)
-    filtered <- readers(size, sprintf(", p_game_type_csv := '%s'", types))
-    j <- merge(fast, filtered, by = c("team_id", "sub_lineup_hash"), suffixes = c("_fast", "_filt"))
-    expect_gt(nrow(j), 0)
-    same_poss <- j$off_poss_fast == j$off_poss_filt & j$def_poss_fast == j$def_poss_filt
-    expect_equal(j$num_starters_fast[same_poss], j$num_starters_filt[same_poss], info = paste("size", size))
+  for (season in db_test_seasons()) {
+    types <- DBI::dbGetQuery(con, sprintf(
+      "SELECT string_agg(DISTINCT game_type::text, ',') AS t FROM basketball_test.schedule WHERE game_year = %d",
+      season))$t
+    for (size in c(3L, 5L)) {
+      fast <- readers(season, size)
+      filtered <- readers(season, size, sprintf(", p_game_type_csv := '%s'", types))
+      j <- merge(fast, filtered, by = c("team_id", "sub_lineup_hash"), suffixes = c("_fast", "_filt"))
+      expect_gt(nrow(j), 0)
+      same_poss <- j$off_poss_fast == j$off_poss_filt & j$def_poss_fast == j$def_poss_filt
+      expect_equal(j$num_starters_fast[same_poss], j$num_starters_filt[same_poss],
+                   info = paste(season, "size", size))
+    }
   }
 })
 
 test_that("the clutch path stays within the group size", {
-  clutch <- readers(3L, ", p_max_margin := 5, p_max_time_remaining := 300")
-  expect_gt(nrow(clutch), 0)
-  expect_true(all(clutch$num_starters <= 3 + 1e-9, na.rm = TRUE))
+  for (season in db_test_seasons()) {
+    clutch <- readers(season, 3L, ", p_max_margin := 5, p_max_time_remaining := 300")
+    expect_gt(nrow(clutch), 0, label = paste(season, "clutch groups"))
+    expect_true(all(clutch$num_starters <= 3 + 1e-9, na.rm = TRUE), label = paste(season))
+  }
 })
 
 # --- EuroLeague / EuroCup twin (migrations 057, 058) ---------------------------
 # The same definition in the euroleague readers, which return the numerator.
-
-euro_season <- 2025L
 
 test_that("no EuroLeague or EuroCup unit shows more starters than players", {
   over <- DBI::dbGetQuery(con, "
@@ -76,7 +78,7 @@ test_that("no EuroLeague or EuroCup unit shows more starters than players", {
 })
 
 test_that("the EuroLeague MV and the unfiltered per-game reader agree", {
-  for (comp in c("E", "U")) {
+  for (euro_season in db_test_euro_seasons()) for (comp in c("E", "U")) {
     mv <- DBI::dbGetQuery(con, sprintf(
       "SELECT team_id, unit_key, round(starters_poss_num / NULLIF(off_poss + def_poss, 0), 6) AS ns
        FROM euroleague.sub_lineups_stats_mv
@@ -85,8 +87,8 @@ test_that("the EuroLeague MV and the unfiltered per-game reader agree", {
       "SELECT team_id, unit_key, round(starters_poss_num / NULLIF(off_poss + def_poss, 0), 6) AS ns
        FROM euroleague.fetch_lineups_pergame('%s', %d, p_unit_size => 2)", comp, euro_season))
     j <- merge(mv, rd, by = c("team_id", "unit_key"), suffixes = c("_mv", "_rd"))
-    expect_equal(nrow(j), nrow(mv), info = comp)
-    expect_equal(j$ns_mv, j$ns_rd, info = comp)
+    expect_equal(nrow(j), nrow(mv), info = paste(comp, euro_season))
+    expect_equal(j$ns_mv, j$ns_rd, info = paste(comp, euro_season))
   }
 })
 
@@ -102,7 +104,12 @@ timed_rows <- function(sql) {
   list(t = t, n = n)
 }
 
+# Weekly only: twelve full-season reader calls, and the plans they guard change
+# only with SQL, not with a night's games.
 test_that("full-season 2/3-player filtered lineups answer within the request budget", {
+  skip_if_not(db_test_full_scope(), "weekly full run only (DB_TEST_SCOPE=full)")
+  season <- DB_TEST_FINISHED_SEASONS
+  euro_season <- DB_TEST_FINISHED_EURO_SEASONS
   calls <- c(
     il_away_2 = sprintf("SELECT * FROM basketball_test.fetch_lineups_all(p_num_lineup := 2::int2, p_game_year := %d, p_min_poss := 0, p_home_away := 'away')", season),
     il_clutch_3 = sprintf("SELECT * FROM basketball_test.fetch_lineups_all(p_num_lineup := 3::int2, p_game_year := %d, p_min_poss := 0, p_max_margin := 5, p_max_time_remaining := 300)", season),
