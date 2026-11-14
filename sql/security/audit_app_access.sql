@@ -349,6 +349,30 @@ violations AS (
   FROM pg_policy pol
   JOIN base_tables x ON x.oid = pol.polrelid
   WHERE pol.polname <> 'app_readonly_select_all'
+
+  UNION ALL
+
+  -- A role that owns these functions must not give PUBLIC EXECUTE on the
+  -- functions it creates next: PostgreSQL's built-in global default does,
+  -- so a new function would be open to every role until the next apply.
+  -- No global default row means the built-in one applies.
+  SELECT
+    'default_function_execute_public',
+    pg_get_userbyid(o.owner),
+    'global default privileges on new functions'
+  FROM (SELECT DISTINCT p.proowner AS owner
+        FROM routines x JOIN pg_proc p ON p.oid = x.oid) o
+  WHERE NOT EXISTS (
+      SELECT 1 FROM pg_default_acl d
+      WHERE d.defaclrole = o.owner AND d.defaclnamespace = 0
+        AND d.defaclobjtype = 'f'
+    )
+    OR EXISTS (
+      SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a
+      WHERE d.defaclrole = o.owner AND d.defaclnamespace = 0
+        AND d.defaclobjtype = 'f'
+        AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+    )
 )
 SELECT violation, role_name, object_name
 FROM violations

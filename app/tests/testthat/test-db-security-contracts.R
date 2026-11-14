@@ -167,6 +167,16 @@ test_that("audit scopes allowlists per schema and covers the shadow schema", {
   expect_false(grepl("refresh_", euro_routine_block, fixed = TRUE))
 })
 
+test_that("new functions are closed to PUBLIC from CREATE, not from the next apply", {
+  # A per-schema ALTER DEFAULT PRIVILEGES cannot revoke PostgreSQL's global
+  # PUBLIC EXECUTE default; only the global form can, and the audit checks it.
+  sql <- read_repo_txt("..", "sql", "security", "enable_readonly_rls.sql")
+  expect_match(sql, "EXECUTE 'ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC'", fixed = TRUE)
+  audit <- read_repo_txt("..", "sql", "security", "audit_app_access.sql")
+  expect_match(audit, "'default_function_execute_public'", fixed = TRUE)
+  expect_match(audit, "d.defaclnamespace = 0", fixed = TRUE)
+})
+
 test_that("database security apply script is dry-run by default", {
   sql <- read_repo_txt("..", "scripts", "apply_db_security.R")
 
