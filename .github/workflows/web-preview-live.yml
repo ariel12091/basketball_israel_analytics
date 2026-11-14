@@ -6,10 +6,19 @@ name: Web Preview live checks
 # so merge a branch only after this passed on its head commit. Read-only:
 # pages and API reads as app_readonly, one page at a time. The Preview is
 # protected; the bypass secret is sent to its origin only.
+#
+# Sunday (and a manual run): only the heavy Lineups speed checks
+# (LIVE_HEAVY=1), against production. They read the database uncached, about
+# 2 GiB of temp writes and reads per run, so they are not run on every push.
 on:
   push:
     branches-ignore: [main, "load-test/**"]
     paths: ["web/**", ".github/workflows/web-preview-live.yml", ".github/scripts/vercel-preview-url.sh"]
+  schedule:
+    # 08:00 UTC Sunday: after the nightly ETL and the 03:00 UTC R tests, so it
+    # never shares the database with either.
+    - cron: "0 8 * * 0"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,7 +45,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Wait for the Vercel Preview
+        if: github.event_name == 'push'
         run: bash ../.github/scripts/vercel-preview-url.sh
+
+      - name: Weekly heavy checks against production
+        if: github.event_name != 'push'
+        run: |
+          echo "PREVIEW_URL=https://ibpl-game-logs.vercel.app" >> "$GITHUB_ENV"
+          echo "LIVE_HEAVY=1" >> "$GITHUB_ENV"
+          echo "LIVE_GREP=--grep=lineups.*within budget" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -52,7 +69,7 @@ jobs:
         run: >-
           npx playwright test --config=playwright.preview.config.ts
           e2e/live-smoke.spec.ts e2e/gameflow-live.spec.ts
-          --reporter=list,html
+          --reporter=list,html ${LIVE_GREP:+"$LIVE_GREP"}
 
       - uses: actions/upload-artifact@v4
         if: always()
