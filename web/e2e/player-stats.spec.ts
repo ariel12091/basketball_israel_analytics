@@ -16,6 +16,9 @@ async function clearAll(page: Page) {
 }
 for (const file of playerPresets)
   test(`Player Stats ${file}`, async ({ page }, info) => {
+    // Rendering check, not a value check: the expected cells come from the app's own
+    // rule run on the same stubbed answer, so a wrong rule passes here. Values are
+    // checked by the unit tests (src/rules/*.test.ts).
     const { g, answer, rows } = loadPlayer(file),
       errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));

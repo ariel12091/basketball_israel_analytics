@@ -20,6 +20,18 @@ and rollback.
 - Budget: Fast Origin Transfer is 10 GB/month; tab pages are CDN-cached for
   an hour, and each Preview load test costs ~0.35 GB.
 
+### Shiny retirement checklist (do at the cut-over)
+
+- The web unit tests' number oracles are Shiny's recorded output
+  (`web/test/goldens/`, from `app/tests/goldens/`). Before deleting those
+  files, add live checks that the deployed site's numbers equal the SQL
+  owners' (TS% trips, On/Off and lineup totals, Gameflow ratings), a few
+  cases per Preview push in `web/e2e/live-smoke.spec.ts`; then drop the
+  goldens, their capture/export scripts and the tests that read them.
+  Five browser specs check rendering only (they say so at the assertion).
+- The last Shiny tests go with the app: `test-dt-security.R`,
+  `test-csv-formula-defuse.R`, `test-source-encoding.R`.
+
 ## Token Efficiency
 
 **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.

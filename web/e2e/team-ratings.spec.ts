@@ -3,6 +3,9 @@ import { loadTeam, teamPresets } from "../test/teamGoldens";
 import { rRound } from "../src/rules/round";
 for (const file of teamPresets)
   test(`Team Ratings ${file}`, async ({ page }, info) => {
+    // Rendering check, not a value check: the expected cells come from the app's own
+    // rule run on the same stubbed answer, so a wrong rule passes here. Values are
+    // checked by the unit tests (src/rules/*.test.ts).
     const { g, answer, rows } = loadTeam(file),
       errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
