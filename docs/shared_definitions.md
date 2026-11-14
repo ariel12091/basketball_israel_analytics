@@ -327,19 +327,22 @@ Not deviations, though they look like one:
 | Pin | Guards |
 |---|---|
 | `test-ft-credit-db.R` (nightly, live database) | Credit columns filled; each trip counted once; ON + OFF adds to the team; lineup day totals add to the team; no Israeli reader uses 0.44; Traditional TS% equals Four Factors TS%; **the two lineup readers agree** in five filter combinations |
-| `test-ts-trips.R` | TS% from trips; attempts summed, not implied, when returned; no `0.44` in the app's R |
 | `test-game-types-db.R`, `test-season-teams-db.R` (nightly) | The generated catalogue copy equals the tables |
 | `test-data-shape-db.R` (nightly) | The feed assumption behind "2PT Jumper" |
-| `test-league-shared-helpers.R`, `test-lineup-player-chips.R` | Shared helpers behave the same for both leagues; every reader of the player filter lists its inputs |
 | `test-team-minutes-db.R` (nightly) | Team floor time: the owner equals the Traditional reader (to its one decimal), the clutch dashboard reader (exactly) and measured segment time; its per-game path equals its action-row path |
 | `test-team-reader-paths-db.R` (nightly) | R10: the Traditional reader's per-game path equals its action-row path on every column, both sides, six filter sets; the two team views behind Tab 3's default state equal their dynamic readers |
 | `test-player-reader-paths-db.R` (nightly) | R10 for the player tabs: `player_traditional_stats_mv` equals `get_player_traditional_from_games` on all 24 shared columns; `player_advanced_stats_mv` equals `four_factors_compute` and `four_factors_dashboard_compute` on all 37; `onoff_default_mv` equals `onoff_compute` on every value column for players with a real sample and within 0.03 on every percentile, with D19-D20 declared |
 | `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11/D17 list, which may only shrink; Tab 3 takes pace minutes and rank arrows from stored readers only; both `CLAUDE.md` files point here |
 | `scripts/verify_ft_credit.R` | Migration gates that fail on an unexpected change |
-| `test-svc-game-logs.R`, `test-golden-game-logs.R`, `api/tests/testthat/test-api-game-logs.R` | Game Logs: the service function `svc_game_logs()` (owner of the table: filters, per-game metrics, percentiles, header labels, rounding) returns what Shiny's Tab 4 / Tab 11 rendered when the goldens were recorded; the API handler returns what the service returns; Shiny and the API call the same function |
+| `test-svc-game-logs.R`, `api/tests/testthat/test-api-game-logs.R` | Game Logs: the service function `svc_game_logs()` (owner of the table: filters, per-game metrics, percentiles, header labels, rounding) returns what Shiny's Tab 4 / Tab 11 rendered when the goldens were recorded; the API handler returns what the service returns; Shiny and the API call the same function |
 | `test-api-parity-live-db.R` (nightly, live database) | Game Logs, both leagues: the API answer equals the Shiny golden against the live database |
 | `test-api-coverage-gate.R` | Every inventory id in a finished section (`API_DONE_PREFIXES` in `api/coverage.R`, now `GL`) is named by a `covers()` call in some test; the gate has its own can-fail test |
 | `.github/workflows/catalogue-sync.yml` | Fails when the schedule holds a game type with no label |
+
+Since 2026-11-14 the Shiny app (the fallback until the cut-over) has no
+tests of its own: its helper, golden-replay and browser tests were removed,
+and an R helper twin of a web rule (3PT luck, TS% trips, the player filter)
+is pinned only on the web side. The pins above that call SQL are unchanged.
 
 Pins that do not exist yet. Each is a twin without a test (R4):
 
