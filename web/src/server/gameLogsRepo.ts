@@ -32,9 +32,17 @@ export const QUERIES = {
   // euro_fetch_seasons() in global_euro.R.
   euroSeasons: `SELECT DISTINCT game_year FROM euroleague.final_schedule_mv
  WHERE competition = $1::text ORDER BY game_year DESC`,
-  scoreless: `SELECT game_id, team_id FROM basketball_test.df_pts_poss_lineups_longer_mv
- WHERE game_id = ANY($1::integer[])
- GROUP BY game_id, team_id HAVING COUNT(own_team_score)=0`,
+  // SCORELESS_GAMES_SQL in global.R, limited to this season's games: two
+  // index probes per team-game instead of a GROUP BY over every row (same
+  // answer, 2026-11-14; ~60 MB of pages per call before).
+  scoreless: `SELECT k.game_id, k.team_id
+ FROM (SELECT DISTINCT game_id, team_id FROM basketball_test.final_schedule_mv
+       WHERE game_id = ANY($1::integer[])) k
+ WHERE (SELECT 1 FROM basketball_test.df_pts_poss_lineups_longer_mv d
+         WHERE d.game_id = k.game_id AND d.team_id = k.team_id LIMIT 1) IS NOT NULL
+   AND (SELECT 1 FROM basketball_test.df_pts_poss_lineups_longer_mv d
+         WHERE d.game_id = k.game_id AND d.team_id = k.team_id
+           AND d.own_team_score IS NOT NULL LIMIT 1) IS NULL`,
   ilVersion: VERSION_SQL.il,
   euroVersion: VERSION_SQL.euro,
 };

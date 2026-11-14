@@ -107,6 +107,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Live DB tests check the current season every night and every season
+      # once a week (Sunday's run, or a manual full run): a finished season
+      # changes only when code or SQL does. app/tests/testthat/helper-db-connect.R.
+      - name: Choose DB test scope
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "DB_TEST_SCOPE=full" >> "$GITHUB_ENV"
+            echo "DB test scope: every season"
+          else
+            echo "DB test scope: current season"
+          fi
+
       - uses: r-lib/actions/setup-pandoc@v2
 
       - uses: r-lib/actions/setup-r@v2

@@ -51,7 +51,10 @@ expect_no_gap <- function(g, label, tol = 1e-9) {
   bad <- names(g$gap)[g$gap > tol]
   expect_identical(bad, character(0), label = paste(label, "columns that differ"))
 }
-SEASONS <- list(`2026` = c("2025-09-01", "2026-07-01"), `2027` = c("2026-09-01", "2027-07-01"))
+# Current season nightly, every season weekly (helper-db-connect.R). The
+# dates bracket the whole season, as the On/Off reader is called by Shiny.
+SEASONS <- stats::setNames(lapply(db_test_seasons(), function(gy)
+  c(sprintf("%d-09-01", gy - 1L), sprintf("%d-07-01", gy))), db_test_seasons())
 
 test_that("Player Stats: the season view equals the per-game reader", {
   for (gy in names(SEASONS)) {
