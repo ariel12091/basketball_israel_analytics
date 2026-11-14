@@ -121,3 +121,27 @@ html[data-theme="light"] .ibpl-heat {
 html[data-theme="light"] .ibpl-acc {
   color: color-mix(in srgb, var(--ibpl-acc) 55%, #000000) !important;
 }
+
+/* ---- Navbar: Bootstrap's toggler icon is a data-URI SVG with a light
+   stroke baked in (vendor/bootstrap.min.css), and its navbar colours are
+   compiled for dark. ---- */
+html[data-theme="light"] .navbar {
+  --bs-navbar-color: rgba(31, 26, 20, 0.7);
+  --bs-navbar-hover-color: rgba(31, 26, 20, 0.9);
+  --bs-navbar-active-color: #1F1A14;
+  --bs-navbar-brand-color: #1F1A14;
+  --bs-navbar-brand-hover-color: #1F1A14;
+  --bs-navbar-toggler-border-color: rgba(31, 26, 20, 0.15);
+}
+/* Outranks the vendor's .navbar[data-bs-theme="light"] .navbar-toggle>.icon-bar:last-child. */
+html[data-theme="light"] .navbar[data-bs-theme] .navbar-toggle > .icon-bar:last-child {
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2831,26,20,0.75%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* ---- Bootstrap utilities used as "card surface" (Compare's summary cards:
+   card bg-dark border-secondary). ---- */
+html[data-theme="light"] .bg-dark {
+  background-color: var(--ibpl-surface) !important;
+  color: var(--ibpl-text-body);
+}
+html[data-theme="light"] .border-secondary { border-color: var(--ibpl-border) !important; }

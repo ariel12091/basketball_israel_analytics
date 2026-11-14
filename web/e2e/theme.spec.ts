@@ -113,3 +113,15 @@ test("light heat cells are tinted and their numbers stay legible", async ({ page
   expect(contrast(bg, "rgb(255, 255, 255)")).toBeLessThan(2); // a light tint
   expect(contrast(bg, fg)).toBeGreaterThanOrEqual(4.5);
 });
+
+test("toggling with a window open flips it in place", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("ibpl_theme", "light"));
+  await page.goto("/il/onoff?season=2026");
+  await page.evaluate(() => (document.getElementById("open_glossary") as HTMLElement).click());
+  const box = page.locator(".modal-content").first();
+  await expect(box).toBeVisible();
+  await expect(box).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.evaluate(() => (document.getElementById("theme_toggle") as HTMLButtonElement).click());
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(box).toHaveCSS("background-color", "rgb(31, 26, 20)");
+});
