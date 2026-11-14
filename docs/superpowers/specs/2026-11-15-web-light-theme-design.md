@@ -69,9 +69,11 @@ glance.
    JS-built colour pick their endpoints per theme. Dark endpoints are the
    current numbers, so dark output is unchanged. Light endpoints are darker,
    more saturated text colours (or lighter fills for background-heat cells)
-   chosen for contrast on white. React components read the theme from a
-   small hook (`useTheme()`), driven by the `data-theme` attribute, so a
-   toggle re-renders them; the first render matches the pre-paint attribute.
+   chosen for contrast on white. (Revised while planning: no React hook.
+   Each computed colour stays inline for dark and is also exposed as a CSS
+   custom property plus class -- `.ibpl-heat` / `--ibpl-heat`, `.ibpl-acc`
+   / `--ibpl-acc` -- which `light.css` tints or shades with `color-mix()`.
+   A toggle then needs no re-render and hydration cannot mismatch.)
 5. **Gameflow SVG, charts, Ask panel, modals, selectize, datepicker,
    range slider, DataTables.** All use the tokens or vendor CSS; each gets
    checked in light and fixed in `light.css` where it hard-codes colours.
