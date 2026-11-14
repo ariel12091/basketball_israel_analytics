@@ -12,6 +12,9 @@ for (const view of ["summary", "four_factors"] as const)
         "utf8",
       ),
     );
+    // Rendering check, not a value check: the expected rows come from the app's own
+    // rule run on the same stubbed answer, so a wrong rule passes here. Values are
+    // checked by the unit tests (src/rules/*.test.ts).
     const result = gameLogs(g.input, [], g.params);
     const rows: Row[] = result.rows
       .slice(0, 2)

@@ -242,6 +242,9 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
     },
   });
   const dib = answer.lanes.find((l) => l.player_label.includes("DIBARTOLOMEO"))!;
+  // Rendering check, not a value check: the expected ratings come from the app's own
+  // rule run on the same stubbed answer, so a wrong rule passes here. Values are
+  // checked by the unit tests (src/rules/*.test.ts).
   const r = stintRatings(answer.events, "own", [dib.player_key]);
   expect(r.offPoss).toBe(47);
   await lane(`own:${dib.player_key}`).click();

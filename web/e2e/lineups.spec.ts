@@ -70,6 +70,9 @@ const clearAll = (page: Page) =>
 
 for (const file of presets)
   test(`Lineups ${file}`, async ({ page }, info) => {
+    // Rendering check, not a value check: the expected cells come from the app's own
+    // rule run on the same stubbed answer, so a wrong rule passes here. Values are
+    // checked by the unit tests (src/rules/*.test.ts).
     const { g, answer, roster, games, local, rows } = loadLineup(file);
     await page.route("**/api/v1/**", (route) => {
       const path = new URL(route.request().url()).pathname;
