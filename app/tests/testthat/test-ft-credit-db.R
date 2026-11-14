@@ -141,6 +141,7 @@ test_that("no Israeli traditional reader still uses the 0.44 TS% estimate", {
     "functions/get_team_traditional_dynamic.sql",
     "functions/refresh_team_metrics_by_game_for_games.sql",
     "materialized_views/player_traditional_stats_mv.sql",
+    "functions/compute_player_traditional_stats.sql",
     "materialized_views/team_metrics_by_game_mv.sql")
   for (f in files) {
     expect_false(grepl("0.44", read_repo_txt("..", "sql", f), fixed = TRUE), info = f)

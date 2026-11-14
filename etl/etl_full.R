@@ -1032,8 +1032,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   # disk I/O budget; at 256 MB they write none (measured 2026-11-14 with
   # EXPLAIN ANALYZE on each definition: lineup_four_factors_by_game 408 MB,
   # mv_lineup_totals_by_day 242 MB, player_traditional_stats_mv 448 MB -> 0).
-  # A full rebuild is kept on purpose: it also picks up historical games
-  # corrected outside the ETL (see the stale team-minutes check below).
+  # Three of those used to be full rebuilds and are tables refreshed per game or
+  # season since 2026-11-14 (PER_GAME_TABLES below, player_traditional_stats_mv);
+  # a game corrected outside the ETL needs an ETL run with game_ids= to reach them.
   if (!dry_run) DBI::dbExecute(pg, "SET work_mem = '256MB'")
 
   # =========================================================================
@@ -1041,6 +1042,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   # =========================================================================
 
   log_msg("â”€â”€â”€ Phase 4: MV Refresh â”€â”€â”€")
+
+  # Tables refreshed for this run's games (scripts/apply_il_per_game_tables.R).
+  # They stay in mv_levels so the same code works before that migration, while
+  # they are still materialized views: the loop refreshes only real views.
+  PER_GAME_TABLES <- c(
+    mv_lineup_totals_by_day = "refresh_mv_lineup_totals_by_day_for_games",
+    lineup_four_factors_by_game = "refresh_lineup_four_factors_by_game_for_games"
+  )
 
   mv_levels <- list(
     list(level = 1, mvs = c("final_schedule_mv")),
@@ -1130,6 +1139,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
 
       for (lv in mv_levels) {
         for (mv in lv$mvs) {
+          if (!isTRUE(matview_exists(mv))) next  # a per-game table now: level 3 below
           mv_t0 <- proc.time()
 
           sql <- sprintf("REFRESH MATERIALIZED VIEW %s;", mv)
@@ -1172,6 +1182,18 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
 
         if (lv$level == 3) {
           ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
+
+          # First, as their full refresh used to be: team_metrics_by_game_mv
+          # and team_four_factors_mv read lineup_four_factors_by_game.
+          for (tbl in names(PER_GAME_TABLES)) {
+            if (isTRUE(matview_exists(tbl))) next  # still a view: refreshed above
+            tbl_t0 <- proc.time()
+            tbl_n <- DBI::dbGetQuery(pg, sprintf(
+              "SELECT %s(ARRAY[%s]::int4[]) AS n", PER_GAME_TABLES[[tbl]], ids_csv))$n[[1]]
+            log_msg(sprintf("  [INC] %s refreshed for %d game(s) - %s rows (%.1fs)",
+                            tbl, length(processed_ids), format(as.integer(tbl_n), big.mark = ","),
+                            (proc.time() - tbl_t0)["elapsed"]))
+          }
 
           if (!isTRUE(fn_exists("refresh_player_four_factors_by_game_for_games"))) {
             stop("Missing function basketball_test.refresh_player_four_factors_by_game_for_games(int4[])")
@@ -1217,7 +1239,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             pff_elapsed
           ))
 
-          # lineup_four_factors_by_game is rebuilt for every game above, while
+          # lineup_four_factors_by_game is refreshed above (for this run's games
+          # since it became a table), while
           # team_metrics_by_game_mv is normally refreshed only for this run's
           # games. Include any historical rows whose published minutes no
           # longer match the rebuilt canonical fact so offline corrections do
@@ -1377,7 +1400,15 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
               pts_elapsed
             ))
           } else {
-            log_msg("  [INC] player_traditional_stats_mv not found as materialized view - skipping")
+            # A table since 2026-11-14: rebuild the season(s) of this run's games.
+            pts_t0 <- proc.time()
+            pts_n <- DBI::dbGetQuery(pg, sprintf(
+              "SELECT refresh_player_traditional_stats_for_games(ARRAY[%s]::int4[]) AS n", ids_csv))$n[[1]]
+            log_msg(sprintf(
+              "  [INC] player_traditional_stats_mv refreshed for the season(s) of %d game(s) - %s rows (%.1fs)",
+              length(processed_ids), format(as.integer(pts_n), big.mark = ","),
+              (proc.time() - pts_t0)["elapsed"]
+            ))
           }
         }
       }
