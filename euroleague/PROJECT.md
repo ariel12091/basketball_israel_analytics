@@ -1018,7 +1018,7 @@ the Israeli two-perspective central fact.
 | `get_team_minutes_dynamic()` | Filtered team minutes summed from canonical matchup-segment seconds; used with team ratings to calculate pace. |
 | `lineup_totals_by_game` | Game/team/five-player-lineup, offense or defense, and opponent starter context; additive counts plus floor seconds on offense rows only. |
 | `sub_lineups` | Season mapping from a five-player lineup to each of its 26 sub-units. Identity only, no metrics. |
-| `sub_lineups_stats_mv` | Default season snapshot per 2-5 player unit. |
+| `sub_lineups_stats_mv` | Default season snapshot per 2-5 player unit. **A table since migration 063 (2026-11-14)**, not a materialized view: `finish_load_run()` rebuilds only the competition-seasons of the run's games with `refresh_sub_lineups_stats(game_ids)` (NULL = every season), ~4 s and no temp files, where the full view refresh took ~85 s and ~2.8 GB of temp per load. The `_mv` name stays so readers are unchanged. |
 
 The functions `onoff_compute()`, `four_factors_compute()`,
 `get_team_ratings_dynamic()`, `get_team_four_factors_dynamic()`, and

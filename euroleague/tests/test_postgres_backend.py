@@ -223,16 +223,36 @@ class PostgresBackendTest(unittest.TestCase):
             connection.statements[1],
             ("SET LOCAL statement_timeout = 0", None),
         )
+        # Migration 063: the Lineups table first; no game list rebuilds every
+        # season (NULL), then the whole-schema views.
         self.assertEqual(
             connection.statements[2],
+            ("SELECT euroleague.refresh_sub_lineups_stats(%s::bigint[])", (None,)),
+        )
+        self.assertEqual(
+            connection.statements[3],
             ("SELECT euroleague.refresh_app_materialized_views()", None),
         )
-        sql, parameters = connection.statements[3]
+        sql, parameters = connection.statements[4]
         self.assertIn("UPDATE euroleague.load_runs", sql)
         self.assertEqual(parameters[0:3], ("partial", 2, 1))
         self.assertIn('"gamecode":3', str(parameters[3]))
         self.assertEqual(parameters[4], 17)
         self.assertEqual(connection.statements[-1], ("COMMIT", None))
+
+    def test_finish_load_run_rebuilds_lineups_only_for_the_runs_games(self) -> None:
+        connection = RecordingConnection()
+
+        finish_load_run(connection, load_run_id=18, success=True, game_ids=[102, 101, 102])
+        self.assertEqual(
+            connection.statements[2],
+            ("SELECT euroleague.refresh_sub_lineups_stats(%s::bigint[])", ([101, 102],)),
+        )
+
+        # A run that published nothing rebuilds no season (an empty array).
+        connection = RecordingConnection()
+        finish_load_run(connection, load_run_id=19, success=False, game_ids=[])
+        self.assertEqual(connection.statements[2][1], ([],))
 
     def test_schema_splitter_preserves_semicolons_inside_strings(self) -> None:
         statements = _split_sql_statements(DDL_PATH.read_text(encoding="utf-8"))

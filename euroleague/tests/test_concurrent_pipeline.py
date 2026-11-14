@@ -438,6 +438,7 @@ class ConcurrentPipelineTest(unittest.TestCase):
             successful_games=2,
             failed_games=0,
             errors=[],
+            game_ids=[101, 102],
         )
         connection.close.assert_called_once_with()
 

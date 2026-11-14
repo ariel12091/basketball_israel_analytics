@@ -485,13 +485,13 @@ def publish_staged_games(
                         )
                     )
 
+            derived_failed_game_ids: set[int] = set()
             if published_backends:
                 # Keep base publication per game, then refresh consumers only
                 # after the complete base batch is present.  Refresh one game
                 # per transaction: a bad lineup or other game-local invariant
                 # must not roll back derived facts for neighboring games.
                 derived_game_ids = [game_id for game_id, _ in published_backends]
-                derived_failed_game_ids: set[int] = set()
                 for game_id in derived_game_ids:
                     try:
                         refresh_derived_for_games(
@@ -519,6 +519,11 @@ def publish_staged_games(
                 successful_games=successful_games,
                 failed_games=failed_games,
                 errors=batch_errors,
+                game_ids=[
+                    game_id
+                    for game_id, _ in published_backends
+                    if game_id not in derived_failed_game_ids
+                ],
             )
     finally:
         connection.close()
