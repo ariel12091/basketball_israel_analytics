@@ -78,9 +78,31 @@ Diagnostic scripts: `scratchpad/investigate_disk_io.R` and
 Supabase budget explanation:
 https://supabase.com/kb/troubleshooting/exhaust-disk-io
 
+## Follow-up, 2026-11-14 (PR #38)
+
+- The float8 calls came from our own live DB tests, not visitors.
+  `test-stint-ribbon-readers.R` pasted ids into the reader (a port-6543
+  workaround): 15 EuroLeague calls per nightly run, about 55 s each. The
+  nightly R tests use the ETL credentials, so the `postgres` calls are CI;
+  the `app_readonly` calls are local runs. The bad statement had no new
+  calls after #37.
+- Nothing failed because test connections had no statement timeout. Live
+  DB tests now connect through `db_test_connect()` (30 s), and the Game
+  Flow tests bind integer ids like the app.
+- Table bloat tripled the cost of full scans: updating every row left
+  `euroleague.action_team_context_actions` at 2,095 MB for 750 MB of data,
+  so the NULL-margin test read 1.2 GiB per call. Seven tables were
+  rewritten with `VACUUM (FULL, ANALYZE)`, 5.9 GB -> 2.6 GB, rows and
+  grants unchanged. `scripts/audit_table_bloat.R` now fails the nightly
+  ETL when a table of 100 MB or more is over 2x.
+
 ## Remediation and verification
 
-Fixed locally on November 13; not deployed. No database DDL/data changes.
+Initially fixed and verified locally on November 13. Subsequently deployed
+to Vercel production as `e0bc138` through PR #37; production Game Flow API
+checks passed for all three leagues. See
+`docs/handoff_supabase_gameflow_io_2026-11-13.md` for final release status.
+No database DDL/data changes.
 
 - Both canonical Game Flow readers cast every game/team parameter to the
   actual column types: Israeli `int4`, EuroLeague/EuroCup `bigint`.
