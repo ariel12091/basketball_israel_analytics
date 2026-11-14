@@ -9,6 +9,10 @@ export default defineConfig({
     // stored Shiny answers in the browser, so they ask for client-side data
     // (live-smoke.spec.ts clears it to exercise the server render).
     extraHTTPHeaders: { "x-ibpl-client-data": "1" },
+    // A visitor with no stored theme follows the device (lib/theme.ts), and
+    // Playwright's default device is light. The specs check Shiny's dark
+    // look, so default to a dark device; theme.spec.ts sets its own.
+    colorScheme: "dark",
   },
   projects: [
     { name: "phone", use: { viewport: { width: 390, height: 844 } } },

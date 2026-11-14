@@ -84,8 +84,10 @@ test.describe("the toggle", () => {
 /** WCAG contrast ratio of two computed "rgb(r, g, b)" colours. */
 function contrast(a: string, b: string) {
   const lum = (c: string) => {
+    // color-mix() serialises as "color(srgb 0.8 0.7 0.7)", channels 0-1.
+    const unit = c.startsWith("color(") ? 1 : 255;
     const [r, g, bl] = (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => {
-      const s = v / 255;
+      const s = v / unit;
       return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
     });
     return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
