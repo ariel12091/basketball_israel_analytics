@@ -283,6 +283,7 @@ export default function DataTable({
   csvName,
   tableClass = "",
   nameColumns = ["team_name"],
+  nameJoin = " · ",
   rowProps,
   exportRef,
   pinTotals = false,
@@ -308,6 +309,8 @@ export default function DataTable({
   tableClass?: string;
   /** Columns whose text becomes the phone name label (mobile.js isName). */
   nameColumns?: string[];
+  /** What separates the names in that label (Game Logs: " vs "). */
+  nameJoin?: string;
   rowProps?: (row: Row) => HTMLAttributes<HTMLTableRowElement> & {
     [data: `data-${string}`]: string;
   };
@@ -808,7 +811,7 @@ export default function DataTable({
                             <span className="ibpl-row-name">
                               {names.map((n, k) => (
                                 <Fragment key={n.id}>
-                                  {k > 0 && " · "}
+                                  {k > 0 && nameJoin}
                                   <span
                                     className={
                                       k ? "ibpl-row-name-team" : undefined

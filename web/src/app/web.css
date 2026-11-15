@@ -936,3 +936,7 @@ table.dataTable td.ibpl-name-has-img { text-align: left; }
 .ibpl-react-gameflow { --gf-good-rgb: 46, 160, 90; --gf-bad-rgb: 214, 72, 60; }
 html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf-bad-rgb: 200, 50, 45; }
 .gf-rtg { padding: 0 4px; border-radius: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A row scrolled sideways shows its names above (mobile.css): its logo or
+   photo keeps to the first line of the name, clear of that label. */
+.ibpl-name-table.ibpl-names-scrolled td.ibpl-name-has-img .ibpl-name-with-img,
+.ibpl-name-table.ibpl-names-scrolled .ibpl-cell-btn:has(> .ibpl-name-with-img) { align-items: flex-start; }

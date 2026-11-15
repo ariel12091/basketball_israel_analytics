@@ -244,7 +244,9 @@ export default function GameLogsTable({
       defaultOrder={order}
       pageLength={50}
       csvName={`${league === "il" ? "game_logs" : "euroleague_game_logs"}_${view}`}
-      nameColumns={["team_name"]}
+      // Both teams float above a row scrolled sideways (user 2026-11-15).
+      nameColumns={["team_name", "opp_team_name"]}
+      nameJoin=" vs "
       moreInfo
       rowProps={(row) => ({
         "data-game-id": String(row.game_id ?? ""),
