@@ -43,6 +43,7 @@ import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
+import { ImageScopeContext } from "@/lib/images";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
 export type { DrawerSection } from "./FilterDrawer";
@@ -334,6 +335,7 @@ export function TabFrame({
   };
 }) {
   const body = useShinyBody(league !== "il");
+  const imageScope = useMemo(() => ({ league, season }), [league, season]);
   const drawerLayout = layout === "drawer" && !!drawer;
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Every section starts open (user 2026-10-28): the drawer shows all filters.
@@ -430,72 +432,74 @@ export function TabFrame({
     toggleFilters: body.toggleFilters,
   };
   return (
-    <TouchTipsContext.Provider value={body.touchTips}>
-      <FrameContext.Provider value={frame}>
-        <Navbar
-          league={league}
-          tab={tab}
-          season={season}
-          seasons={seasons}
-          views={views}
-          view={view}
-          onView={onView}
-          onSeason={onSeason}
-          onGlossary={openGlossary}
-          updated={updated}
-          collapsedNav={body.collapsedNav}
-          page={page}
-        >
-          <div className="tab-content">
-            <div className="tab-pane active show" data-value={paneValue}>
-              <div
-                className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
-              >
-                <div className="row">
-                  {!mainOnly && !drawerLayout && (
-                    <div className="col-sm-3 ibpl-filter-col">
-                      <form
-                        className="well"
-                        role="complementary"
-                        onSubmit={(e) => e.preventDefault()}
-                      >
-                        {sidebarTop}
-                        <hr />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary d-md-none w-100 mb-2"
-                          aria-expanded={filtersShown}
-                          onClick={() => setFiltersShown((s) => !s)}
+    <ImageScopeContext.Provider value={imageScope}>
+      <TouchTipsContext.Provider value={body.touchTips}>
+        <FrameContext.Provider value={frame}>
+          <Navbar
+            league={league}
+            tab={tab}
+            season={season}
+            seasons={seasons}
+            views={views}
+            view={view}
+            onView={onView}
+            onSeason={onSeason}
+            onGlossary={openGlossary}
+            updated={updated}
+            collapsedNav={body.collapsedNav}
+            page={page}
+          >
+            <div className="tab-content">
+              <div className="tab-pane active show" data-value={paneValue}>
+                <div
+                  className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
+                >
+                  <div className="row">
+                    {!mainOnly && !drawerLayout && (
+                      <div className="col-sm-3 ibpl-filter-col">
+                        <form
+                          className="well"
+                          role="complementary"
+                          onSubmit={(e) => e.preventDefault()}
                         >
-                          Show Filters
-                        </button>
-                        <div
-                          id={filtersId}
-                          className={`collapse d-md-block${filtersShown ? " show" : ""}`}
-                        >
-                          {sidebar}
-                        </div>
-                      </form>
+                          {sidebarTop}
+                          <hr />
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary d-md-none w-100 mb-2"
+                            aria-expanded={filtersShown}
+                            onClick={() => setFiltersShown((s) => !s)}
+                          >
+                            Show Filters
+                          </button>
+                          <div
+                            id={filtersId}
+                            className={`collapse d-md-block${filtersShown ? " show" : ""}`}
+                          >
+                            {sidebar}
+                          </div>
+                        </form>
+                      </div>
+                    )}
+                    <div
+                      className={
+                        mainOnly || drawerLayout
+                          ? "col-12"
+                          : "col-sm-9 ibpl-main-col"
+                      }
+                      role="main"
+                    >
+                      {main}
                     </div>
-                  )}
-                  <div
-                    className={
-                      mainOnly || drawerLayout
-                        ? "col-12"
-                        : "col-sm-9 ibpl-main-col"
-                    }
-                    role="main"
-                  >
-                    {main}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </Navbar>
-        {glossary && <Glossary onClose={() => setGlossary(false)} />}
-      </FrameContext.Provider>
-    </TouchTipsContext.Provider>
+          </Navbar>
+          {glossary && <Glossary onClose={() => setGlossary(false)} />}
+        </FrameContext.Provider>
+      </TouchTipsContext.Provider>
+    </ImageScopeContext.Provider>
   );
 }
 

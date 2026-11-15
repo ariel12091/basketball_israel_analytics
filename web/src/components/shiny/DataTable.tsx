@@ -40,6 +40,8 @@ import { formatNumber } from "@/rules/format";
 import { orderKey } from "@/rules/order";
 import { defuseCsvCell } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
+import { NameImage, nameCellImage } from "./NameImage";
+import { useImageScope } from "@/lib/images";
 
 export type Cell = {
   node: ReactNode;
@@ -397,6 +399,7 @@ export default function DataTable({
   }, [exportRef, columns, sortedRows]);
 
   const touchTips = useContext(TouchTipsContext);
+  const imageScope = useImageScope();
   const [tip, setTip] = useState<{ label: string; text: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -728,6 +731,17 @@ export default function DataTable({
                   >
                     {columns.map((c, j) => {
                       const cell = cellOf(row, c);
+                      const img = names.some((n) => n.id === c.id)
+                        ? nameCellImage(imageScope, c.id, row)
+                        : null;
+                      const content = img ? (
+                        <span className="ibpl-name-with-img">
+                          <NameImage src={img.src} kind={img.kind} />
+                          <span>{cell.node}</span>
+                        </span>
+                      ) : (
+                        cell.node
+                      );
                       const cls = [
                         j === anchorIndex && names.length
                           ? "ibpl-name-anchor"
@@ -780,10 +794,10 @@ export default function DataTable({
                               type="button"
                               className="ibpl-btn-reset ibpl-cell-btn"
                             >
-                              {cell.node}
+                              {content}
                             </button>
                           ) : (
-                            cell.node
+                            content
                           )}
                           {j === anchorIndex && names.length > 0 && (
                             <span className="ibpl-row-name">

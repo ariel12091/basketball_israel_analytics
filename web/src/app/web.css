@@ -892,3 +892,14 @@ body .ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus-v
    name opened the definition. Here it is a 22px box right after the name,
    overlapping nothing: the name is all sort, the "i" all definition. */
 body.ibpl-touch-tips table.dataTable thead th > .ibpl-m-th-info { width: 22px; height: 22px; margin: 0 0 0 2px; }
+/* PREVIEW PROTOTYPE (react/logos): a logo or headshot before a name in a
+   table's name column (NameImage.tsx). Fixed 22px box so rows never shift;
+   logos keep their shape, headshots are cropped to a circle from the top
+   (basket.co.il's photos are portrait, head at the top). */
+.ibpl-name-with-img { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; }
+.ibpl-name-with-img > span { min-width: 0; }
+.ibpl-name-img { flex: none; width: 22px; height: 22px; }
+.ibpl-name-img-logo { object-fit: contain; }
+.ibpl-name-img-photo { object-fit: cover; object-position: center top; border-radius: 50%; background: var(--ibpl-surface); box-shadow: 0 0 0 1px var(--ibpl-border); }
+/* The On/Off pivot caret (::after on the cell button) stays beside the name.  */
+.ibpl-cell-btn:has(> .ibpl-name-with-img) { display: inline-flex; align-items: center; }
