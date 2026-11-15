@@ -12,7 +12,7 @@ import { PLAYER_MODES } from "@/rules/playerStatsTable";
 
 vi.mock("server-only", () => ({}));
 const { openApiSpec } = await import("./openapi");
-const { TOOLS } = await import("@/ask/registry");
+const { NOT_TOOLS, TOOLS } = await import("@/ask/registry");
 
 type Param = { name: string; in: string; description?: string; schema?: { type?: string; enum?: string[] } };
 type Op = { operationId: string; parameters: Param[]; responses: Record<string, unknown>; description?: string };
@@ -37,7 +37,8 @@ describe("OpenAPI description of /api/v1", () => {
   });
 
   it("has a path for every route the app serves", () => {
-    for (const d of readdirSync(path.join(api, "[league]")))
+    // Internal helpers (the registry's NOT_TOOLS) are left out on purpose.
+    for (const d of readdirSync(path.join(api, "[league]")).filter((d) => !(d in NOT_TOOLS)))
       expect(spec.paths, d).toHaveProperty([`/api/v1/{league}/${d}`]);
     for (const d of readdirSync(api).filter((d) => !["[league]", "ask"].includes(d) && statSync(path.join(api, d)).isDirectory()))
       expect(spec.paths, d).toHaveProperty([`/api/v1/${d}`]);
@@ -64,13 +65,55 @@ describe("OpenAPI description of /api/v1", () => {
   });
 
   it("takes allowed values from the catalogues and the routes' own lists", () => {
-    const codes = query("game-logs").find((p) => p.name === "game_type")!.schema!;
-    for (const c of catalogues.gameTypeChoices.filter((c) => c.value !== "")) expect(codes.enum).toContain(c.value);
+    // Comma separated, so the codes are listed in the description, not as an enum.
+    const codes = query("game-logs").find((p) => p.name === "game_type")!.description!;
+    for (const c of catalogues.gameTypeChoices.filter((c) => c.value !== "")) expect(codes).toContain(`${c.value} ${c.label}`);
     expect(query("team-ratings").find((p) => p.name === "view")!.schema!.enum).toEqual(TEAM_VIEWS);
     expect(query("player-stats").find((p) => p.name === "view")!.schema!.enum).toEqual([...PLAYER_MODES]);
-    expect(query("compare").find((p) => p.name === "preset")!.schema!.enum).toEqual(["", ...presetChoices.map((c) => c.value)].filter((v, i, a) => a.indexOf(v) === i));
+    expect(query("compare").find((p) => p.name === "preset")!.schema!.enum).toEqual([...new Set(presetChoices.map((c) => c.value).filter(Boolean))]);
     expect(query("team-ratings").find((p) => p.name === "shape")!.schema!.enum).toEqual(["table"]);
     expect(query("team-ratings").find((p) => p.name === "format")!.schema!.enum).toEqual(["json", "csv"]);
+  });
+
+  it("marks the parameters a route cannot answer without as required", () => {
+    const required = (route: string) => op(route).parameters.filter((p) => p.in === "query" && (p as { required?: boolean }).required).map((p) => p.name).sort();
+    expect(required("gameflow")).toEqual(["game_id", "team_id"]);
+    expect(required("home")).toEqual(["team_id"]);
+    expect(required("lineup-games")).toEqual(["hash", "season", "team"]);
+    expect(required("guide")).toEqual(["topic"]);
+    expect(required("team-ratings")).toEqual([]);
+    expect(query("gameflow").find((p) => p.name === "team_id")!.schema!.type).toBe("integer");
+  });
+
+  it("allows what the routes accept: comma lists are free text, and no empty enum value", () => {
+    const gt = query("game-logs").find((p) => p.name === "game_type")!;
+    expect(gt.schema!.enum).toBeUndefined();
+    expect(gt.description).toMatch(/5 Regular season/);
+    for (const [p, item] of Object.entries(spec.paths))
+      for (const prm of item.get.parameters) expect(prm.schema?.enum ?? [], `${p} ${prm.name}`).not.toContain("");
+  });
+
+  it("states the page's defaults", () => {
+    const d = (route: string, name: string) => (query(route).find((p) => p.name === name)!.schema as { default?: string }).default;
+    expect(d("team-ratings", "view")).toBe("summary");
+    expect(d("team-ratings", "clutch_margin")).toBe("5");
+    expect(d("player-stats", "view")).toBe("Per Game");
+    expect(d("lineups", "size")).toBe("5");
+    expect(d("onoff", "auto")).toBe("true");
+  });
+
+  it("documents the busy and timeout answers, with valid media types only", () => {
+    const allowed = new Set(["schema", "example", "examples", "encoding"]);
+    for (const [p, item] of Object.entries(spec.paths)) {
+      if (p.includes("{league}")) for (const code of ["503", "504"]) expect(item.get.responses, `${p} ${code}`).toHaveProperty(code);
+      for (const r of Object.values(item.get.responses) as { content?: Record<string, object> }[])
+        for (const media of Object.values(r.content ?? {})) for (const k of Object.keys(media)) expect(allowed.has(k), `${p} ${k}`).toBe(true);
+    }
+  });
+
+  it("leaves internal helpers out and names no fixed host", () => {
+    expect(spec.paths).not.toHaveProperty(["/api/v1/{league}/player-stat-filters"]);
+    expect((spec as unknown as { servers: { url: string }[] }).servers).toEqual([{ url: "/" }]);
   });
 
   it("names the leagues each route serves (Compare and the Home hub are Israeli only)", () => {

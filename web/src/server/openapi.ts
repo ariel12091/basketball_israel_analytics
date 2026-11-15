@@ -24,6 +24,14 @@ import { KINDS } from "./compareRepo";
 type Schema = { type: "string" | "integer" | "boolean"; enum?: string[]; format?: string; default?: string };
 type Param = { name: string; in: "query" | "path"; required?: boolean; description: string; schema: Schema };
 
+/** Parameters a route cannot answer without (its parser refuses a missing one). */
+const REQUIRED: Record<string, string[]> = {
+  gameflow: ["game_id", "team_id"],
+  home: ["team_id"],
+  "lineup-games": ["season", "team", "hash"],
+  guide: ["topic"],
+};
+
 const str = (description: string, extra: Partial<Schema> = {}) => ({ description, schema: { type: "string", ...extra } as Schema });
 const int = (description: string) => ({ description, schema: { type: "integer" } as Schema });
 const bool = (description: string) => ({ description, schema: { type: "string", enum: ["true", "false"] } as Schema });
@@ -37,22 +45,20 @@ const STAT_FILTER =
 const KEYS: Record<string, { description: string; schema: Schema }> = {
   season: int("Season. Israeli League: the year the season ends (2025-26 is 2026). EuroLeague and EuroCup: the year it starts (2025-26 is 2025). Default: the current season."),
   view: str("The page's view (allowed values per route)."),
-  team: str("One team id (the team's rows; on Game Logs the team whose games are listed)."),
+  team: int("One team id (the team's rows; on Game Logs the team whose games are listed)."),
   teams: str("Team ids, comma separated."),
   start: date("First game date (YYYY-MM-DD); default the season's start."),
   end: date("Last game date (YYYY-MM-DD); default the season's end."),
   own_starters: str("The team's own starters on the floor: gte:N or lte:N (N 0-5)."),
   opp_starters: str("The opponents' starters on the floor: gte:N or lte:N (N 0-5)."),
-  game_type: str(`Israeli game type code(s), comma separated: ${gameTypes.map((c) => `${c.value} ${c.label}`).join("; ")}.`, {
-    enum: ["", ...gameTypes.map((c) => c.value)],
-  }),
+  game_type: str(`Israeli game type code(s), comma separated: ${gameTypes.map((c) => `${c.value} ${c.label}`).join("; ")}.`),
   phase: str("EuroLeague / EuroCup phase(s), comma separated, as the provider names them."),
   opponents: str("Opponent team ids, comma separated."),
-  home_away: str("Home or away games only.", { enum: ["", "home", "away"] }),
-  outcome: str("Wins or losses only.", { enum: ["", "win", "loss"] }),
-  opp_rank_side: str("Only games against the top or bottom of the league (with opp_rank_n).", { enum: ["", "top", "bottom"] }),
+  home_away: str("Home or away games only.", { enum: ["home", "away"] }),
+  outcome: str("Wins or losses only.", { enum: ["win", "loss"] }),
+  opp_rank_side: str("Only games against the top or bottom of the league (with opp_rank_n).", { enum: ["top", "bottom"] }),
   opp_rank_n: int("How many teams count as the top or bottom (with opp_rank_side)."),
-  opp_rank_metric: str("The rating the opponents are ranked by (default net).", { enum: ["", "off", "def", "net"] }),
+  opp_rank_metric: str("The rating the opponents are ranked by (default net).", { enum: ["off", "def", "net"] }),
   min_gn: int("First Israeli game number (round); not with last_n."),
   max_gn: int("Last Israeli game number (round); not with last_n."),
   last_n: int("Each team's last N games; not with a game-number range."),
@@ -79,9 +85,9 @@ const KEYS: Record<string, { description: string; schema: Schema }> = {
   any_exact: bool("Lineups: exactly any_count of players_any, not at least."),
   // Compare
   preset: str("Compare: a ready-made comparison of side A against side B.", {
-    enum: [...new Set(["", ...presetChoices.map((c) => c.value)])],
+    enum: [...new Set(presetChoices.map((c) => c.value).filter(Boolean))],
   }),
-  team_id: str("A team id. Compare (with a preset): pins that team on both sides. Home hub and Gameflow: the team."),
+  team_id: int("A team id. Compare (with a preset): pins that team on both sides. Home hub and Gameflow: the team."),
   open_detail: bool("Compare (with a preset and team_id): open that team's Detail grid."),
   auto_min: bool("Compare: the page's automatic possession minimum (the API applies min_poss as given)."),
   split_date: date("Compare date_split preset: side A before this date, side B from it."),
@@ -132,6 +138,15 @@ const VIEWS: Partial<Record<string, string[]>> = {
 };
 
 const keysOf = (defaults: Record<string, string>) => Object.keys(queryFromSearch("il", {}, defaults));
+/** The page's default for each key a route takes (season left out: it differs by league). */
+const DEFAULTS: Record<string, Record<string, string>> = {
+  "team-ratings": queryFromSearch("il", {}, TEAM_QUERY_DEFAULTS),
+  "player-stats": queryFromSearch("il", {}, PLAYER_QUERY_DEFAULTS),
+  onoff: queryFromSearch("il", {}, onoffQueryDefaults("il")),
+  lineups: queryFromSearch("il", {}, LINEUP_QUERY_DEFAULTS),
+  "game-logs": queryFromSearch("il", {}, {}),
+  compare: queryFromSearch("il", {}, compareDefaults),
+};
 const CONTEXT = keysOf({});
 /** The query keys each route takes (before shape / format / v). */
 const ROUTE_KEYS: Record<string, string[]> = {
@@ -147,13 +162,18 @@ const ROUTE_KEYS: Record<string, string[]> = {
 const TABLES = new Set(["team-ratings", "player-stats", "onoff", "compare"]);
 const CSV_ONLY = new Set(["lineups", "game-logs"]);
 
-const ERROR = {
-  description: "A parameter the route refuses: { error, param }.",
+const error = (description: string) => ({
+  description,
   content: {
     "application/json": {
       schema: { type: "object", properties: { error: { type: "string" }, param: { type: ["string", "null"] } } },
     },
   },
+});
+const ERRORS = {
+  400: error("A parameter the route refuses: { error, param } names it."),
+  503: error("Busy or the data is briefly unavailable; retry shortly."),
+  504: error("The read took longer than the route's deadline; retry, or narrow the query."),
 };
 const answer = (csv: boolean) => ({
   description: "The page's answer: rows (one object per table row, columns as on the page) and meta (version, view, the season's teams and filters).",
@@ -161,7 +181,8 @@ const answer = (csv: boolean) => ({
     "application/json": {
       schema: { type: "object", properties: { rows: { type: "array", items: { type: "object" } }, meta: { type: "object" } } },
     },
-    ...(csv ? { "text/csv": { schema: { type: "string" }, description: "With format=csv." } } : {}),
+    // With format=csv.
+    ...(csv ? { "text/csv": { schema: { type: "string" } } } : {}),
   },
 });
 
@@ -169,7 +190,9 @@ function param(route: string, name: string): Param {
   const k = KEYS[name];
   if (!k) throw new Error(`openapi: no description for ${route} parameter ${name}`);
   const views = name === "view" ? VIEWS[route] : undefined;
-  return { name, in: "query", ...k, ...(views ? { schema: { ...k.schema, enum: views } } : {}) };
+  const dflt = name === "season" ? "" : (DEFAULTS[route]?.[name] ?? "");
+  const schema: Schema = { ...k.schema, ...(views ? { enum: views } : {}), ...(dflt ? { default: dflt } : {}) };
+  return { name, in: "query", ...k, ...(REQUIRED[route]?.includes(name) ? { required: true } : {}), schema };
 }
 
 function operation(route: string) {
@@ -187,7 +210,7 @@ function operation(route: string) {
         { name: "league", in: "path", required: true, description: "il (Israeli League), euroleague or eurocup.", schema: { type: "string", enum: leagues } },
         ...[...new Set([...keys, ...shaped, "v"])].map((k) => param(route, k)),
       ],
-      responses: { 200: answer(csv), 400: ERROR },
+      responses: { 200: answer(csv), ...ERRORS },
     },
   };
 }
@@ -195,7 +218,8 @@ function operation(route: string) {
 let cached: object | undefined;
 export function openApiSpec() {
   if (cached) return cached;
-  const routes = [...Object.values(TOOLS).flatMap((t) => (t.route ? [t.route] : [])), ...Object.keys(NOT_TOOLS)];
+  // Internal helpers (NOT_TOOLS, e.g. player-stat-filters) stay unpublished.
+  const routes = Object.values(TOOLS).flatMap((t) => (t.route ? [t.route] : []));
   cached = {
     openapi: "3.1.0",
     info: {
@@ -204,7 +228,8 @@ export function openApiSpec() {
       description:
         "Israeli League, EuroLeague and EuroCup statistics, the same numbers the site's pages show. Every route is GET and read-only. Table routes take the page's own query and, with shape=table, return the finished table a page link shows; format=csv returns it as a CSV download.",
     },
-    servers: [{ url: "https://ibpl-game-logs.vercel.app" }],
+    // Relative: the host that serves this document (Production or a Preview).
+    servers: [{ url: "/" }],
     paths: {
       ...Object.fromEntries(routes.sort().map((r) => [`/api/v1/{league}/${r}`, operation(r)])),
       "/api/v1/version": {
