@@ -184,7 +184,9 @@ for (const [league, teamName] of [
   ["euroleague", "Anadolu Efes Istanbul"],
   ["eurocup", "Aris Thessaloniki"],
 ] as const) {
-  test(`${league}: a small On/Off roster clears both auto minimums`, async ({ page }) => {
+  test(`${league}: a small On/Off roster clears both auto minimums`, async ({
+    page,
+  }) => {
     await stub(page, league);
     const prefix = league === "il" ? "" : "euro_";
     const minOn = page.locator(`#${prefix}min_on_poss`);
@@ -245,7 +247,7 @@ test("possession columns are on screen without scrolling sideways", async ({
 
 test.describe("on touch, every marker opens with a tap", () => {
   test.use({ hasTouch: true, isMobile: true });
-  test("header, tag and shot cell open by tap; header arrows still sort", async ({
+  test("a header tap sorts, its i explains; tag and shot cell open by tap", async ({
     page,
   }, info) => {
     test.skip(info.project.name !== "phone", "touch at phone width");
@@ -253,18 +255,15 @@ test.describe("on touch, every marker opens with a tap", () => {
     const pop = page.locator(".ibpl-more-pop");
     const netHead = page
       .locator(".ibpl-dt-scroll thead th")
-      .filter({ has: page.locator(".ibpl-more", { hasText: /^Net$/ }) })
+      .filter({ has: page.locator(".dt-sort", { hasText: /^Net$/ }) })
       .first();
-    await netHead.locator(".ibpl-more").tap();
-    await expect(pop).toBeVisible();
-    await netHead.locator(".ibpl-more").tap();
-    await expect(pop).toHaveCount(0);
-    // A tap on the header outside its label sorts.
+    // A tap on the header's name sorts and opens nothing (user 2026-11-15:
+    // people tap the header to sort, not to read a definition).
     const before = await page
       .locator('.ibpl-dt-scroll tbody td[data-column="Player"]')
       .first()
       .textContent();
-    await netHead.locator(".th-sort-target").tap();
+    await netHead.locator(".dt-sort").tap();
     await expect
       .poll(() =>
         page
@@ -273,6 +272,32 @@ test.describe("on touch, every marker opens with a tap", () => {
           .textContent(),
       )
       .not.toBe(before);
+    await expect(pop).toHaveCount(0);
+    const strip = page.locator(".ibpl-m-th-strip");
+    await expect(strip).not.toHaveClass(/ibpl-m-strip-open/);
+    // The i sits inside its own header, clear of the name a thumb taps.
+    const [ib, lb, hb] = await Promise.all([
+      netHead.locator(".ibpl-m-th-info").boundingBox(),
+      netHead.locator(".dt-sort").boundingBox(),
+      netHead.boundingBox(),
+    ]);
+    expect(ib!.x).toBeGreaterThanOrEqual(hb!.x - 0.5);
+    expect(ib!.y).toBeGreaterThanOrEqual(hb!.y - 0.5);
+    expect(ib!.x + ib!.width).toBeLessThanOrEqual(hb!.x + hb!.width + 0.5);
+    const overlaps =
+      ib!.x < lb!.x + lb!.width &&
+      lb!.x < ib!.x + ib!.width &&
+      ib!.y < lb!.y + lb!.height &&
+      lb!.y < ib!.y + ib!.height;
+    expect(overlaps, `i ${JSON.stringify(ib)} name ${JSON.stringify(lb)}`).toBe(
+      false,
+    );
+    // The header's i opens the definition; a second tap closes it.
+    await netHead.locator(".ibpl-m-th-info").tap();
+    await expect(strip).toHaveClass(/ibpl-m-strip-open/);
+    await expect(strip).toContainText("Net");
+    await netHead.locator(".ibpl-m-th-info").tap();
+    await expect(strip).not.toHaveClass(/ibpl-m-strip-open/);
     const tag = page.locator(".ibpl-dt-scroll .onoff-luck-tag").first();
     await tag.tap();
     await expect(pop).toContainText(/3PT luck|Small sample/);
@@ -295,12 +320,22 @@ test.describe("review fixes", () => {
         .first()
         .textContent();
     const before = await first();
-    await page
-      .locator(".ibpl-dt-scroll thead th .ibpl-more", {
-        hasText: /^On-court Poss$/,
-      })
-      .click();
+    const head = page
+      .locator(".ibpl-dt-scroll thead th")
+      .filter({ has: page.locator(".dt-sort", { hasText: /^On-court Poss$/ }) })
+      .first();
+    const pop = page.locator(".ibpl-more-pop");
+    // A quick click anywhere on the header sorts and pops nothing up.
+    await head.click({ position: { x: 6, y: 6 } });
     await expect.poll(first).not.toBe(before);
+    await expect(pop).toHaveCount(0);
+    // Resting on the header shows its definition; moving away hides it.
+    await page.mouse.move(0, 0);
+    await head.hover();
+    await expect(pop).toBeVisible();
+    await expect(pop).not.toBeEmpty();
+    await page.mouse.move(0, 0);
+    await expect(pop).toHaveCount(0);
   });
 
   test("Escape in a stepper with the drawer closed keeps focus there", async ({

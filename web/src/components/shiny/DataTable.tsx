@@ -10,7 +10,7 @@
 //   70vh), the "i" header explanations on touch, the phone name label above
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
-import MoreInfo from "./MoreInfo";
+import MoreInfo, { HoverTip } from "./MoreInfo";
 import {
   Fragment,
   useContext,
@@ -317,8 +317,10 @@ export default function DataTable({
   columnFilters?: boolean;
   csvLabel?: string;
   onColumnMove?: (from: string, to: string) => void;
-  /** Header definitions as MoreInfo (tap on touch, hover with a mouse)
-   * instead of title + the touch info button (design 2026-10-28 § 6). */
+  /** Header definitions in the stats-tab popover, shown when the mouse
+   * rests on the header (HoverTip), instead of the native title. Either
+   * way a click or tap on the header sorts and touch explains through the
+   * header's "i" (user 2026-11-15). */
   moreInfo?: boolean;
 
   /** Whole-row pointer action; provide an onActivate cell for keyboard use. */
@@ -407,7 +409,7 @@ export default function DataTable({
     .filter(Boolean)
     .join(", then ");
 
-  const order =(id: string, shift: boolean) => {
+  const order = (id: string, shift: boolean) => {
     const first = Boolean(columns.find((c) => c.id === id)?.descFirst);
     const onlyDesc = Boolean(columns.find((c) => c.id === id)?.descOnly);
     setPageIndex(0);
@@ -533,7 +535,7 @@ export default function DataTable({
                 {columns.map((c) => {
                   const dir = table.getColumn(c.id)?.getIsSorted();
                   const title = c.title ?? TIPS[c.label];
-                  return (
+                  const th = (
                     <th
                       key={c.id}
                       className={`sub-head${c.cls ? ` ${c.cls}` : ""} dt-center sorting${dir === "desc" ? " sorting_desc" : dir === "asc" ? " sorting_asc" : ""}`}
@@ -546,9 +548,9 @@ export default function DataTable({
                             : undefined
                       }
                       title={moreInfo ? undefined : title}
-                      style={
-                        title && !moreInfo ? { cursor: "help" } : undefined
-                      }
+                      // A header sorts: the pointer, not "help", even where
+                      // it also explains on hover.
+                      style={{ cursor: "pointer" }}
                       data-column={c.id}
                       draggable={Boolean(onColumnMove)}
                       onDragStart={
@@ -583,7 +585,8 @@ export default function DataTable({
                           ? (e) => {
                               if (
                                 !e.altKey ||
-                                (e.key !== "ArrowLeft" && e.key !== "ArrowRight")
+                                (e.key !== "ArrowLeft" &&
+                                  e.key !== "ArrowRight")
                               )
                                 return;
                               const at = columns.findIndex(
@@ -607,29 +610,16 @@ export default function DataTable({
                           : undefined
                       }
                     >
-                      {moreInfo && title ? (
-                        <>
-                          <MoreInfo label={c.label}>{title}</MoreInfo>
-                          {/* The label opens its definition; this edge strip
-                              (over the sort arrows) sorts. */}
-                          <button
-                            type="button"
-                            className="th-sort-target"
-                            aria-label={`Sort by ${c.label}`}
-                          />
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="dt-sort"
-                          aria-describedby={
-                            title ? `${tipId}-${c.id}` : undefined
-                          }
-                        >
-                          {c.label}
-                        </button>
-                      )}
-                      {touchTips && title && !moreInfo && (
+                      <button
+                        type="button"
+                        className="dt-sort"
+                        aria-describedby={
+                          title ? `${tipId}-${c.id}` : undefined
+                        }
+                      >
+                        {c.label}
+                      </button>
+                      {touchTips && title && (
                         <InfoButton
                           onOpen={() =>
                             setTip((t) =>
@@ -641,6 +631,13 @@ export default function DataTable({
                         />
                       )}
                     </th>
+                  );
+                  return moreInfo && title ? (
+                    <HoverTip key={c.id} tip={title}>
+                      {th}
+                    </HoverTip>
+                  ) : (
+                    th
                   );
                 })}
               </tr>
@@ -829,15 +826,14 @@ export default function DataTable({
             title tooltip is mouse-only); outside the table so header text
             stays the label alone. */}
         <div hidden>
-          {!moreInfo &&
-            columns.map((c) => {
-              const title = c.title ?? TIPS[c.label];
-              return title ? (
-                <span key={c.id} id={`${tipId}-${c.id}`}>
-                  {title}
-                </span>
-              ) : null;
-            })}
+          {columns.map((c) => {
+            const title = c.title ?? TIPS[c.label];
+            return title ? (
+              <span key={c.id} id={`${tipId}-${c.id}`}>
+                {title}
+              </span>
+            ) : null;
+          })}
         </div>
         <span className="ibpl-sr-only" role="status">
           {sortedBy && `Sorted by ${sortedBy}`}
