@@ -7,7 +7,7 @@ import type { League } from "@/rules/gameLogs";
 import { orderKey } from "@/rules/order";
 import { ParamError, rawQueryGuard } from "@/server/api";
 import { BusyError, DeadlineError } from "@/server/deadline";
-import { applyTeamNamesHe, readTeamNamesHe } from "@/server/teamNames";
+import { applyTeamNamesHe, loadTeamNamesHe } from "@/server/teamNames";
 import { displaySpec } from "./display";
 import { flatten } from "./flatten";
 import { gameTypeList, unknownGameType } from "./gameTypes";
@@ -215,15 +215,10 @@ export async function runTool(
     throw e;
   }
   let rows = flat.rows;
-  // Chat-only Hebrew team names (server/teamNames.ts); Gameflow's season is
-  // the game's, every other tool's is the query's.
-  if (call.league === "il" && entry.name !== "guide") {
-    const season =
-      (payload as { meta?: { season?: unknown } } | null)?.meta?.season ??
-      call.query.season ??
-      ui.defaultGameYear;
-    rows = applyTeamNamesHe(rows, await readTeamNamesHe("il", Number(season)));
-  }
+  // The answers carry their Hebrew team names (server/teamNames.ts); the team
+  // list has no answer function, so it gets them here.
+  if (call.league === "il" && entry.name === "list_teams")
+    rows = applyTeamNamesHe(rows, await loadTeamNamesHe("il", Number(call.query.season ?? ui.defaultGameYear)));
   if (call.sort) {
     const { key, desc } = call.sort;
     // A derived value (On/Off "Off Shot ON 3PT") sorts by the number it shows.

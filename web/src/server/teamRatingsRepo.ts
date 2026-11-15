@@ -5,6 +5,7 @@ import { ParamError } from "./api";
 import { dbArgs, defaultDates, needsFilteredPath, seasonBounds } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
+import { hebrewTeams } from "./teamNames";
 import { readTabReferences } from "./onoffRepo";
 import {
   teamPace,
@@ -287,7 +288,8 @@ async function read(q: Query, p: Params) {
     : [];
   if (p.view === "traditional") previous = traditionalMode(previous, p.display);
   return {
-    rows,
+    // Israeli rows carry the Hebrew team name (server/teamNames.ts).
+    rows: await hebrewTeams(q, c.league, c.season, rows),
     previous,
     meta: {
       ...(await readTabReferences(q, c, version)),

@@ -4,10 +4,11 @@ import type { Row } from "../rules/gameLogs";
 import { readVersion } from "./dataVersion";
 import { VersionedCache } from "./versionedCache";
 
-/** Hebrew team names for the Ask chat only: basket.co.il's spelling, stored
- * per season in `schedule_team_dict.team_name_basket` (the source the player
- * names already use, D27). A workaround until `season_teams` carries a Hebrew
- * display name; no page shows these. Israeli league only.
+/** Hebrew team names in the Israeli answers (team_name_he, opp_team_name_he):
+ * basket.co.il's spelling, stored per season in
+ * `schedule_team_dict.team_name_basket` (the source the player names already
+ * use, D27). A workaround until `season_teams` carries a Hebrew display name;
+ * no page shows these; the API returns them and the Ask chat quotes them.
  *
  * A row is matched by its `team_id` (the roster id) when it has one, and
  * otherwise by an English name cell -- Gameflow and Game Logs carry names
@@ -55,17 +56,43 @@ async function read(q: Query, season: number): Promise<TeamNamesHe> {
   return teamNamesFromRows(data.rows);
 }
 
-/** The season's Hebrew team names; empty outside the Israeli league or when
- * the read fails (the chat then names teams in English, as before). */
-export async function readTeamNamesHe(league: string, season: number): Promise<TeamNamesHe> {
-  const empty = { byId: new Map(), byName: new Map() };
-  if (league !== "il" || !Number.isFinite(season)) return empty;
+const empty = (): TeamNamesHe => ({ byId: new Map(), byName: new Map() });
+
+/** The season's Hebrew team names, read in the request's own snapshot (the
+ * answer functions call this, as they call readPlayerNames); empty outside
+ * the Israeli league. */
+export async function readTeamNamesHe(q: Query, league: string, season: number): Promise<TeamNamesHe> {
+  if (league !== "il" || !Number.isFinite(season)) return empty();
+  return read(q, season);
+}
+
+/** `rows` with team_name_he / opp_team_name_he added (Israeli league only):
+ * the one call each answer function makes. */
+export async function hebrewTeams<T extends Record<string, unknown>>(
+  q: Query,
+  league: string,
+  season: number,
+  rows: T[],
+): Promise<T[]> {
+  // The rows' own type: the two string fields fit any record of cells.
+  if (league !== "il") return rows;
+  return applyTeamNamesHe(rows, await readTeamNamesHe(q, league, season)) as T[];
+}
+
+/** The chat's team list (list_teams has no answer function): its own
+ * snapshot; empty when the read fails, so teams are named in English. */
+export async function loadTeamNamesHe(league: string, season: number): Promise<TeamNamesHe> {
+  if (league !== "il" || !Number.isFinite(season)) return empty();
   try {
     return await withSnapshot(new Deadline(), (q) => read(q, season));
   } catch {
-    return empty;
+    return empty();
   }
 }
+
+/** One English team name's Hebrew name, if known (any spelling). */
+export const teamNameHe = (names: TeamNamesHe, name: unknown): string | undefined =>
+  names.byName.get(norm(name));
 
 /** The English name cells a row may carry for its own team. */
 const OWN = ["team_name", "Team", "team", "entity_name", "name"] as const;

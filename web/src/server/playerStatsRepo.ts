@@ -5,6 +5,7 @@ import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readTabReferences } from "./onoffRepo";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
+import { hebrewTeams } from "./teamNames";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
@@ -136,8 +137,13 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
   );
   const version = await readVersion(q, c.league);
   return {
-    // applyPlayerNames adds the Hebrew name the Ask chat quotes.
-    rows: applyPlayerNames(playerPopulation(raw, identities, c.teams), names),
+    // Hebrew player and team names (applyPlayerNames, hebrewTeams).
+    rows: await hebrewTeams(
+      q,
+      c.league,
+      c.season,
+      applyPlayerNames(playerPopulation(raw, identities, c.teams), names),
+    ),
     identities,
     players: namedPicker(players, names, "player_name"),
     meta: {

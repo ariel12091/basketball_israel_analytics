@@ -5,6 +5,7 @@ import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { readTabReferences } from "./onoffRepo";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
+import { hebrewTeams } from "./teamNames";
 import type { LineupParams } from "./lineupParams";
 import type { Row } from "../rules/gameLogs";
 import {
@@ -160,6 +161,8 @@ async function read(q: Query, p: LineupParams) {
     rankLineups(euro ? euroLineupRates(rows) : rows, euro),
   );
   rows = applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season));
+  // The Hebrew team name (server/teamNames.ts), Israeli league only.
+  rows = await hebrewTeams(q, c.league, c.season, rows);
   const meta = await readTabReferences(q, c, version);
   const teams = euro
     ? meta.teams

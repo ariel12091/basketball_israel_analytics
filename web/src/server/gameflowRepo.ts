@@ -9,6 +9,7 @@ import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { ownerName, readPlayerNames } from "./playerNames";
 import { readTeamIdentity } from "./teamIdentity";
+import { applyTeamNamesHe, readTeamNamesHe, teamNameHe } from "./teamNames";
 export function parseGameflow(search: URLSearchParams) {
   const id = (key: string) => {
     const value = search.get(key) ?? "";
@@ -71,13 +72,21 @@ async function read(league: League, game: number, team: number) {
     // in its own club's colours.
     const oppId = Number(meta.opp_team_id),
       identity = await readTeamIdentity(q, league, Number(meta.game_year), [team, oppId].filter(Number.isFinite));
+    // Hebrew team names (server/teamNames.ts): each player row's team, and
+    // both teams in meta for the runs. Empty for EuroLeague.
+    const teamsHe = await readTeamNamesHe(q, league, Number(meta.game_year));
+    const ownTeamHe = teamNameHe(teamsHe, ownTeam),
+      oppTeamHe = teamNameHe(teamsHe, oppTeam);
     return {
       ...model,
       runs: summary.runs,
-      players: summary.players.map((p) => {
-        const he = hebrew.get(`${p.side}:${p.player_key}`);
-        return he ? { ...p, player_he: he } : p;
-      }),
+      players: applyTeamNamesHe(
+        summary.players.map((p) => {
+          const he = hebrew.get(`${p.side}:${p.player_key}`);
+          return he ? { ...p, player_he: he } : p;
+        }),
+        teamsHe,
+      ),
       meta: {
         version: await readVersion(q, league),
         league,
@@ -88,6 +97,8 @@ async function read(league: League, game: number, team: number) {
         oppTeam,
         ...(identity.has(team) ? { ownIdentity: identity.get(team) } : {}),
         ...(identity.has(oppId) ? { oppIdentity: identity.get(oppId) } : {}),
+        ...(ownTeamHe ? { ownTeamHe } : {}),
+        ...(oppTeamHe ? { oppTeamHe } : {}),
       },
     };
   });

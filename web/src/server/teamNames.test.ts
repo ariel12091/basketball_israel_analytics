@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { applyTeamNamesHe, readTeamNamesHe, teamNamesFromRows } from "./teamNames";
+import { applyTeamNamesHe, hebrewTeams, readTeamNamesHe, teamNamesFromRows } from "./teamNames";
+import type { Query } from "./db";
 import { displaySpec } from "../ask/display";
 
 vi.mock("server-only", () => ({}));
@@ -48,9 +49,33 @@ describe("Hebrew team names for the Ask chat", () => {
     expect(applyTeamNamesHe([{ name: "Some Player" }], names)[0].team_name_he).toBeUndefined();
   });
 
-  it("is empty outside the Israeli league", async () => {
-    const he = await readTeamNamesHe("euroleague", 2025);
+  it("is empty outside the Israeli league, without a query", async () => {
+    const q = vi.fn() as unknown as Query;
+    const he = await readTeamNamesHe(q, "euroleague", 2025);
     expect(he.byId.size + he.byName.size).toBe(0);
+    expect(q).not.toHaveBeenCalled();
+  });
+
+  it("reads the season's names in the request's own snapshot, once per data version", async () => {
+    const q = vi.fn(async (sql: string) =>
+      sql.includes("etl_full_last_success")
+        ? [{ value: "v-he-1" }]
+        : [{ team_id: 4, name_he: "הפועל מידטאון י-ם", team_name: "HAPOEL JERUSALEM", team_name_schedule: "HAPOEL JERUSALEM", team_name_rosters: "HAPOEL JERUSALEM" }],
+    ) as unknown as Query & ReturnType<typeof vi.fn>;
+    const input: Record<string, unknown>[] = [{ team_id: 4, pts: 1 }, { opp_team_name: "Hapoel Jerusalem" }];
+    const rows = await hebrewTeams(q, "il", 2091, input);
+    expect(rows[0].team_name_he).toBe("הפועל מידטאון י-ם");
+    expect(rows[1].opp_team_name_he).toBe("הפועל מידטאון י-ם");
+    const call = q.mock.calls.find((c) => String(c[0]).includes("schedule_team_dict"))!;
+    expect(call[1]).toEqual([2091]);
+    await hebrewTeams(q, "il", 2091, [{ team_id: 4 }]);
+    expect(q.mock.calls.filter((c) => String(c[0]).includes("schedule_team_dict"))).toHaveLength(1);
+  });
+
+  it("hebrewTeams leaves EuroLeague rows untouched", async () => {
+    const q = vi.fn() as unknown as Query;
+    const rows = [{ team_id: 4 }];
+    expect(await hebrewTeams(q, "euroleague", 2025, rows)).toBe(rows);
   });
 
   it("offers team_name_he / opp_team_name_he as chat-only columns in Israeli specs only", () => {

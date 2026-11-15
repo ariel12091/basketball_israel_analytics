@@ -5,6 +5,7 @@ import { dbArgs, needsFilteredPath, type Context } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, readPlayerNames } from "./playerNames";
+import { hebrewTeams } from "./teamNames";
 import {
   addFfRanks,
   cleanDisplayNames,
@@ -183,8 +184,14 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   }
   const meta = await readTabReferences(q, c, version);
   return {
-    rows: cleanDisplayNames(
-      applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season)),
+    // Hebrew player and team names (applyPlayerNames, hebrewTeams).
+    rows: await hebrewTeams(
+      q,
+      c.league,
+      c.season,
+      cleanDisplayNames(
+        applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season)),
+      ),
     ),
     league3p: league3p(mv),
     filtered,

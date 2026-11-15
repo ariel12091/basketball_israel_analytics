@@ -46,14 +46,15 @@ export function flatten(
 function gameflowRows(payload: unknown): Cells[] {
   const p = (payload ?? {}) as {
     runs?: ExplainedRun[];
-    players?: (PlayerRating & { player_he?: string })[];
+    players?: (PlayerRating & { player_he?: string; team_name_he?: string })[];
     bounds?: number[];
-    meta?: { ownTeam?: string; oppTeam?: string };
+    meta?: { ownTeam?: string; oppTeam?: string; ownTeamHe?: string; oppTeamHe?: string };
   };
   const bounds = p.bounds ?? [];
   const runs = (p.runs ?? []).map((r) => ({
     section: "run",
     team: r.side === "own" ? p.meta?.ownTeam : p.meta?.oppTeam,
+    team_name_he: r.side === "own" ? p.meta?.ownTeamHe : p.meta?.oppTeamHe,
     run_score: `${r.pts}-${r.oppPts}`,
     window: `${periodClock(r.start, bounds)} – ${periodClock(r.end, bounds)}`,
     defining: r.defining ? "yes" : "no",
@@ -66,6 +67,7 @@ function gameflowRows(payload: unknown): Cells[] {
       team: x.team,
       player: x.player,
       ...(x.player_he ? { player_he: x.player_he } : {}),
+      ...(x.team_name_he ? { team_name_he: x.team_name_he } : {}),
       secs: x.secs,
       pm: x.pm,
       net: x.net,
@@ -106,8 +108,8 @@ function overview(frames: HomeFrames | undefined, team: string): Cells[] {
       section: "last_game",
       result: d.lastGame.result,
       context: d.lastGame.context,
-      // For the Hebrew name (run.ts adds opp_team_name_he; display.inHebrew).
-      opp_team_name: d.lastGame.row.opp_team_name,
+      // The opponent's Hebrew name (homeRepo), for display.inHebrew.
+      opp_team_name_he: d.lastGame.row.opp_team_name_he,
     });
   return out;
 }

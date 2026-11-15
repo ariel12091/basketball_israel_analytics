@@ -10,6 +10,7 @@ import type { HomeFrames } from "../rules/home";
 import ui from "../data/shinyUi.json";
 import home from "../data/homeUi.json";
 import { applyPlayerNames, readPlayerNames } from "./playerNames";
+import { applyTeamNamesHe, readTeamNamesHe } from "./teamNames";
 export function parseHome(s: URLSearchParams) {
   const season = s.get("season") ?? ui.defaultGameYear,
     team = s.get("team_id") ?? "";
@@ -134,6 +135,11 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
   frames.lineups = applyPlayerNames(frames.lineups, names);
   frames.last_games =
     (await safe("last_games", home.sql.hub_fetch_last_games, [p.season])) ?? [];
+  // Hebrew team and opponent names on every frame (server/teamNames.ts).
+  const teamsHe = await readTeamNamesHe(q, "il", p.season);
+  for (const [k, v] of Object.entries(frames))
+    if (Array.isArray(v))
+      (frames as Record<string, unknown>)[k] = applyTeamNamesHe(v as Row[], teamsHe);
   // A recovered reader is not a missing section; expose only unavailable data.
   const missing = errors.filter(
     (s) => s !== "combined" && s !== "storyline_presets",

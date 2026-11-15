@@ -19,4 +19,17 @@ describe("flatten gameflow", () => {
     expect(dib).toMatchObject({ team: "Maccabi Tel-Aviv", off_poss: 47, def_poss: 49 });
     expect(Number(dib.net)).toBeCloseTo(54.4, 1);
   });
+  it("passes the answer's Hebrew team names to the run and player rows", () => {
+    const he = {
+      ...answer,
+      meta: { ...answer.meta, ownTeamHe: "מכבי", oppTeamHe: "הפועל" },
+      players: answer.players.map((p: { side: string }) => ({ ...p, team_name_he: p.side === "own" ? "מכבי" : "הפועל" })),
+    };
+    const got = flatten("gameflow", "il", he, new URLSearchParams()).rows;
+    const runs = got.filter((r) => r.section === "run");
+    expect(runs.map((r) => r.team_name_he)).toEqual(
+      runs.map((r) => (r.team === answer.meta.ownTeam ? "מכבי" : "הפועל")),
+    );
+    expect(got.filter((r) => r.section === "player").every((r) => typeof r.team_name_he === "string")).toBe(true);
+  });
 });

@@ -7,6 +7,7 @@ import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
+import { hebrewTeams } from "./teamNames";
 import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
 import { playerIds } from "../rules/lineups";
 import data from "../data/compareUi.json";
@@ -298,17 +299,28 @@ async function read(s: URLSearchParams, p: Params) {
     const version = await readVersion(q, "il");
     if (p.kind === "player_defaults")
       return {
-        rows: await q<Row>(
-          call("get_player_traditional_from_games", playerTypes),
-          [p.c.season, ...Array(17).fill(null)],
+        rows: await hebrewTeams(
+          q,
+          "il",
+          p.c.season,
+          await q<Row>(
+            call("get_player_traditional_from_games", playerTypes),
+            [p.c.season, ...Array(17).fill(null)],
+          ),
         ),
         meta: { version, key: s.toString() },
       };
     if (p.kind !== "refs")
       return {
-        rows: applyPlayerNames(
-          await readCompareFacts(q, p),
-          await readPlayerNames(q, "il", p.c.season),
+        // Hebrew player and team names (applyPlayerNames, hebrewTeams).
+        rows: await hebrewTeams(
+          q,
+          "il",
+          p.c.season,
+          applyPlayerNames(
+            await readCompareFacts(q, p),
+            await readPlayerNames(q, "il", p.c.season),
+          ),
         ),
         meta: { version, key: s.toString() },
       };

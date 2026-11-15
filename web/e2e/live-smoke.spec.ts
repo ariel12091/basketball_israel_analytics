@@ -244,3 +244,23 @@ for (const [league, season] of [
     const bad = await page.goto(`/api/v1/${league}/team-ratings?season=${season}&shape=table&sats=1`);
     expect(bad!.status()).toBe(400);
   });
+
+// Hebrew team names (server/teamNames.ts): every Israeli answer carries them,
+// EuroLeague none.
+test("live: Israeli answers carry Hebrew team names, EuroLeague none", async ({ page }, info) => {
+  test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
+  test.skip(info.project.name !== "desktop", "API check, once per run");
+  const json = async (path: string) => {
+    const r = await page.goto(`/api/v1/${path}`);
+    expect(r!.status(), path).toBe(200);
+    return (await r!.json()) as { rows?: Record<string, unknown>[]; frames?: Record<string, Record<string, unknown>[]> };
+  };
+  const he = (rows: Record<string, unknown>[] | undefined, key = "team_name_he") =>
+    (rows ?? []).some((r) => /[֐-׿]/.test(String(r[key] ?? "")));
+  for (const path of ["il/team-ratings?season=2026", "il/player-stats?season=2026", "il/onoff?season=2026", "il/lineups?season=2026", "il/compare?season=2026&kind=ratings"])
+    expect(he((await json(path)).rows), path).toBe(true);
+  expect(he((await json("il/game-logs?season=2026&team=2")).rows, "opp_team_name_he"), "game logs opponent").toBe(true);
+  expect(he((await json("il/home?season=2026&team_id=2")).frames?.ratings), "home ratings frame").toBe(true);
+  const euro = await json("euroleague/team-ratings?season=2025");
+  expect((euro.rows ?? []).some((r) => "team_name_he" in r)).toBe(false);
+});
