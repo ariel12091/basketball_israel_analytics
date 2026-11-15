@@ -37,8 +37,14 @@ async function read(league: League, game: number, team: number) {
     // Names follow the display-name owner (D27); where it has none (a reused
     // provider id) the lane keeps this game's roster spelling. Twin:
     // fetch_stint_ribbon() in global.R.
+    // Chat-only Hebrew names for the summary's player rows, by side:player_id.
+    const hebrew = new Map<string, string>();
     if (!euro && raw.lanes?.length) {
       const names = await readPlayerNames(q, league, Number(meta.game_year));
+      for (const l of raw.lanes) {
+        const he = ownerName(names, l.team_id, l.player_id)?.he;
+        if (he) hebrew.set(`${Number(l.team_id) === Number(team) ? "own" : "opp"}:${l.player_id}`, he);
+      }
       raw.lanes = raw.lanes.map((l) => ({
         ...l,
         player_label:
@@ -58,10 +64,15 @@ async function read(league: League, game: number, team: number) {
     const model = ribbonModel(raw, team, league, game),
       ownTeam = String(meta.team_name ?? "Own"),
       oppTeam = String(meta.opp_team_name ?? "Opponent");
+    // Runs and player ratings, once, for the page and the API/chat alike.
+    const summary = gameflowSummary(model, { own: ownTeam, opp: oppTeam });
     return {
       ...model,
-      // Runs and player ratings, once, for the page and the API/chat alike.
-      ...gameflowSummary(model, { own: ownTeam, opp: oppTeam }),
+      runs: summary.runs,
+      players: summary.players.map((p) => {
+        const he = hebrew.get(`${p.side}:${p.player_key}`);
+        return he ? { ...p, player_he: he } : p;
+      }),
       meta: {
         version: await readVersion(q, league),
         league,

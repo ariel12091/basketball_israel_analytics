@@ -259,6 +259,32 @@ describe("fillAndVerify", () => {
     };
     const he = fillAndVerify("{{r1.row1.context}}; {{r1.row2.context}}", [hub], "q", "2026-27", "he");
     expect(he).toMatchObject({ ok: true, text: "בחוץ מול M. Rishon · 24/10; בבית מול Hapoel Holon · 3/3" });
+    // With the opponent's Hebrew name (server/teamNames.ts) the line is all Hebrew.
+    hub.rows[0].cells.opp_team_name_he = "מכבי תפוזינה ראשון לציון";
+    const named = fillAndVerify("{{r1.row1.context}}", [hub], "q", "2026-27", "he");
+    expect(named).toMatchObject({ ok: true, text: "בחוץ מול מכבי תפוזינה ראשון לציון · 24/10" });
+  });
+
+  it("Hebrew answers may not quote the pages' English prose; English answers may", () => {
+    const flowRun: ToolResult = {
+      ...lineups,
+      call: { tool: "gameflow", league: "il", query: {} },
+      view: null,
+      rows: [{ id: "row1", cells: { section: "run", explanation: "Hapoel Jerusalem 21-4", defining: "yes" } }],
+    };
+    const hub: ToolResult = {
+      ...lineups,
+      id: "r2",
+      call: { tool: "team_overview", league: "il", query: {} },
+      view: null,
+      rows: [{ id: "row1", cells: { section: "storyline", text: "Net rating vs Top 4" } }],
+    };
+    for (const m of ["{{r1.row1.explanation}}", "{{r1.row1.defining}}", "{{r2.row1.text}}"]) {
+      const he = fillAndVerify(`ריצה: ${m}`, [flowRun, hub], "q", "2026-27", "he");
+      expect(he.ok, m).toBe(false);
+      if (!he.ok) expect(he.problems.join(" ")).toMatch(/English text from the page/);
+      expect(fillAndVerify(`Run: ${m}`, [flowRun, hub], "q", "2026-27", "en").ok, m).toBe(true);
+    }
   });
 
   it("rejects Arabic-Indic digits", () => {

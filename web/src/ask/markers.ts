@@ -1,7 +1,7 @@
 // The model writes {{r1.row2.net_rtg}} where a number goes; the app fills in
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
-import { cellText, columnDefinition, displaySpec } from "./display";
+import { cellText, columnDefinition, displaySpec, isEnglishProse } from "./display";
 import { NUMBER, NUMBER_WORD, bare, digitWords, statCountWords, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
@@ -55,7 +55,12 @@ export function fillAndVerify(
       result && row && TOOLS[result.call.tool].numbers
         ? cellText(result.call.tool, result.call.league, result.view, key, row, lang)
         : null;
-    if (!text) {
+    if (text && lang === "he" && result && isEnglishProse(result.call.tool, key)) {
+      problems.push(
+        `Marker {{${body}}} is English text from the page; in a Hebrew answer say what it means in your own Hebrew words (no numbers), and quote numbers only from other columns`,
+      );
+      filled.push("");
+    } else if (!text) {
       problems.push(
         text === ""
           ? `Marker {{${body}}} points at an empty cell`
