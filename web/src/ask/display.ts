@@ -457,6 +457,18 @@ export function columnDefinition(label: string): string {
   return def ? `${label}: ${def}` : label;
 }
 
+/** Israeli specs that name a team (or an opponent) also offer its Hebrew name,
+ * added by run.ts from server/teamNames.ts; chat only. */
+const TEAM_CELLS = ["team_name", "Team", "team", "entity_name"];
+function withHebrewTeams(tool: ToolName, s: Record<string, ColumnSpec>): Record<string, ColumnSpec> {
+  const out = { ...s };
+  if (tool === "list_teams" || TEAM_CELLS.some((k) => k in s))
+    out.team_name_he = { label: "Team (Hebrew)", format: text, chatOnly: true };
+  if ("opp_team_name" in s)
+    out.opp_team_name_he = { label: "Opponent (Hebrew)", format: text, chatOnly: true };
+  return out;
+}
+
 const cache = new Map<string, Record<string, ColumnSpec>>();
 export function displaySpec(
   tool: ToolName,
@@ -465,7 +477,11 @@ export function displaySpec(
 ): Record<string, ColumnSpec> {
   const key = `${tool}|${league === "il" ? "il" : "euro"}|${view}`;
   let s = cache.get(key);
-  if (!s) cache.set(key, (s = build(tool, league, view)));
+  if (!s) {
+    s = build(tool, league, view);
+    if (league === "il") s = withHebrewTeams(tool, s);
+    cache.set(key, s);
+  }
   return s;
 }
 
