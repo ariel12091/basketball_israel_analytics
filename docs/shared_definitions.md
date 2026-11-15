@@ -149,6 +149,7 @@ or **not re-verified** against this document.
 |---|---|---|---|
 | Season (Israeli) | `game_year` = the year the season ends (2026 = 2025-26) | `DEFAULT_GAME_YEAR`, `global.R` | differs by design: provider season = starting year. Derived by `euro_default_season()`; one bump rolls both leagues |
 | Team display name | The row in `season_teams` for `(game_year, team_id)` | `season_teams` | not re-verified |
+| Team name in Hebrew (Ask chat only) | basket.co.il's spelling, `schedule_team_dict.team_name_basket` for `(game_year, team_id_rosters)`; matched to a result row by `team_id`, or by any of its English spellings when the row has none (Gameflow, Game Logs opponents). No page shows it. A workaround until `season_teams` carries a Hebrew name, which then becomes the owner | `web/src/server/teamNames.ts` | none: Israeli league only |
 | Game type label | The row in `game_types` | `game_types` | differs by design: phase text, labelled by `euro_phase_label()` |
 | Player identity | `(game_year, team_id, player_id)`. There is no cross-season person key: ids are recycled and re-minted | identity dictionary | not re-verified |
 

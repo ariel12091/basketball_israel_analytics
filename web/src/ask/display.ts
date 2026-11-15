@@ -408,6 +408,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["defining", "Defining stretch", text],
         ["explanation", "Explanation", text],
         ["player", "Player", text],
+        ["player_he", "Player (Hebrew)", text, "chat"],
         ["secs", "On the floor", (v) => clock(Number(v))],
         ["pm", "+/-", (v) => pmLabel(num(v))],
         ["net", "Net", (v) => netLabel(num(v))],
@@ -448,6 +449,16 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
   }
 }
 
+/** Columns whose text is the page's English prose (Gameflow's run line and
+ * its yes/no, Home's storylines). A Hebrew answer describes them in its own
+ * words; quoting one is rejected (markers.ts). */
+const ENGLISH_PROSE: Partial<Record<ToolName, string[]>> = {
+  gameflow: ["explanation", "defining"],
+  team_overview: ["text"],
+};
+export const isEnglishProse = (tool: ToolName, key: string) =>
+  ENGLISH_PROSE[tool]?.includes(key) ?? false;
+
 const TOOLTIPS = ui.columnTooltips as Record<string, string>;
 /** A quotable column as the model sees it: its label and the app's own
  * definition (COLUMN_TOOLTIPS), e.g. "Off PPP: Offensive points per 100 possessions". */
@@ -455,6 +466,18 @@ export function columnDefinition(label: string): string {
   const base = label.replace(/ (?:on|off) court$/, "");
   const def = TOOLTIPS[label] ?? TOOLTIPS[base] ?? TOOLTIPS[base.replace(/^(Off|Def) /, "")];
   return def ? `${label}: ${def}` : label;
+}
+
+/** Israeli specs that name a team (or an opponent) also offer its Hebrew name,
+ * added by run.ts from server/teamNames.ts; chat only. */
+const TEAM_CELLS = ["team_name", "Team", "team", "entity_name"];
+function withHebrewTeams(tool: ToolName, s: Record<string, ColumnSpec>): Record<string, ColumnSpec> {
+  const out = { ...s };
+  if (tool === "list_teams" || TEAM_CELLS.some((k) => k in s))
+    out.team_name_he = { label: "Team (Hebrew)", format: text, chatOnly: true };
+  if ("opp_team_name" in s)
+    out.opp_team_name_he = { label: "Opponent (Hebrew)", format: text, chatOnly: true };
+  return out;
 }
 
 const cache = new Map<string, Record<string, ColumnSpec>>();
@@ -465,7 +488,11 @@ export function displaySpec(
 ): Record<string, ColumnSpec> {
   const key = `${tool}|${league === "il" ? "il" : "euro"}|${view}`;
   let s = cache.get(key);
-  if (!s) cache.set(key, (s = build(tool, league, view)));
+  if (!s) {
+    s = build(tool, league, view);
+    if (league === "il") s = withHebrewTeams(tool, s);
+    cache.set(key, s);
+  }
   return s;
 }
 
@@ -481,12 +508,12 @@ export function cellText(
   const c = displaySpec(tool, league, view)[key];
   if (!c) return null;
   const text = c.format(row.cells[key], row.cells);
-  return lang === "he" ? inHebrew(tool, key, text) : text;
+  return lang === "he" ? inHebrew(tool, key, text, row.cells) : text;
 }
 
 /** The Home hub's English-only pieces in a Hebrew answer: the same rank as
  * "#1" instead of "1st", and the last game's "W"/"L" as ניצחון/הפסד. */
-function inHebrew(tool: ToolName, key: string, text: string): string {
+function inHebrew(tool: ToolName, key: string, text: string, cells: Record<string, unknown>): string {
   if (tool !== "team_overview") return text;
   if (/^rank/.test(key)) return text.replace(/^(\d+)(?:st|nd|rd|th)$/, "#$1");
   if (key === "result") return text.replace(/^W /, "ניצחון ").replace(/^L /, "הפסד ");
@@ -494,7 +521,9 @@ function inHebrew(tool: ToolName, key: string, text: string): string {
   if (key === "context") {
     const m = text.match(/^(vs|at) (.+) · (\w{3}) (\d{1,2})$/);
     const month = m ? (homeUi.months as string[]).indexOf(m[3]) + 1 : 0;
-    if (m && month > 0) return `${m[1] === "vs" ? "בבית מול" : "בחוץ מול"} ${m[2]} · ${m[4]}/${month}`;
+    // The opponent's Hebrew name when run.ts found one (server/teamNames.ts).
+    const opp = typeof cells.opp_team_name_he === "string" ? cells.opp_team_name_he : m?.[2];
+    if (m && month > 0) return `${m[1] === "vs" ? "בבית מול" : "בחוץ מול"} ${opp} · ${m[4]}/${month}`;
   }
   return text;
 }
