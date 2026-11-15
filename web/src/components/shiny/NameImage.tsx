@@ -3,8 +3,9 @@
 // team or player name. Decorative -- the name beside it says the same -- so
 // alt="" keeps screen readers on the name. Served through Next's image
 // optimiser (a ~1 KB WebP instead of basket.co.il's 30-60 KB original),
-// lazily, at a fixed size so rows never shift. A failed load removes the
-// image and leaves the name.
+// lazily, at a fixed size so rows never shift. A row with no image (no photo,
+// a TOTAL row, a failed load) keeps an empty slot of the same size, so every
+// name in the column starts at the same x.
 import Image from "next/image";
 import { useState } from "react";
 import type { Row } from "@/rules/gameLogs";
@@ -20,7 +21,8 @@ export function NameImage({
   kind: "logo" | "photo";
 }) {
   const [failed, setFailed] = useState(false);
-  if (!src || failed) return null;
+  if (!src || failed)
+    return <span className="ibpl-name-img" aria-hidden="true" />;
   return (
     <Image
       src={src}
@@ -42,21 +44,25 @@ const TEAM_COLUMNS: Record<string, string> = {
 };
 const PLAYER_COLUMNS = new Set(["Player", "player_name"]);
 
-/** The image for one name cell, or null (unknown column, TOTAL row, missing
- * ids, EuroLeague). */
+/** The image slot for one name cell: null when the column carries no images
+ * (not a team/player name column, EuroLeague); src null when this row has
+ * none (TOTAL row, missing ids, no photo) but the column does. */
 export function nameCellImage(
   scope: ImageScope,
   column: string,
   row: Row,
-): { src: string; kind: "logo" | "photo" } | null {
-  if (!scope || row.is_total || row.is_multi_team_total) return null;
-  if (column in TEAM_COLUMNS) {
-    const src = teamLogo(scope, row[TEAM_COLUMNS[column]]);
-    return src ? { src, kind: "logo" } : null;
-  }
-  if (PLAYER_COLUMNS.has(column)) {
-    const src = playerPhoto(scope, row.team_id, row.player_id);
-    return src ? { src, kind: "photo" } : null;
-  }
+): { src: string | null; kind: "logo" | "photo" } | null {
+  if (!scope || scope.league !== "il") return null;
+  const total = Boolean(row.is_total || row.is_multi_team_total);
+  if (column in TEAM_COLUMNS)
+    return {
+      src: total ? null : teamLogo(scope, row[TEAM_COLUMNS[column]]),
+      kind: "logo",
+    };
+  if (PLAYER_COLUMNS.has(column))
+    return {
+      src: total ? null : playerPhoto(scope, row.team_id, row.player_id),
+      kind: "photo",
+    };
   return null;
 }
