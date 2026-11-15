@@ -887,3 +887,8 @@ body .ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus-v
   --ibpl-font-body: var(--font-dm-sans), var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
   --ibpl-font-mono: var(--font-mono), var(--font-inter), monospace;
 }
+/* Touch header "i" (user 2026-11-15: a tap on a header should sort). mobile.css
+   gives it a 44px hit box that sat over short names ("Net"), so a tap on the
+   name opened the definition. Here it is a 22px box right after the name,
+   overlapping nothing: the name is all sort, the "i" all definition. */
+body.ibpl-touch-tips table.dataTable thead th > .ibpl-m-th-info { width: 22px; height: 22px; margin: 0 0 0 2px; }

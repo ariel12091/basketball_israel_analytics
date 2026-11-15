@@ -25,10 +25,10 @@ for (const league of ["il", "euroleague", "eurocup"])
     const cells = page.locator('td[data-column="def_ppp"]');
     await expect(cells).toHaveCount(4);
     const header = page.locator('thead th[data-column="def_ppp"]');
-    await header.click({ position: { x: 6, y: 6 } });
+    await header.locator(".dt-sort").click();
     await expect(cells.last()).toContainText("NA");
     await expect(cells.first()).toContainText("-5.0");
-    await header.click({ position: { x: 6, y: 6 } });
+    await header.locator(".dt-sort").click();
     await expect(cells.last()).toContainText("NA");
     await expect(cells.first()).toContainText("10.0");
   });
@@ -71,9 +71,9 @@ for (const league of ["il", "euroleague", "eurocup"])
     const cells = page.locator('td[data-column="def_ppp"]');
     await expect(cells).toHaveCount(4);
     const header = page.locator('thead th[data-column="def_ppp"]');
-    await header.click({ position: { x: 6, y: 6 } });
+    await header.locator(".dt-sort").click();
     await expect(cells).toHaveText(["-5.0", "0.0", "10.0", ""]);
-    await header.click({ position: { x: 6, y: 6 } });
+    await header.locator(".dt-sort").click();
     await expect(cells).toHaveText(["10.0", "0.0", "-5.0", ""]);
     expect(
       await page.evaluate(
