@@ -3,8 +3,10 @@ import {
   rawQueryGuard,
   answerJson,
   answerParams,
+  answerFormat,
   answerShape,
 } from "@/server/api";
+import { answerCsv } from "@/server/csvAnswer";
 import { leagueParam } from "@/server/params";
 import { onoffAnswer } from "@/server/onoffApi";
 import { onoffPageAnswer } from "@/server/pageAnswers";
@@ -24,9 +26,14 @@ export async function GET(
     rawQueryGuard(url);
     const league = leagueParam((await context.params).league),
       search = answerParams(url);
-    const answer =
-      answerShape(search) === "table" ? onoffPageAnswer : onoffAnswer;
-    return answerJson(await answer(league, search), url);
+    // shape=table (or format=csv): the page's finished table; otherwise the
+    // page's population.
+    const format = answerFormat(search),
+      table = answerShape(search) === "table" || format === "csv";
+    const answer = await (table ? onoffPageAnswer : onoffAnswer)(league, search);
+    return format === "csv"
+      ? answerCsv(answer, url, "onoff", league)
+      : answerJson(answer, url);
   } catch (error) {
     return handleError(error);
   }

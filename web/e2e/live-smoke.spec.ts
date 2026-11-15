@@ -264,3 +264,16 @@ test("live: Israeli answers carry Hebrew team names, EuroLeague none", async ({ 
   const euro = await json("euroleague/team-ratings?season=2025");
   expect((euro.rows ?? []).some((r) => "team_name_he" in r)).toBe(false);
 });
+
+// format=csv: the finished table as a CSV download (server/csvAnswer.ts).
+test("live: format=csv serves the table as CSV", async ({ page }, info) => {
+  test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
+  test.skip(info.project.name !== "desktop", "API check, once per run");
+  const r = await page.request.get("/api/v1/il/team-ratings?season=2026&format=csv");
+  expect(r.status()).toBe(200);
+  expect(r.headers()["content-type"]).toBe("text/csv; charset=utf-8");
+  expect(r.headers()["content-disposition"]).toBe('attachment; filename="team-ratings_il_2026.csv"');
+  const lines = (await r.text()).split("\r\n");
+  expect(lines[0].startsWith('"Team","GP"')).toBe(true);
+  expect(lines.length).toBeGreaterThan(10);
+});

@@ -4,8 +4,10 @@ import {
   ParamError,
   answerJson,
   answerParams,
+  answerFormat,
   answerShape,
 } from "@/server/api";
+import { answerCsv } from "@/server/csvAnswer";
 import { compareAnswer } from "@/server/compareRepo";
 import { comparePageAnswer } from "@/server/comparePage";
 export const runtime = "nodejs";
@@ -24,9 +26,12 @@ export async function GET(
     rawQueryGuard(url);
     const search = answerParams(url);
     // shape=table: the page's table; otherwise one side's reader (kind=...).
-    const answer =
-      answerShape(search) === "table" ? comparePageAnswer : compareAnswer;
-    return answerJson(await answer(search), url);
+    const format = answerFormat(search),
+      table = answerShape(search) === "table" || format === "csv";
+    const answer = await (table ? comparePageAnswer : compareAnswer)(search);
+    return format === "csv"
+      ? answerCsv(answer, url, "compare", "il")
+      : answerJson(answer, url);
   } catch (e) {
     return handleError(e);
   }

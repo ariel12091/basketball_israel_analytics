@@ -39,7 +39,7 @@ import ui from "@/data/shinyUi.json";
 import type { Row } from "@/rules/gameLogs";
 import { formatNumber } from "@/rules/format";
 import { orderKey } from "@/rules/order";
-import { defuseCsvCell } from "@/server/csv";
+import { csvText } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
 import { NameImage, nameCellImage } from "./NameImage";
 import { useImageScope } from "@/lib/images";
@@ -249,14 +249,14 @@ const cellOf = (row: Row, c: Column): Cell => {
 };
 /** csv_export_button(): visible columns, header labels, every field quoted. */
 export function downloadCsv(name: string, cols: Column[], rows: Row[]) {
-  const q = (s: string) => `"${defuseCsvCell(s).replace(/"/g, '""')}"`;
-  const lines = [
-    cols.map((c) => q(c.label)).join(","),
-    ...rows.map((r) => cols.map((c) => q(cellOf(r, c).text)).join(",")),
-  ];
+  // The same format as the API's format=csv (server/csv.ts csvText).
+  const text = csvText(
+    cols.map((c) => ({ label: c.label, text: (r: Row) => cellOf(r, c).text })),
+    rows,
+  );
   const a = document.createElement("a");
   a.href = URL.createObjectURL(
-    new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" }),
+    new Blob([text], { type: "text/csv;charset=utf-8" }),
   );
   a.download = `${name}_${csvStamp()}.csv`;
   a.click();

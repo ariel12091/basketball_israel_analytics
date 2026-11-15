@@ -3,8 +3,10 @@ import {
   rawQueryGuard,
   answerJson,
   answerParams,
+  answerFormat,
   answerShape,
 } from "@/server/api";
+import { answerCsv } from "@/server/csvAnswer";
 import { leagueParam } from "@/server/params";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
 import { teamRatingsPageAnswer } from "@/server/pageAnswers";
@@ -20,9 +22,14 @@ export async function GET(
     const league = leagueParam((await context.params).league),
       search = answerParams(url);
     // shape=table: the page's finished table; otherwise the page's population.
-    const answer =
-      answerShape(search) === "table" ? teamRatingsPageAnswer : teamRatingsAnswer;
-    return answerJson(await answer(league, search), url);
+    // shape=table (or format=csv): the page's finished table; otherwise the
+    // page's population.
+    const format = answerFormat(search),
+      table = answerShape(search) === "table" || format === "csv";
+    const answer = await (table ? teamRatingsPageAnswer : teamRatingsAnswer)(league, search);
+    return format === "csv"
+      ? answerCsv(answer, url, "team_ratings", league)
+      : answerJson(answer, url);
   } catch (e) {
     return handleError(e);
   }

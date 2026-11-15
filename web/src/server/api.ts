@@ -20,17 +20,22 @@ export function answerJson(
   answer: { meta?: { version?: string } },
   url: URL,
 ): Response {
+  return Response.json(answer, { headers: cacheHeaders(answer, url) });
+}
+/** answerJson's caching, for any body (format=csv too). */
+export function cacheHeaders(
+  answer: { meta?: { version?: string } },
+  url: URL,
+): Record<string, string> {
   const v = url.searchParams.get("v");
   const version = answer.meta?.version;
   const pinned = !!v && !!version && version !== "unknown" && v === version;
-  return Response.json(answer, {
-    headers: pinned
-      ? {
-          "Cache-Control": "public, max-age=0, must-revalidate",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=31536000, immutable",
-        }
-      : { "Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store" },
-  });
+  return pinned
+    ? {
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "Vercel-CDN-Cache-Control": "public, s-maxage=31536000, immutable",
+      }
+    : { "Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store" };
 }
 export function apiError(
   status: number,

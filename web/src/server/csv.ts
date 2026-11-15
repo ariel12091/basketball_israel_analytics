@@ -12,6 +12,20 @@ export function defuseCsvCell(s: string) {
     ? "'" + s
     : s;
 }
+/** A column of a CSV export: its header and each row's cell text. */
+export type CsvColumn = { label: string; text: (row: Row) => string };
+
+/** csv_export_button(): header labels, every field quoted and defused, CRLF
+ * between lines (no trailing one). The browser download (DataTable
+ * downloadCsv) and the API's format=csv both write this. */
+export function csvText(cols: CsvColumn[], rows: Row[]): string {
+  const q = (s: string) => `"${defuseCsvCell(s).replace(/"/g, '""')}"`;
+  return [
+    cols.map((c) => q(c.label)).join(","),
+    ...rows.map((r) => cols.map((c) => q(c.text(r))).join(",")),
+  ].join("\r\n");
+}
+
 export function toCsv(rows: Row[], columns: string[]): string {
   const cell = (v: unknown) => {
     const text =

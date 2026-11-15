@@ -13,7 +13,9 @@ vi.mock("@/server/pageAnswers", () => ({
   playerStatsPageAnswer: answer("playerStatsPageAnswer"),
   teamRatingsPageAnswer: answer("teamRatingsPageAnswer"),
   onoffPageAnswer: answer("onoffPageAnswer"),
+  lineupsPageAnswer: answer("lineupsPageAnswer"),
 }));
+vi.mock("@/server/gameLogsApi", () => ({ gameLogsAnswer: answer("gameLogsAnswer") }));
 
 vi.mock("@/server/onoffApi", () => ({ onoffAnswer: answer("onoffAnswer") }));
 
@@ -27,6 +29,8 @@ const routes = {
   "player-stats": await import("@/app/api/v1/[league]/player-stats/route"),
   "team-ratings": await import("@/app/api/v1/[league]/team-ratings/route"),
   onoff: await import("@/app/api/v1/[league]/onoff/route"),
+  lineups: await import("@/app/api/v1/[league]/lineups/route"),
+  "game-logs": await import("@/app/api/v1/[league]/game-logs/route"),
 };
 const get = (route: keyof typeof routes, q: string) =>
   routes[route].GET(new Request(`https://x.test/api/v1/il/${route}?${q}`), {
@@ -56,5 +60,29 @@ describe.each([
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toContain("shape");
     expect(calls).toEqual([]);
+  });
+});
+
+describe.each([
+  ["player-stats", "playerStatsPageAnswer", "Team"],
+  ["team-ratings", "teamRatingsPageAnswer", "Team"],
+  ["onoff", "onoffPageAnswer", "Team"],
+  ["compare", "comparePageAnswer", "#"],
+  ["lineups", "lineupsPageAnswer", "Team"],
+  ["game-logs", "gameLogsAnswer", "Game Type"],
+] as const)("%s format=csv", (route, fn, first) => {
+  it("serves the finished table as the page's CSV, named for a download", async () => {
+    calls.length = 0;
+    const res = await get(route, "season=2027&format=csv");
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => c.fn)).toEqual([fn]);
+    expect(calls[0].search).not.toContain("format");
+    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toBe(`attachment; filename="${route}_il_2027.csv"`);
+    expect((await res.text()).startsWith(`"${first}"`)).toBe(true);
+  });
+  it("refuses any other format", async () => {
+    const res = await get(route, "season=2027&format=xlsx");
+    expect(res.status).toBe(400);
   });
 });
