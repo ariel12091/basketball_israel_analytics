@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
+import ThemeToggle from "./ThemeToggle";
 
 export type TabId =
   | "home"
@@ -279,14 +280,20 @@ export default function Navbar({
       }}
     >
       {showing}
+      <ThemeToggle id="theme_toggle" />
       <button
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
         id="open_glossary"
         type="button"
+        title="Glossary"
+        aria-label="Glossary"
         onClick={onGlossary}
       >
         <span>
-          <i className="bi bi-book" aria-hidden="true"></i> Glossary
+          <i className="bi bi-book" aria-hidden="true"></i>
+          {/* Icon only on desktop below 1600 px, where the theme toggle
+              takes the label's width (light.css). */}
+          <span className="nav-help-label"> Glossary</span>
         </span>
       </button>
       <span
@@ -361,6 +368,9 @@ export default function Navbar({
               </span>
             </Link>
             {showing}
+            {/* Collapsed nav: the theme switch stays in the bar, outside the
+                burger menu (user 2026-11-15). */}
+            <ThemeToggle id="theme_toggle_bar" />
           </div>
           <div
             className={`navbar-collapse collapse${collapsed ? "" : " show"}`}

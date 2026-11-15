@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
@@ -82,6 +83,16 @@ export function heat(pr: unknown, reverse: boolean): string | undefined {
   return cols[i < 0 ? cols.length - 1 : i];
 }
 export { formatNumber };
+/** A heat background, kept inline for dark (Shiny's exact colour) and
+ * exposed as --ibpl-heat so light.css can tint it (pair with .ibpl-heat). */
+export function heatStyle(bg: string): CSSProperties {
+  return { backgroundColor: bg, ["--ibpl-heat" as string]: bg };
+}
+/** A shot-accuracy text colour, exposed as --ibpl-acc for light.css to
+ * darken (pair with .ibpl-acc). */
+function accStyle(color: string): CSSProperties {
+  return { color, ["--ibpl-acc" as string]: color };
+}
 /** The make_shot_render() cell shared by the Game Logs and On/Off tables:
  * 2PT|3PT accuracy coloured against a league average, frequency bars, muted
  * below minFga. `palette` is the colour formula each renderer uses. */
@@ -103,7 +114,7 @@ export function shotCell(
   if (!total)
     return {
       node: (
-        <div className="shot-acc-label" style={{ color: "#aaa" }}>
+        <div className="shot-acc-label ibpl-acc" style={accStyle("#aaa")}>
           -
         </div>
       ),
@@ -153,15 +164,17 @@ export function shotCell(
     <>
       <div className="shot-acc-label">
         <span
+          className="ibpl-acc"
           title={tip(`2PT accuracy: ${fg2pct}% (${fg2m}/${fg2a})`)}
-          style={{ color: c2, fontWeight: weight, cursor: "help" }}
+          style={{ ...accStyle(c2), fontWeight: weight, cursor: "help" }}
         >
           {fg2pct}%
         </span>{" "}
         <span style={{ opacity: 0.3 }}>|</span>{" "}
         <span
+          className="ibpl-acc"
           title={tip(`3PT accuracy: ${fg3pct}% (${fg3m}/${fg3a})`)}
-          style={{ color: c3, fontWeight: weight, cursor: "help" }}
+          style={{ ...accStyle(c3), fontWeight: weight, cursor: "help" }}
         >
           {fg3pct}%
         </span>
@@ -676,6 +689,9 @@ export default function DataTable({
                           : "",
                         c.cls ?? "",
                         cell.className ?? "",
+                        // Only ramp colours are re-tinted in light; a
+                        // token-based bg (the TOTAL row) already follows it.
+                        cell.bg?.startsWith("#") ? "ibpl-heat" : "",
                         "dt-center",
                       ]
                         .filter(Boolean)
@@ -685,9 +701,7 @@ export default function DataTable({
                           key={c.id}
                           className={cls}
                           data-column={c.id}
-                          style={
-                            cell.bg ? { backgroundColor: cell.bg } : undefined
-                          }
+                          style={cell.bg ? heatStyle(cell.bg) : undefined}
                           {...(c.tdProps ? c.tdProps(row) : {})}
                           onClick={
                             c.onActivate

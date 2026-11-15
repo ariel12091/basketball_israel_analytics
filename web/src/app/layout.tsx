@@ -18,8 +18,10 @@ import "@/styles/shiny/vendor/jquery.dataTables.min.css";
 import "@/styles/shiny/vendor/jquery.dataTables.extra.css";
 import "@/styles/shiny/vendor/buttons.dataTables.min.css";
 import "./web.css";
+import "./light.css";
 import AskProvider from "@/components/AskProvider";
 import BodyClassScript from "@/components/shiny/BodyClassScript";
+import ThemeScript from "@/components/shiny/ThemeScript";
 import { PHONE_BODY_CLASSES } from "@/components/shiny/layoutClasses";
 
 export const metadata: Metadata = {
@@ -34,8 +36,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // The theme script sets data-theme and colorScheme on <html> before
+    // hydration, hence suppressHydrationWarning.
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <ThemeScript />
         {/* The same font and icon sources as shared_head_tags() in global.R. */}
         <link
           rel="stylesheet"
