@@ -285,10 +285,15 @@ export default function Navbar({
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
         id="open_glossary"
         type="button"
+        title="Glossary"
+        aria-label="Glossary"
         onClick={onGlossary}
       >
         <span>
-          <i className="bi bi-book" aria-hidden="true"></i> Glossary
+          <i className="bi bi-book" aria-hidden="true"></i>
+          {/* Icon only on desktop below 1600 px, where the theme toggle
+              takes the label's width (light.css). */}
+          <span className="nav-help-label"> Glossary</span>
         </span>
       </button>
       <span

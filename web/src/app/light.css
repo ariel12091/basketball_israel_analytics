@@ -8,6 +8,12 @@
 .nav-theme-btn .nav-theme-label { display: none; }
 body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { margin-right: 0; }
 body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn .nav-theme-label { display: inline; }
+/* The desktop tab row has ~4 px spare at a 1440 px window, so below 1600 px
+   the Glossary button gives its label to the toggle (user 2026-11-15). The
+   collapsed (phone) menu keeps the label: its buttons are full-width rows. */
+@media (max-width: 1599.98px) {
+  body:not(.ibpl-collapsed-nav) #navbar_right_cluster .nav-help-label { display: none; }
+}
 
 /* ---- Tokens: app.css :root, light values ----
    Text values are checked against white and --ibpl-bg for WCAG AA (4.5:1):
