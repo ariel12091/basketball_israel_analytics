@@ -31,7 +31,8 @@ export type Block =
     }
   | {
       kind: "legend";
-      variant: "shot_splits" | "rank";
+      /** "note": a text-only colour key, no rank bar. */
+      variant: "shot_splits" | "rank" | "note";
       note?: string | Record<string, never> | null;
     }
   | { kind: "impact"; text: string };
@@ -357,6 +358,10 @@ export function ViewBlocks({
           case "legend":
             return b.variant === "shot_splits" ? (
               <ShotSplitsLegend key={i} />
+            ) : b.variant === "note" ? (
+              <div key={i} className="legend-box">
+                {typeof b.note === "string" ? b.note : ""}
+              </div>
             ) : (
               <RankLegend
                 key={i}

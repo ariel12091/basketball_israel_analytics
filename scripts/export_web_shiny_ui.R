@@ -178,10 +178,14 @@ panel_blocks <- function(node) {
         caption = xml_text(xml_find_first(k, ".//div[@class='example-snippet-caption']")))
     } else if (grepl("legend-box", cls)) {
       txt <- xml_text(k)
-      variant <- if (grepl("Shot Splits:", txt, fixed = TRUE)) "shot_splits" else "rank"
+      # "rank" only for the on/off rank bar itself; a box of plain text (the
+      # EuroLeague team Four Factors colour key) is a "note", so the web does
+      # not draw the on/off bar beside a table that has none.
+      has_bar <- length(xml_find_all(k, ".//div[contains(@class,'legend-bar') or contains(@class,'legend-icon-on')]")) > 0
+      variant <- if (grepl("Shot Splits:", txt, fixed = TRUE)) "shot_splits" else if (has_bar) "rank" else "note"
       note <- xml_find_all(k, "./span")
       out[[length(out) + 1]] <- list(kind = "legend", variant = variant,
-        note = if (variant == "rank") gsub("[[:space:]]+", " ", trimws(xml_text(note[[length(note)]]))) else NULL)
+        note = if (variant != "shot_splits") gsub("[[:space:]]+", " ", trimws(xml_text(note[[length(note)]]))) else NULL)
     } else if (grepl("ff-impact-legend", cls)) {
       out[[length(out) + 1]] <- list(kind = "impact", text = trimws(xml_text(k)))
     }
