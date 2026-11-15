@@ -128,7 +128,12 @@ html[data-theme="light"] body { background-color: var(--ibpl-bg); color: var(--i
    also exposes it as a custom property plus a class, which light re-derives:
    heat backgrounds tinted toward white, shot-accuracy text darkened. */
 html[data-theme="light"] .ibpl-heat {
+  /* Every step at the same light level (OKLCH L 0.84) with its hue kept and
+     chroma raised 1.6x: clear pastel red / beige / green with dark text
+     (user 2026-11-15 picked this over a plain white tint, "way too dimmed").
+     The color-mix line is the fallback for browsers without relative colour. */
   background-color: color-mix(in srgb, var(--ibpl-heat) 35%, #FFFFFF) !important;
+  background-color: oklch(from var(--ibpl-heat) 0.84 calc(c * 1.6) h) !important;
   color: var(--ibpl-cell-text);
 }
 html[data-theme="light"] .ibpl-acc {

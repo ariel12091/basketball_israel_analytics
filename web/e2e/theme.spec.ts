@@ -193,25 +193,58 @@ test("light heat cells are tinted and their numbers stay legible", async ({
   await page.goto("/il/game-logs?season=2026");
   const cell = page.locator('tr[data-game-id="1"] td[data-column="off_ppp"]');
   await expect(cell).toBeVisible();
-  const { bg, fg, body } = await cell.evaluate((el) => ({
-    bg: getComputedStyle(el).backgroundColor,
-    fg: getComputedStyle(el).color,
-    body: getComputedStyle(document.body).backgroundColor,
-  }));
+  const good = page.locator('tr[data-game-id="1"] td[data-column="def_ppp"]');
+  // Any CSS colour (rgb, color(), oklch) as "rgb(r, g, b)": paint it on a
+  // canvas and read the pixel back.
+  const rgbOf = (sel: string, prop: "backgroundColor" | "color") =>
+    page.evaluate(
+      ([s, p]) => {
+        const c = document.createElement("canvas").getContext("2d")!;
+        c.fillStyle = getComputedStyle(document.querySelector(s)!)[
+          p as "color"
+        ];
+        c.fillRect(0, 0, 1, 1);
+        const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
+        return `rgb(${r}, ${g}, ${b})`;
+      },
+      [sel, prop],
+    );
+  const badSel = 'tr[data-game-id="1"] td[data-column="off_ppp"]';
+  const goodSel = 'tr[data-game-id="1"] td[data-column="def_ppp"]';
+  await expect(good).toBeVisible();
+  const body = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor,
+  );
   expect(body).toBe("rgb(250, 248, 244)");
-  expect(bg).not.toBe("rgb(110, 38, 34)");
-  expect(contrast(bg, "rgb(255, 255, 255)")).toBeLessThan(2); // a light tint
-  expect(contrast(bg, fg)).toBeGreaterThanOrEqual(4.5);
+  for (const [sel, hue] of [
+    [badSel, "red"],
+    [goodSel, "green"],
+  ] as const) {
+    const bg = await rgbOf(sel, "backgroundColor");
+    const fg = await rgbOf(sel, "color");
+    expect(contrast(bg, "rgb(255, 255, 255)")).toBeLessThan(2.5); // light (the chosen pastel is 2.0)
+    expect(contrast(bg, fg)).toBeGreaterThanOrEqual(4.5); // legible
+    // Clearly coloured, not a washed-out grey (user 2026-11-15: "way too
+    // dimmed"): the hue's channel leads the other by a wide margin.
+    const [r, g] = (bg.match(/\d+/g) ?? []).map(Number);
+    expect(hue === "red" ? r - g : g - r, `${hue} cell ${bg}`).toBeGreaterThan(
+      40,
+    );
+  }
 });
 
 test("toggling with a window open flips it in place", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("ibpl_theme", "light"));
   await page.goto("/il/onoff?season=2026");
-  await page.evaluate(() =>
-    (document.getElementById("open_glossary") as HTMLElement).click(),
-  );
   const box = page.locator(".modal-content").first();
-  await expect(box).toBeVisible();
+  // The server-rendered button exists before hydration attaches its click
+  // handler, so retry the click until the window opens.
+  await expect(async () => {
+    await page.evaluate(() =>
+      (document.getElementById("open_glossary") as HTMLElement).click(),
+    );
+    await expect(box).toBeVisible({ timeout: 2000 });
+  }).toPass();
   await expect(box).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await page.evaluate(() =>
     (document.getElementById("theme_toggle") as HTMLButtonElement).click(),
