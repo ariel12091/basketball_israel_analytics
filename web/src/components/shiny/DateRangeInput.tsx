@@ -4,6 +4,7 @@
 // the theme-compiled stylesheet Shiny ships draws it). yyyy-mm-dd, week starts
 // Sunday, autoclose, days outside [min, max] disabled.
 import { useState } from "react";
+import { formatPlainDate, parsePlainDate } from "@/lib/plainDate";
 
 const MONTHS = [
   "January",
@@ -20,11 +21,8 @@ const MONTHS = [
   "December",
 ];
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-const parse = (s: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))
-    ? new Date(`${s}T00:00:00Z`)
-    : null;
+const iso = formatPlainDate;
+const parse = parsePlainDate;
 
 function Picker({
   left,
@@ -200,7 +198,7 @@ export default function DateRangeInput({
         setDraft(next);
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") commit(i);
+        if (e.key === "Enter" && !e.nativeEvent.isComposing) commit(i);
         if (e.key === "Escape") setOpen(null);
       }}
     />

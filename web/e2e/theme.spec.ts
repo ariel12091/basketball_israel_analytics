@@ -59,6 +59,12 @@ test.describe("the toggle", () => {
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await expect(btn).toHaveAttribute("aria-label", "Switch to dark theme");
+    // Back to what the device asks for: the override is forgotten.
+    await btn.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(
+      await page.evaluate(() => localStorage.getItem("ibpl_theme")),
+    ).toBeNull();
     if (info.project.name === "phone") {
       // The open menu holds no second toggle.
       await page.locator(".navbar-toggle").click();

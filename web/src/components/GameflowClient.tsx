@@ -29,6 +29,7 @@ export default function GameflowClient({
     <TabFrame
       league={league}
       tab="game_logs"
+      page="gameflow"
       paneValue="game_logs"
       season={season}
       seasons={league === "il" ? ui.ilSeasons : ui.euroStaticSeasons}

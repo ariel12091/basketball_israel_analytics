@@ -4,6 +4,9 @@ import { gameflowAnswer, parseGameflow } from "@/server/gameflowRepo";
 import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import GameflowClient from "@/components/GameflowClient";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("gameflow");
 export default async function GameflowPage({
   params,
   searchParams,

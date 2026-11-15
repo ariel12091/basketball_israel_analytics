@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Archivo, DM_Sans, Heebo, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 // Shiny's stylesheets, in the order the live app loads them (spec: no
@@ -24,8 +25,37 @@ import BodyClassScript from "@/components/shiny/BodyClassScript";
 import ThemeScript from "@/components/shiny/ThemeScript";
 import { PHONE_BODY_CLASSES } from "@/components/shiny/layoutClasses";
 
+// Shiny's fonts (shared_head_tags() in global.R), self-hosted by next/font:
+// no request to Google from the visitor's browser, and size-matched
+// fallbacks so text does not jump when the font arrives. web.css points
+// app.css's --ibpl-font-* variables at these.
+const archivo = Archivo({
+  subsets: ["latin"],
+  axes: ["wdth"],
+  variable: "--font-archivo",
+});
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  preload: false,
+});
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  preload: false,
+});
+const heebo = Heebo({
+  subsets: ["hebrew"],
+  variable: "--font-heebo",
+  preload: false,
+});
+const FONT_VARS = [archivo, dmSans, inter, mono, heebo]
+  .map((f) => f.variable)
+  .join(" ");
+
 export const metadata: Metadata = {
-  title: "IBPL Analytics",
+  title: { default: "IBPL Analytics", template: "%s | IBPL Analytics" },
   description: "Basketball game logs for Israel, EuroLeague and EuroCup",
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
@@ -38,17 +68,18 @@ export default function RootLayout({
   return (
     // The theme script sets data-theme and colorScheme on <html> before
     // hydration, hence suppressHydrationWarning.
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={FONT_VARS} suppressHydrationWarning>
       <head>
         <ThemeScript />
-        {/* The same font and icon sources as shared_head_tags() in global.R. */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..112,500..800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
-        />
+        {/* The same icon source as shared_head_tags() in global.R. */}
+        {/* Pinned version, so its hash never changes (checked against
+            jsDelivr's published file hash, 2026-11-15). */}
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+          integrity="sha384-XGjxtQfXaH2tnPFa9x+ruJTuLE3Aa6LhHSWRr1XeTyhezb4abCG4ccI5AkVDxqC+"
+          crossOrigin="anonymous"
+          referrerPolicy="no-referrer"
         />
       </head>
       {/* Mobile first: the phone layout is the default; the script widens it

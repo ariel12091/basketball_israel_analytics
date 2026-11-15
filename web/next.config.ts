@@ -1,4 +1,24 @@
 import type { NextConfig } from "next";
+// Content-Security-Policy. Scripts and styles may come only from this origin
+// (plus jsDelivr's pinned icon stylesheet and its font); no plugins, no
+// <base> or form hijacking, no framing. Scripts keep 'unsafe-inline': Next
+// writes each page's data as inline scripts, and the tab pages are
+// CDN-cached HTML, so a per-request nonce is impossible and a hash list
+// cannot cover them (a hash would also switch 'unsafe-inline' off).
+// Development adds what React's dev tooling needs (eval, the HMR socket).
+const dev = process.env.NODE_ENV === "development";
+const CSP = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "font-src 'self' data: https://cdn.jsdelivr.net",
+  "img-src 'self' data: blob:",
+  `connect-src 'self'${dev ? " ws: wss:" : ""}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: process.cwd() },
@@ -21,7 +41,7 @@ const config: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "Content-Security-Policy", value: CSP },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },

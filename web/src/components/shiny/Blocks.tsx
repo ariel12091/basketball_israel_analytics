@@ -53,15 +53,13 @@ export function Runs({
         if (r.color) node = <span style={{ color: r.color }}>{node}</span>;
         if (r.glossary)
           node = (
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                onGlossary?.();
-              }}
+            <button
+              type="button"
+              className="ibpl-link-btn"
+              onClick={() => onGlossary?.()}
             >
               {node}
-            </a>
+            </button>
           );
         return <span key={i}>{node}</span>;
       })}
@@ -134,17 +132,14 @@ function Explainer({
     <div className="explainer-card">
       <div className="explainer-top">
         <h4 className="explainer-title">{block.title}</h4>
-        <a
-          href="#"
-          className="explainer-toggle js-explainer-toggle"
+        <button
+          type="button"
+          className="ibpl-btn-reset explainer-toggle js-explainer-toggle"
           aria-expanded={open}
-          onClick={(e) => {
-            e.preventDefault();
-            onToggle();
-          }}
+          onClick={onToggle}
         >
           Show/Hide
-        </a>
+        </button>
       </div>
       <div className={`explainer-body collapse${open ? " show" : ""}`}>
         <p>
@@ -158,15 +153,9 @@ function Explainer({
           ))}
         </ul>
         <p style={{ marginTop: 8, marginBottom: 0 }}>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              onGlossary();
-            }}
-          >
+          <button type="button" className="ibpl-link-btn" onClick={onGlossary}>
             Open glossary
-          </a>
+          </button>
         </p>
       </div>
     </div>
@@ -184,18 +173,15 @@ function Example({
 }) {
   return (
     <>
-      <a
-        href={`#${block.id}`}
-        className="explainer-toggle"
+      <button
+        type="button"
+        className="ibpl-btn-reset explainer-toggle"
         aria-expanded={open}
         aria-controls={block.id}
-        onClick={(e) => {
-          e.preventDefault();
-          onToggle();
-        }}
+        onClick={onToggle}
       >
         Show/Hide Example
-      </a>
+      </button>
       <div
         id={block.id}
         className={`collapse example-wrapper${open ? " show" : ""}`}

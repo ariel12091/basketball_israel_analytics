@@ -31,3 +31,15 @@ it("cleanup invalidates pending JSON, removes the focus listener and stops the t
   expect(onValue).not.toHaveBeenCalled(); expect(requests).toHaveLength(1);
   expect(vi.getTimerCount()).toBe(0);
 });
+it("skips polls while the tab is hidden and polls again when it is shown", async () => {
+  const doc = Object.assign(new EventTarget(), { visibilityState: "hidden" });
+  vi.stubGlobal("document", doc);
+  const cleanup = pollVersions(vi.fn());
+  expect(requests).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(180000);
+  expect(requests).toHaveLength(1);
+  doc.visibilityState = "visible";
+  doc.dispatchEvent(new Event("visibilitychange"));
+  expect(requests).toHaveLength(2);
+  cleanup();
+});

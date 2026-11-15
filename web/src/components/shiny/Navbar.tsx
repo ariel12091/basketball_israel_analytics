@@ -6,8 +6,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
+import {
+  LEAGUE_VALUE,
+  leagueName,
+  pageHeading,
+  PAGE_LABEL,
+  type PagePath,
+} from "@/lib/pageTitle";
 import ThemeToggle from "./ThemeToggle";
 
 export type TabId =
@@ -26,15 +32,15 @@ type Tab = {
   modes?: string[];
   def?: string;
   ilOnly?: boolean;
-  path?: string;
+  path?: PagePath;
 };
 // Tab order: app.R build_ui(); icons: the ui_tab*.R titles; modes: app.js CFG.
 const TABS: Tab[] = [
-  { value: "home", label: "Home", icon: "bi-house-fill", path: "home" },
+  { value: "home", label: PAGE_LABEL.home, icon: "bi-house-fill", path: "home" },
   {
     value: "onoff",
     euroValue: "euro",
-    label: "On/Off Impact",
+    label: PAGE_LABEL.onoff,
     icon: "bi-toggles",
     modes: ["Summary", "Four Factors", "Shot Profile"],
     def: "Summary",
@@ -43,7 +49,7 @@ const TABS: Tab[] = [
   {
     value: "lineup_data",
     euroValue: "euro_lineups",
-    label: "Lineup Data",
+    label: PAGE_LABEL.lineups,
     icon: "bi-people-fill",
     modes: ["Summary", "Four Factors"],
     def: "Summary",
@@ -52,7 +58,7 @@ const TABS: Tab[] = [
   {
     value: "team_ratings",
     euroValue: "euro_team",
-    label: "Team Ratings",
+    label: PAGE_LABEL["team-ratings"],
     icon: "bi-trophy-fill",
     modes: ["Summary", "Four Factors", "Shot Profile", "Traditional"],
     def: "Summary",
@@ -61,7 +67,7 @@ const TABS: Tab[] = [
   {
     value: "game_logs",
     euroValue: "euro_game_logs",
-    label: "Game Logs",
+    label: PAGE_LABEL["game-logs"],
     icon: "bi-calendar-event",
     modes: ["Summary", "Four Factors"],
     def: "Summary",
@@ -70,14 +76,14 @@ const TABS: Tab[] = [
   {
     value: "traditional_stats",
     path: "player-stats",
-    label: "Player Stats",
+    label: PAGE_LABEL["player-stats"],
     icon: "bi-bar-chart-line",
     modes: ["Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"],
     def: "Per Game",
   },
   {
     value: "compare",
-    label: "Compare",
+    label: PAGE_LABEL.compare,
     icon: "bi-arrow-left-right",
     modes: ["Teams", "Lineups", "Players"],
     def: "Teams",
@@ -104,19 +110,9 @@ const VIEW_PARAM: Record<string, string> = {
   Players: "Players",
 };
 
-const LEAGUE_VALUE: Record<League, string> = {
-  il: "il",
-  euroleague: "E",
-  eurocup: "U",
-};
 // Israel first, each under its full name.
 const LEAGUE_TOGGLE = (["il", "euroleague", "eurocup"] as const).map(
-  (league) => ({
-    league: league as League,
-    name:
-      ui.leagueChoices.find((c) => c.value === LEAGUE_VALUE[league])?.label ??
-      league,
-  }),
+  (league) => ({ league: league as League, name: leagueName(league) }),
 );
 
 export function seasonLabel(year: string | number, endingYear = true) {
@@ -156,6 +152,7 @@ export default function Navbar({
   onGlossary,
   updated,
   collapsedNav,
+  page,
   children,
 }: {
   league: League;
@@ -169,6 +166,8 @@ export default function Navbar({
   onGlossary: () => void;
   updated: string | null;
   collapsedNav: boolean;
+  /** The route, when it is not the tab's own (Gameflow sits under Game Logs). */
+  page?: PagePath;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -380,7 +379,7 @@ export default function Navbar({
               ref={tabsRef}
               className="nav navbar-nav nav-underline"
               id="main_tabs"
-              role="tablist"
+              aria-label="Pages"
             >
               {TABS.filter((t) => !(euro && t.ilOnly)).map((t) => {
                 const value = euro ? (t.euroValue ?? t.value) : t.value;
@@ -401,8 +400,6 @@ export default function Navbar({
                 const linkProps = {
                   "data-value": value,
                   className: `nav-link${here ? " active" : ""}`,
-                  "aria-selected": here,
-                  role: "tab",
                 };
                 const inner = (
                   <>
@@ -417,28 +414,37 @@ export default function Navbar({
                   <li
                     key={t.value}
                     className={`nav-item${modes ? " tab-has-dropdown" : ""}`}
-                    role="presentation"
                   >
-                    {href && !here ? (
-                      <Link href={href} {...linkProps}>
+                    {href ? (
+                      <Link
+                        href={href}
+                        {...linkProps}
+                        aria-current={here ? "page" : undefined}
+                        // The current page's link keeps its filters: a
+                        // click on it stays put, as in Shiny.
+                        onClick={here ? (e) => e.preventDefault() : undefined}
+                      >
                         {inner}
                       </Link>
+                    ) : here ? (
+                      <a {...linkProps} aria-current="page">
+                        {inner}
+                      </a>
                     ) : (
                       <a
                         {...linkProps}
-                        href={here ? undefined : "#"}
-                        aria-disabled={here ? undefined : true}
-                        title={
-                          here ? undefined : "Not yet available in the new app"
-                        }
-                        tabIndex={here ? 0 : -1}
-                        onClick={(e) => e.preventDefault()}
+                        aria-disabled
+                        title="Not yet available in the new app"
                       >
                         {inner}
                       </a>
                     )}
                     {modes && (
-                      <div className="tab-hover-menu">
+                      <div
+                        className="tab-hover-menu"
+                        role="group"
+                        aria-label={`${t.label} views`}
+                      >
                         {modes.map((m) => {
                           const usable = here
                             ? views.includes(m)
@@ -450,16 +456,14 @@ export default function Navbar({
                             setCollapsed(true);
                           };
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={m}
                               data-value={m}
-                              className={`thm-item${m === current ? " active" : ""}`}
-                              role="menuitemradio"
-                              aria-checked={m === current}
-                              aria-disabled={usable ? undefined : true}
-                              tabIndex={usable ? 0 : -1}
+                              className={`ibpl-btn-reset thm-item${m === current ? " active" : ""}`}
+                              aria-pressed={m === current}
+                              disabled={!usable}
                               onClick={(e) => {
-                                e.preventDefault();
                                 choose();
                                 const menu = e.currentTarget.parentElement;
                                 if (menu) {
@@ -470,18 +474,12 @@ export default function Navbar({
                                   );
                                 }
                               }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  choose();
-                                }
-                              }}
                             >
-                              <span className="thm-check">
+                              <span className="thm-check" aria-hidden="true">
                                 {m === current ? "✓" : ""}
                               </span>
                               {m}
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -498,6 +496,14 @@ export default function Navbar({
           bslib's ".navbar + div > .tab-content > .tab-pane" spacing applies. */}
       <div className="container-fluid">
         {!collapsedNav && cluster}
+        {/* One h1 per page for screen readers and outlines; the navbar's
+            active tab already says it on screen. */}
+        <h1 className="ibpl-sr-only">
+          {pageHeading(
+            page ?? TABS.find((t) => t.value === tab)?.path ?? "home",
+            league,
+          )}
+        </h1>
         {children}
       </div>
     </>

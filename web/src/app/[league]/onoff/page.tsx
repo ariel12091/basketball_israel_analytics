@@ -6,6 +6,9 @@ import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { onoffAnswer } from "@/server/onoffApi";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("onoff");
 // First table rendered on the server from the same answer the API gives (see
 // the Game Logs page for the failed read and the x-ibpl-client-data header).
 export default async function OnOffPage({

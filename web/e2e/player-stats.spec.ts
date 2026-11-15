@@ -120,7 +120,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       .getByRole("button", { name: "Add", exact: true })
       .click();
     await expect(
-      page.getByRole("link", { name: "Remove PTS filter" }),
+      page.getByRole("button", { name: "Remove PTS filter" }),
     ).toBeVisible();
     const filtered = playerDisplay(answer.rows, answer.identities, {
       mode: "Per Game",
@@ -129,7 +129,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(page.locator(".dataTables_info")).toHaveText(
       `Showing 1 to ${Math.min(50, filtered.length)} of ${filtered.length} entries`,
     );
-    await page.getByRole("link", { name: "Remove PTS filter" }).click();
+    await page.getByRole("button", { name: "Remove PTS filter" }).click();
     await expect(page.locator(".dataTables_info")).toContainText(
       `of ${playerDisplay(answer.rows, answer.identities, { mode: "Per Game" }).rows.length} entries`,
     );
@@ -160,7 +160,8 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     else
       await page.locator('.nav-link[data-value="traditional_stats"]').hover();
     await page
-      .getByRole("menuitemradio", { name: "Per 30 Minutes", exact: true })
+      .locator("#main_tabs")
+      .getByRole("button", { name: "Per 30 Minutes", exact: true })
       .click();
     await expect(page.locator('th[data-column="base_min_pg"]')).toBeVisible();
     expect(requests.length).toBe(count);

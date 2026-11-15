@@ -15,6 +15,9 @@ import {
 import { compareAnswer } from "@/server/compareRepo";
 import type { CompareSeed } from "@/components/shiny/CompareData";
 import { compareDefaultPlayers } from "@/lib/compareAsync";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("compare");
 export default async function ComparePage({
   params,
   searchParams,
