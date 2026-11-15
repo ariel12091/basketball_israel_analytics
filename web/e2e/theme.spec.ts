@@ -51,8 +51,15 @@ test.describe("the toggle", () => {
     if (info.project.name === "phone")
       await expect(page.locator(".navbar-header .nav-theme-btn")).toBeVisible();
     await expect(btn).toHaveAttribute("aria-label", "Switch to light theme");
-    await btn.click();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    // Retry until hydration has attached the click handler.
+    await expect(async () => {
+      await btn.click();
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-theme",
+        "light",
+        { timeout: 2000 },
+      );
+    }).toPass();
     expect(await page.evaluate(() => localStorage.getItem("ibpl_theme"))).toBe(
       "light",
     );
@@ -84,10 +91,16 @@ test.describe("the toggle", () => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto(HOME);
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await page.evaluate(() =>
-      (document.getElementById("theme_toggle") as HTMLButtonElement).click(),
-    );
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    // The server-rendered button exists before hydration attaches its click
+    // handler, so retry the click until the theme flips.
+    await expect(async () => {
+      await page.evaluate(() =>
+        (document.getElementById("theme_toggle") as HTMLButtonElement).click(),
+      );
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark", {
+        timeout: 2000,
+      });
+    }).toPass();
   });
 
   test("the tab row stays one line at 1440 and 1600 px", async ({
@@ -228,7 +241,12 @@ test("light heat cells are tinted and their numbers stay legible", async ({
   ] as const) {
     const bg = await rgbOf(sel, "backgroundColor");
     const fg = await rgbOf(sel, "color");
-    expect(contrast(bg, "rgb(255, 255, 255)")).toBeLessThan(2.5); // light (the chosen pastel is 2.0)
+    // The table's extremes are clearly deep, not a pale pastel (user
+    // 2026-11-15, twice: "too dimmed"; the L 0.84 pastel measured 2.0),
+    // yet still a light tint under dark text.
+    const vsWhite = contrast(bg, "rgb(255, 255, 255)");
+    expect(vsWhite, `${hue} cell ${bg}`).toBeGreaterThan(2.2);
+    expect(vsWhite, `${hue} cell ${bg}`).toBeLessThan(3.5);
     expect(contrast(bg, fg)).toBeGreaterThanOrEqual(4.5); // legible
     // Clearly coloured, not a washed-out grey (user 2026-11-15: "way too
     // dimmed"): the hue's channel leads the other by a wide margin.
