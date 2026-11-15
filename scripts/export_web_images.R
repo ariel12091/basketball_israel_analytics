@@ -1,0 +1,113 @@
+# PREVIEW PROTOTYPE (react/logos, 2026-11-15) -- team logos and player
+# headshots for the web app, written to web/src/data/images.json.
+#
+#   Rscript scripts/export_web_images.R
+#
+# Feasibility only, before the image rights are cleared: nothing is written to
+# the database. If it goes ahead, the URLs move to their owners --
+# season_teams.logo_url and basket_player_registration.photo_url (filled by
+# scripts/basket_rosters.R, exposed through player_display_names_v) -- and this
+# script and the JSON are deleted. Nothing here is typed by hand:
+#
+# - logos: basketball_test.schedule.team_icon_1/2, the team's most recent game
+#   per season, keyed by the roster team id (schedule_team_dict).
+# - photos: the basket.co.il team pages cached by scripts/basket_rosters.R
+#   (exports/cache/basket_shooting_history/teams/<season>/<team>-he.html),
+#   keyed by (roster team id, player id) through the Basket registration's
+#   verified identity and player_display_names_v. Only seasons with cached
+#   team pages have photos (2027 as of today).
+#
+# The URLs point at basket.co.il; nothing is downloaded or re-hosted.
+
+suppressPackageStartupMessages({
+  library(DBI)
+  library(jsonlite)
+})
+
+source("scripts/basket_rosters.R")
+
+readRenviron("etl/.Renviron")
+con <- dbConnect(RPostgres::Postgres(),
+  host = Sys.getenv("PG_HOST"), port = 5432L, dbname = Sys.getenv("PG_DB"),
+  user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
+  sslmode = "require", bigint = "numeric")
+on.exit(dbDisconnect(con), add = TRUE)
+invisible(dbExecute(con, "SET default_transaction_read_only = on"))
+
+# --- logos --------------------------------------------------------------------
+logos <- dbGetQuery(con, "
+  WITH sides AS (
+    SELECT game_year, game_date, id, team1 AS team_id_schedule, team_icon_1 AS icon
+    FROM basketball_test.schedule
+    UNION ALL
+    SELECT game_year, game_date, id, team2, team_icon_2
+    FROM basketball_test.schedule
+  )
+  SELECT DISTINCT ON (s.game_year, d.team_id_rosters)
+         s.game_year, d.team_id_rosters AS team_id, s.icon
+  FROM sides s
+  JOIN basketball_test.schedule_team_dict d
+    ON d.game_year = s.game_year AND d.team_id_schedule = s.team_id_schedule
+  WHERE NULLIF(btrim(s.icon), '') IS NOT NULL
+  ORDER BY s.game_year, d.team_id_rosters, s.game_date DESC NULLS LAST, s.id DESC")
+logos$url <- basket_absolute_url(logos$icon)
+
+teams <- dbGetQuery(con, "SELECT game_year, team_id FROM basketball_test.season_teams")
+missing_logo <- merge(teams, logos, all.x = TRUE)
+missing_logo <- missing_logo[is.na(missing_logo$url), c("game_year", "team_id")]
+if (nrow(missing_logo)) {
+  message("no logo for ", nrow(missing_logo), " season team(s): ",
+          paste(sprintf("%d/%d", missing_logo$game_year, missing_logo$team_id), collapse = ", "))
+}
+
+# --- photos -------------------------------------------------------------------
+cache_dir <- file.path("exports", "cache", "basket_shooting_history", "teams")
+pages <- list.files(cache_dir, pattern = "^[0-9]+-he\\.html$", recursive = TRUE, full.names = TRUE)
+photos <- do.call(rbind, lapply(pages, function(p) {
+  html <- paste(readLines(p, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  out <- parse_basket_roster_photos(html)
+  if (!nrow(out)) return(NULL)
+  out$game_year <- as.integer(basename(dirname(p)))
+  out$basket_team_id <- as.integer(sub("-he\\.html$", "", basename(p)))
+  out
+}))
+if (is.null(photos)) photos <- data.frame(basket_player_id = integer(), photo_url = character(),
+  game_year = integer(), basket_team_id = integer())
+
+# The team comes from the page (the registration's basket_team_id is blank on
+# stats-page rows); the registration gives the person, the view the player id.
+team_map <- dbGetQuery(con, "
+  SELECT game_year, team_id_schedule AS basket_team_id, team_id_rosters AS team_id
+  FROM basketball_test.schedule_team_dict")
+ids <- dbGetQuery(con, "
+  SELECT r.game_year, r.basket_player_id, v.team_id, v.player_id
+  FROM basketball_test.basket_player_registration r
+  JOIN basketball_test.player_display_names_v v
+    ON v.game_year = r.game_year AND v.identity_id = r.identity_id
+  WHERE r.identity_match_status = 'verified'")
+mapped <- merge(merge(photos, team_map, by = c("game_year", "basket_team_id")),
+                ids, by = c("game_year", "basket_player_id", "team_id"))
+mapped <- mapped[!duplicated(mapped[c("game_year", "team_id", "player_id")]), , drop = FALSE]
+message(sprintf("photos: %d on cached team pages, %d mapped to a (team, player)",
+                nrow(photos), nrow(mapped)))
+
+# --- write --------------------------------------------------------------------
+by_season <- function(df, key, value) {
+  lapply(split(df, df$game_year), function(s) {
+    s <- s[order(s[[key]]), , drop = FALSE]
+    stats::setNames(as.list(s[[value]]), s[[key]])
+  })
+}
+logos <- logos[!is.na(logos$url), , drop = FALSE]
+mapped$key <- sprintf("%d:%d", as.integer(mapped$team_id), as.integer(mapped$player_id))
+
+out <- list(
+  note = "PREVIEW PROTOTYPE, generated by scripts/export_web_images.R; do not edit.",
+  logos = by_season(logos, "team_id", "url"),
+  photos = by_season(mapped, "key", "photo_url")
+)
+path <- file.path("web", "src", "data", "images.json")
+con_out <- file(path, open = "wb")
+writeLines(toJSON(out, auto_unbox = TRUE, pretty = TRUE), con_out, sep = "\n")
+close(con_out)
+message("wrote ", path)
