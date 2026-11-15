@@ -254,7 +254,10 @@ function Glossary({ onClose }: { onClose: () => void }) {
       aria-labelledby="glossary-title"
       tabIndex={-1}
       closedby="any"
-      onClose={onClose}
+      // The close event arrives a task after close(); in dev StrictMode the
+      // effect has re-opened the dialog by then, and that stale event must
+      // not shut it.
+      onClose={() => !ref.current?.open && onClose()}
       // The filter drawer's panel stays mounted and Radix cancels every
       // Escape on the page, which also stops the dialog's own close.
       onKeyDown={(e) => e.key === "Escape" && onClose()}
@@ -270,11 +273,7 @@ function Glossary({ onClose }: { onClose: () => void }) {
           <TextBlocks blocks={ui.glossary as TextBlock[]} />
         </div>
         <div className="modal-footer">
-          <button
-            type="button"
-            className="btn btn-default"
-            onClick={onClose}
-          >
+          <button type="button" className="btn btn-default" onClick={onClose}>
             Close
           </button>
         </div>
@@ -448,10 +447,7 @@ export function TabFrame({
           page={page}
         >
           <div className="tab-content">
-            <div
-              className="tab-pane active show"
-              data-value={paneValue}
-            >
+            <div className="tab-pane active show" data-value={paneValue}>
               <div
                 className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
               >
