@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -17,6 +18,7 @@ import {
   aggregateSegments,
   clock,
   fitGameflowLayout,
+  gameLineups,
   laneKey,
   lineupsRoom,
   marginPath,
@@ -134,6 +136,8 @@ export function GameflowView({
     [panelOpen, setPanelOpen] = useState(false),
     [panelRuns, setPanelRuns] = useState(false),
     [menuOpen, setMenuOpen] = useState(false),
+    // Wide: the default top lineups fold away under their heading.
+    [topOpen, setTopOpen] = useState(true),
     // A swipe across the quarter, and a tap that only closes the run
     // details, must not also count as a tap on the bar under them.
     swallowTap = useRef(false),
@@ -154,6 +158,16 @@ export function GameflowView({
     restingOn = useRef<{ window: BarWindow; box: DOMRect } | null>(null);
   const windows = sharedWindows(data.bars, selected),
     total = windows.reduce((sum, w) => sum + w.end - w.start, 0);
+  // Before any click, each team's most-played lineups (user 2026-11-15); a
+  // player, stint or run replaces them.
+  const top = useMemo(
+      () =>
+        (["own", "opp"] as const).flatMap((side) =>
+          gameLineups(data, side, TOP_LINEUPS),
+        ),
+      [data],
+    ),
+    idle = !run && !selected.length && !active;
   // A clicked run's band: both teams' lineups during it (user 2026-11-11).
   const groups = run
     ? runLineupGroups(data, run)
@@ -161,7 +175,7 @@ export function GameflowView({
       ? sharedLineups(data, selected, windows)
       : active
         ? stintLineups(data, active)
-        : [];
+        : top;
   // A click on a bar is about that stint, a click on a name the whole game.
   const stint = stintOf(selection, gameEnd);
   const groupKey = (g: (typeof groups)[number]) => `${g.side}:${g.dictIndex}`;
@@ -220,6 +234,9 @@ export function GameflowView({
     !(activeWindow.start === 0 && activeWindow.end === gameEnd);
   const lanes = new Set(data.bars.map(laneKey)).size,
     lineupsOpen = showStint || selected.length > 0 || groups.length > 0,
+    // Folded top lineups keep only their heading: the chart is fitted as if
+    // nothing were open, under it.
+    folded = idle && !topOpen,
     room = space && lineupsRoom(lanes, space),
     // The lineups take only what they fill, up to the room; the chart the rest.
     taken = room != null && lineupsUsed != null ? Math.min(room, lineupsUsed) : room,
@@ -229,7 +246,7 @@ export function GameflowView({
           lineupsOpen && taken != null
             ? { ...space, height: space.height - taken }
             : space,
-          lineupsOpen,
+          lineupsOpen && !folded,
         )
       : undefined;
   // Phones: a tap outside the panel closes a run's details or the runs list
@@ -270,7 +287,7 @@ export function GameflowView({
   useLayoutEffect(() => {
     const el = lineupsBox.current;
     if (el) setLineupsUsed(el.offsetHeight + DETAILS_MARGINS);
-  }, [active, selected, room]);
+  }, [active, selected, room, run, topOpen]);
   const common = {
     data,
     compact,
@@ -334,6 +351,13 @@ export function GameflowView({
       groupKey={groupKey}
       focus={focus}
       run={run}
+      top={idle}
+      folded={folded}
+      onFold={() => {
+        // A highlighted lineup would stay lit with its row folded away.
+        if (topOpen) clear();
+        setTopOpen(!topOpen);
+      }}
       dispatch={(a: SelectionAction) => {
         dispatch(a);
         // Phones show one quarter: a lineup picked in the panel brings up the
@@ -737,6 +761,8 @@ const TIP_WIDTH = 400,
   // click away.
   TIP_ROWS = 2;
 const LINEUPS_SHORT = 3;
+/** The default list: each team's most-played lineups (user 2026-11-15). */
+const TOP_LINEUPS = 5;
 /** A horizontal move at least this long (px) is a swipe, not a tap. */
 const SWIPE_MIN = 60;
 const PHONE_HINT =
@@ -871,6 +897,16 @@ function PhonePanel({
         </button>
       </>
     );
+  } else if (lineups) {
+    // Nothing tapped yet: each team's most-played lineups (user 2026-11-15).
+    title = `Top ${TOP_LINEUPS} lineups per team`;
+    sub = "Tap a player, a bar or a shaded run for more";
+    body = (
+      <>
+        {list}
+        <p className="ibpl-ribbon-inline-hint">{PHONE_HINT}</p>
+      </>
+    );
   } else {
     title = "Nothing selected";
     sub = "Tap a player, a bar or a shaded run";
@@ -890,7 +926,7 @@ function PhonePanel({
         </span>
         {/* What a tap opens, named (user 2026-11-12), pulsing once on each
             new selection; the plain arrow alone was easy to miss. */}
-        {(open || showRuns || run || selected.length > 0 || active) && (
+        {(open || showRuns || run || selected.length > 0 || active || lineups > 0) && (
           <span
             className={`gf-m-open${open ? " is-open" : ""}`}
             key={open ? "open" : selectionKey}
@@ -1148,7 +1184,15 @@ function GameflowDetails({
   detail,
   compact = false,
   run = null,
+  top = false,
+  folded = false,
+  onFold,
 }: {
+  /** Nothing selected: the groups are each team's top lineups. */
+  top?: boolean;
+  /** Wide: the top lineups folded under their heading. */
+  folded?: boolean;
+  onFold?: () => void;
   compact?: boolean;
   /** A clicked run: the list holds its lineups. */
   run?: Run | null;
@@ -1170,7 +1214,7 @@ function GameflowDetails({
   const [showAll, setShowAll] = useState(false),
     // Per team, so a run's list keeps both teams.
     shown =
-      compact && !showAll
+      compact && !showAll && !top
         ? groups.filter(
             (g, i) =>
               groups.slice(0, i).filter((h) => h.side === g.side).length <
@@ -1313,8 +1357,22 @@ function GameflowDetails({
         <section
           className="ibpl-ribbon-detail ibpl-ribbon-shared-lineups"
           ref={detail}
-          aria-label={run ? "Run lineups" : selected.length > 1 ? "Shared lineups" : "Stint lineups"}
+          aria-label={top ? "Top lineups" : run ? "Run lineups" : selected.length > 1 ? "Shared lineups" : "Stint lineups"}
         >
+          {top && !compact ? (
+            <button
+              type="button"
+              className="ibpl-ribbon-detail-head gf-top-toggle"
+              aria-expanded={!folded}
+              onClick={onFold}
+            >
+              <span>
+                Top {TOP_LINEUPS} lineups per team, by minutes
+                {!folded && " · select a lineup to highlight its minutes"}
+              </span>
+              <span className="gf-top-fold">{folded ? "Show" : "Hide"}</span>
+            </button>
+          ) : top ? null : (
           <div className="ibpl-ribbon-detail-head">
             {run
               ? "Lineups in the run · time inside it only · select a lineup to highlight it"
@@ -1322,8 +1380,9 @@ function GameflowDetails({
               ? "Shared lineups · select a lineup to highlight its shared minutes"
               : "Lineups · select a lineup to highlight its minutes"}
           </div>
+          )}
           {/* Sides in the groups' order: a run lists its team first. */}
-          {[...new Set(shown.map((g) => g.side))].map(
+          {!folded && [...new Set(shown.map((g) => g.side))].map(
             (side) =>
               shown.some((g) => g.side === side) && (
                 <FragmentSide
@@ -1353,6 +1412,9 @@ function GameflowDetails({
                             .split(" | ")
                             .join(" · ") ?? "Lineup unavailable"}
                         </span>
+                        {top ? (
+                          <TopLineupMeta data={data} g={g} />
+                        ) : (
                         <span className="ibpl-ribbon-detail-meta">
                           {clock(g.duration)}{" "}
                           {run ? "in the run" : selected.length > 1 ? "shared" : "total"}
@@ -1363,6 +1425,7 @@ function GameflowDetails({
                             .map((w) => windowLabel(w, data.bounds))
                             .join(", ")}
                         </span>
+                        )}
                       </button>
                     ))}
                 </FragmentSide>
@@ -1380,6 +1443,35 @@ function GameflowDetails({
         </section>
       )}
     </>
+  );
+}
+/** A top lineup's line: its minutes, then its own scoreboard -- points for
+ * and against with the +/- -- then its ratings. No windows: a whole game's
+ * list of them is long, and selecting the row draws them on the chart. */
+function TopLineupMeta({
+  data,
+  g,
+}: {
+  data: GameflowPayload;
+  g: ReturnType<typeof aggregateSegments>[number];
+}) {
+  const d = windowsSummary(g.side, g.windows, data.steps);
+  return (
+    <span className="ibpl-ribbon-detail-meta">
+      {clock(g.duration)}
+      {d.pf == null ? (
+        lineupPmText(data, g)
+      ) : (
+        <>
+          {" · "}
+          <b className="gf-top-score">
+            {d.pf}–{d.pa}
+          </b>{" "}
+          ({d.pm || "0"})
+        </>
+      )}
+      {lineupRatingText(data, g)}
+    </span>
   );
 }
 function FragmentSide({

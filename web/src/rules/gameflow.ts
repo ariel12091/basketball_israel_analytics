@@ -704,6 +704,35 @@ export function sharedLineups(
     );
   });
 }
+/**
+ * One team's lineups over the whole game, most minutes first: Gameflow's
+ * default list before anything is selected (user 2026-11-15). Each lineup's
+ * floor windows are read off one of its players' lanes (every member carries
+ * the same ones), with the same floor-based +/- as the stint lists.
+ */
+export function gameLineups(
+  model: Pick<RibbonModel, "lanes" | "steps" | "dict">,
+  side: Side,
+  limit = Infinity,
+) {
+  const reader = new Map<string, string>();
+  for (const l of model.lanes)
+    if (l.side === side && !reader.has(l.lineup_key))
+      reader.set(l.lineup_key, l.player_key);
+  return aggregateSegments(
+    model.lanes
+      .filter((l) => l.side === side && reader.get(l.lineup_key) === l.player_key)
+      .map((l) => ({
+        side,
+        start: l.start_elapsed,
+        end: l.end_elapsed,
+        dictIndex: model.dict.findIndex(
+          (d) => d.side === side && d.lineup_key === l.lineup_key,
+        ),
+        pm: points(side, l.start_elapsed, l.end_elapsed, model.steps).pm,
+      })),
+  ).slice(0, limit);
+}
 export function marginScale(margin: { elapsed: number; margin: number }[]) {
   const maxAbs =
     Math.max(
