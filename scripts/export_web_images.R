@@ -11,27 +11,33 @@
 #
 # - logos: basketball_test.schedule.team_icon_1/2, the team's most recent game
 #   per season, keyed by the roster team id (schedule_team_dict).
-# - photos: the basket.co.il team pages cached by scripts/basket_rosters.R
-#   (exports/cache/basket_shooting_history/teams/<season>/<team>-he.html),
-#   keyed by (roster team id, player id) through the Basket registration's
-#   verified identity and player_display_names_v. Only seasons with cached
-#   team pages have photos (2027 as of today).
+# - photos, from two caches under exports/cache/basket_shooting_history/:
+#   1. teams/<season>/<team>-he.html (scripts/basket_rosters.R; the current
+#      season only): each roster card's photo, on that team;
+#   2. profiles/<season>/<PlayerId>.html (the shooting-history backfill; every
+#      season): the profile's player_img, on every team the person played for
+#      that season.
+#   The roster card wins where both exist. Each is keyed by (roster team id,
+#   player id) through the Basket registration's verified identity and
+#   player_display_names_v, which cover the app's seasons (2025-2027); 2022-23
+#   profiles hold only the site placeholder.
 #
 # The URLs point at basket.co.il; nothing is downloaded or re-hosted.
+#
+#   IMAGES_OUT=<path>  write somewhere other than web/src/data/images.json
 
 suppressPackageStartupMessages({
   library(DBI)
   library(jsonlite)
 })
 
-source("scripts/basket_rosters.R")
+if (!exists("parse_basket_profile_photo")) source("scripts/basket_rosters.R")
 
 readRenviron("etl/.Renviron")
 con <- dbConnect(RPostgres::Postgres(),
   host = Sys.getenv("PG_HOST"), port = 5432L, dbname = Sys.getenv("PG_DB"),
   user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
   sslmode = "require", bigint = "numeric")
-on.exit(dbDisconnect(con), add = TRUE)
 invisible(dbExecute(con, "SET default_transaction_read_only = on"))
 
 # --- logos --------------------------------------------------------------------
@@ -61,11 +67,12 @@ if (nrow(missing_logo)) {
 }
 
 # --- photos -------------------------------------------------------------------
-cache_dir <- file.path("exports", "cache", "basket_shooting_history", "teams")
-pages <- list.files(cache_dir, pattern = "^[0-9]+-he\\.html$", recursive = TRUE, full.names = TRUE)
+read_page <- function(p) paste(readLines(p, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+cache_root <- file.path("exports", "cache", "basket_shooting_history")
+pages <- list.files(file.path(cache_root, "teams"), pattern = "^[0-9]+-he\\.html$",
+                    recursive = TRUE, full.names = TRUE)
 photos <- do.call(rbind, lapply(pages, function(p) {
-  html <- paste(readLines(p, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  out <- parse_basket_roster_photos(html)
+  out <- parse_basket_roster_photos(read_page(p))
   if (!nrow(out)) return(NULL)
   out$game_year <- as.integer(basename(dirname(p)))
   out$basket_team_id <- as.integer(sub("-he\\.html$", "", basename(p)))
@@ -85,11 +92,34 @@ ids <- dbGetQuery(con, "
   JOIN basketball_test.player_display_names_v v
     ON v.game_year = r.game_year AND v.identity_id = r.identity_id
   WHERE r.identity_match_status = 'verified'")
-mapped <- merge(merge(photos, team_map, by = c("game_year", "basket_team_id")),
-                ids, by = c("game_year", "basket_player_id", "team_id"))
+roster_mapped <- merge(merge(photos, team_map, by = c("game_year", "basket_team_id")),
+                       ids, by = c("game_year", "basket_player_id", "team_id"))
+message(sprintf("roster photos: %d on cached team pages, %d mapped to a (team, player)",
+                nrow(photos), nrow(roster_mapped)))
+
+# Profiles: no team on the page, so every (team, player) of that person.
+profile_files <- list.files(file.path(cache_root, "profiles"), pattern = "^[0-9]+\\.html$",
+                            recursive = TRUE, full.names = TRUE)
+profiles <- data.frame(
+  game_year = as.integer(basename(dirname(profile_files))),
+  basket_player_id = as.integer(sub("\\.html$", "", basename(profile_files))),
+  photo_url = vapply(profile_files, function(p) parse_basket_profile_photo(read_page(p)),
+                     character(1), USE.NAMES = FALSE))
+profiles <- profiles[!is.na(profiles$photo_url), , drop = FALSE]
+profile_mapped <- merge(profiles, ids, by = c("game_year", "basket_player_id"))
+message(sprintf("profile photos: %d real photos cached, %d mapped to a (team, player)",
+                nrow(profiles), nrow(profile_mapped)))
+
+cols <- c("game_year", "team_id", "player_id", "photo_url")
+mapped <- rbind(roster_mapped[cols], profile_mapped[cols])  # roster first: it wins
 mapped <- mapped[!duplicated(mapped[c("game_year", "team_id", "player_id")]), , drop = FALSE]
-message(sprintf("photos: %d on cached team pages, %d mapped to a (team, player)",
-                nrow(photos), nrow(mapped)))
+players <- dbGetQuery(con, "
+  SELECT game_year, count(*) AS players FROM basketball_test.player_display_names_v
+  WHERE display_name IS NOT NULL GROUP BY 1 ORDER BY 1")
+players$with_photo <- vapply(players$game_year, function(y) sum(mapped$game_year == y), integer(1))
+print(players, row.names = FALSE)
+# (Not on.exit(): at top level it fires at once when the file is source()d.)
+dbDisconnect(con)
 
 # --- write --------------------------------------------------------------------
 by_season <- function(df, key, value) {
@@ -106,7 +136,7 @@ out <- list(
   logos = by_season(logos, "team_id", "url"),
   photos = by_season(mapped, "key", "photo_url")
 )
-path <- file.path("web", "src", "data", "images.json")
+path <- Sys.getenv("IMAGES_OUT", file.path("web", "src", "data", "images.json"))
 con_out <- file(path, open = "wb")
 writeLines(toJSON(out, auto_unbox = TRUE, pretty = TRUE), con_out, sep = "\n")
 close(con_out)

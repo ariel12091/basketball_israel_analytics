@@ -115,10 +115,22 @@ parse_basket_roster_photos <- function(html) {
   out[!duplicated(out$basket_player_id), , drop = FALSE]
 }
 
+# A player profile page's headshot (player.asp?PlayerId=N, cached by the
+# shooting-history backfill under profiles/<season>/<PlayerId>.html): the
+# <img> in its player_img block, the photo of that season's player record.
+# NA when the block is missing or holds the site placeholder.
+parse_basket_profile_photo <- function(html) {
+  m <- regmatches(html, regexec(
+    '(?s)class="player_img"[^>]*>\\s*<img[^>]*\\ssrc="([^"]+)"', html, perl = TRUE))[[1]]
+  if (length(m) < 2 || grepl("default_player", m[2], fixed = TRUE)) return(NA_character_)
+  basket_absolute_url(m[2])
+}
+
 # basket.co.il serves its images under absolute, root-relative and
-# page-relative paths (logos in schedule, photos on team pages).
+# page-relative paths (logos in schedule, photos on team pages); "..//pics"
+# (news menus) resolves to the root as well.
 basket_absolute_url <- function(x) {
-  x <- trimws(x)
+  x <- sub("^(\\.\\./)+/*", "/", trimws(x), perl = TRUE)
   out <- x
   root <- !is.na(x) & startsWith(x, "/")
   rel <- !is.na(x) & !grepl("^https?://", x) & !root
