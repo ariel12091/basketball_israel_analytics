@@ -93,6 +93,44 @@ parse_basket_roster_html <- function(html, lang = c("he", "en")) {
   out[!duplicated(out$basket_player_id), , drop = FALSE]
 }
 
+# Each roster entry's headshot URL, from the same entries as
+# parse_basket_roster_html(): the <img> inside the card's box_role_data div.
+# Relative paths are made absolute against basket.co.il; the site's
+# placeholder (img/default_player.jpg) counts as no photo.
+parse_basket_roster_photos <- function(html) {
+  pattern <- '(?s)<a href="player\\.asp\\?PlayerId=([0-9]+)[^"]*">((?:(?!</a>).)*?role_name(?:(?!</a>).)*?)</a>'
+  hits <- regmatches(html, gregexpr(pattern, html, perl = TRUE))[[1]]
+  empty <- data.frame(basket_player_id = integer(), photo_url = character(),
+                      stringsAsFactors = FALSE)
+  if (!length(hits)) return(empty)
+  id <- as.integer(sub('(?s)^<a href="player\\.asp\\?PlayerId=([0-9]+).*$', "\\1", hits, perl = TRUE))
+  src <- vapply(hits, function(a) {
+    m <- regmatches(a, regexec('(?s)box_role_data"[^>]*>\\s*<img[^>]*\\ssrc="([^"]+)"', a, perl = TRUE))[[1]]
+    if (length(m) < 2) NA_character_ else m[2]
+  }, character(1), USE.NAMES = FALSE)
+  src[grepl("default_player", src, fixed = TRUE)] <- NA_character_
+  out <- data.frame(basket_player_id = id, photo_url = basket_absolute_url(src),
+                    stringsAsFactors = FALSE)
+  out <- out[!is.na(out$photo_url), , drop = FALSE]
+  out[!duplicated(out$basket_player_id), , drop = FALSE]
+}
+
+# basket.co.il serves its images under absolute, root-relative and
+# page-relative paths (logos in schedule, photos on team pages).
+basket_absolute_url <- function(x) {
+  x <- trimws(x)
+  out <- x
+  root <- !is.na(x) & startsWith(x, "/")
+  rel <- !is.na(x) & !grepl("^https?://", x) & !root
+  out[root] <- paste0("https://basket.co.il", x[root])
+  out[rel] <- paste0("https://basket.co.il/", x[rel])
+  out[!is.na(out) & !nzchar(out)] <- NA_character_
+  # One spelling: www. redirects (301) to the bare host, and
+  # "basket.co.il//pics" (2025 logos) collapses to one slash.
+  out <- sub("^https?://(www\\.)?basket\\.co\\.il", "https://basket.co.il", out, perl = TRUE)
+  sub("^(https?://[^/]+)//+", "\\1/", out, perl = TRUE)
+}
+
 # Hebrew page as the base, English name and position code joined on the id;
 # a player on the Hebrew page only gets his Hebrew position mapped.
 merge_basket_roster <- function(he, en, basket_team_id, game_year) {

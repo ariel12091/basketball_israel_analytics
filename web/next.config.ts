@@ -22,6 +22,17 @@ const CSP = [
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: process.cwd() },
+  // PREVIEW PROTOTYPE (react/logos): team logos and headshots from
+  // basket.co.il, resized by the optimiser (served from /_next/image, so the
+  // CSP's img-src 'self' covers them). basket.co.il sends them no-cache, so
+  // keep each resized copy a month instead of re-transforming every few hours
+  // (Hobby's transformation quota); ~280 images x 2 densities.
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "basket.co.il", pathname: "/pics/**" },
+    ],
+    minimumCacheTTL: 2678400,
+  },
   // Vercel's CDN shares a tab's first HTML for up to an hour (plus a day
   // served while it re-renders in the background). The data changes nightly,
   // so a shorter life only adds function renders (Fast Origin Transfer). Safe
