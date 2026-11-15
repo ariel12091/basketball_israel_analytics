@@ -1270,7 +1270,7 @@
           },
           {
             "kind": "legend",
-            "variant": "rank",
+            "variant": "note",
             "note": "Green = better for that team. Offence: higher eFG%/OREB%/FTR, lower TOV%. Defence: lower eFG%/OREB%/FTR allowed, higher opponent TOV%."
           }
         ],
