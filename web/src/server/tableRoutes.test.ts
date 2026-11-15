@@ -21,7 +21,13 @@ vi.mock("@/server/onoffApi", () => ({
   onoffPageAnswer: answer("onoffPageAnswer"),
 }));
 
+// Compare's readers take the query only (Israeli League only).
+const one = (fn: string) => async (s: URLSearchParams) => answer(fn)("il", s);
+vi.mock("@/server/compareRepo", () => ({ compareAnswer: one("compareAnswer") }));
+vi.mock("@/server/comparePage", () => ({ comparePageAnswer: one("comparePageAnswer") }));
+
 const routes = {
+  compare: await import("@/app/api/v1/[league]/compare/route"),
   "player-stats": await import("@/app/api/v1/[league]/player-stats/route"),
   "team-ratings": await import("@/app/api/v1/[league]/team-ratings/route"),
   onoff: await import("@/app/api/v1/[league]/onoff/route"),
@@ -35,6 +41,7 @@ describe.each([
   ["player-stats", "playerStats"],
   ["team-ratings", "teamRatings"],
   ["onoff", "onoff"],
+  ["compare", "compare"],
 ] as const)("%s", (route, name) => {
   it("shape=table answers with the page answer, without the shape key", async () => {
     calls.length = 0;

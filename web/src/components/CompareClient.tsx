@@ -51,15 +51,17 @@ import DataTable, { type Column } from "./shiny/DataTable";
 import { type Block } from "./shiny/Blocks";
 import {
   autoCompareMin,
-  joinCompare,
-  finalizeCompare,
   compareSummary,
-  joinTeamPlayers,
   formatCompare,
   num,
-  reverseGap,
 } from "@/rules/compare";
 import data from "@/data/compareUi.json";
+import {
+  compareFinalize,
+  compareJoined,
+  compareMinimum,
+  comparePlayerRows,
+} from "@/rules/compareTable";
 import ui from "@/data/shinyUi.json";
 import { comparePairReady, compareDefaultPlayers } from "@/lib/compareAsync";
 import LineupNames from "./shiny/LineupNames";
@@ -180,19 +182,12 @@ function CompareTab({
   const ready = enabled && comparePairReady(a, b);
   const base = useMemo(
     () =>
+      // The same league table the API's shape=table serves (rules/compareTable).
       !playerMode && !teamPlayers && sameVersion
-        ? joinCompare(
-            a.data!.rows.filter(
-              (r) => !aTeams || aTeams.split(",").includes(String(r.team_id)),
-            ),
-            b.data!.rows.filter(
-              (r) => !bTeams || bTeams.split(",").includes(String(r.team_id)),
-            ),
-            modeName,
-            metric,
-            teams,
-          )
+        ? compareJoined(q, a.data!.rows, b.data!.rows, teams)
         : [],
+    // q is rebuilt each render; these are the fields compareJoined reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       a.data,
       b.data,
@@ -206,14 +201,8 @@ function CompareTab({
       teams,
     ],
   );
-  const minimum = Math.max(0, Number(q.min_poss) || 0),
-    rows = finalizeCompare(
-      base,
-      q.view,
-      q.preset,
-      minimum,
-      parseStats(q.stats),
-    );
+  const minimum = compareMinimum(q),
+    rows = compareFinalize(q, base);
   const autoBoot = useRef(false),
     autoContext = useRef(""),
     defaultsChosen = useRef(false);
@@ -383,14 +372,7 @@ function CompareTab({
   ];
   const playerRows =
     ready && teamPlayers
-      ? joinTeamPlayers(
-          a.data!.rows,
-          b.data!.rows,
-          q.team_metric,
-          q.team_rate,
-          minimum,
-          reverseGap(q.preset),
-        )
+      ? comparePlayerRows(q, a.data!.rows, b.data!.rows)
       : [];
   const playerColumns: Column[] = [
     { id: "rank", label: "#" },

@@ -4,8 +4,10 @@ import {
   ParamError,
   answerJson,
   answerParams,
+  answerShape,
 } from "@/server/api";
 import { compareAnswer } from "@/server/compareRepo";
+import { comparePageAnswer } from "@/server/comparePage";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export async function GET(
@@ -20,7 +22,11 @@ export async function GET(
       );
     const url = new URL(request.url);
     rawQueryGuard(url);
-    return answerJson(await compareAnswer(answerParams(url)), url);
+    const search = answerParams(url);
+    // shape=table: the page's table; otherwise one side's reader (kind=...).
+    const answer =
+      answerShape(search) === "table" ? comparePageAnswer : compareAnswer;
+    return answerJson(await answer(search), url);
   } catch (e) {
     return handleError(e);
   }
