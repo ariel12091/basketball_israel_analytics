@@ -209,3 +209,38 @@ for (const [league, season, filter] of [
       const over = rows.filter((r) => r.num_starters != null && r.num_starters > size + 1e-9);
       expect(over, "groups showing more starters than players").toEqual([]);
     });
+
+// shape=table (docs/superpowers/plans/2026-11-15-web-api-complete.md): the
+// API serves the page's finished table. Rule checks against the live data;
+// the page and the API run the same options function (lib/pageState/).
+for (const [league, season] of [
+  ["il", 2026],
+  ["euroleague", 2025],
+] as const)
+  test(`live ${league}: shape=table serves the finished tables`, async ({ page }, info) => {
+    test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
+    test.skip(info.project.name !== "desktop", "API check, once per run");
+    const get = async (path: string) => {
+      const r = await page.goto(`/api/v1/${league}/${path}`);
+      expect(r!.status(), path).toBe(200);
+      return ((await r!.json()) as { rows: Record<string, unknown>[]; meta: { shape?: string } });
+    };
+    // Player Stats: a minimum above every player's games is capped at the most played.
+    const all = await get(`player-stats?season=${season}`);
+    const most = Math.max(...all.rows.map((r) => Number(r.gp) || 0));
+    const capped = await get(`player-stats?season=${season}&view=Totals&min_gp=999&shape=table`);
+    expect(capped.meta.shape).toBe("table");
+    expect(capped.rows.length).toBeGreaterThan(0);
+    expect(capped.rows.every((r) => Number(r.gp) === most)).toBe(true);
+    // Team Ratings: a stat filter narrows the league table.
+    const stats = encodeURIComponent('[{"col":"net_rtg","op":"ge","value":0}]');
+    const teams = await get(`team-ratings?season=${season}&shape=table&stats=${stats}`);
+    expect(teams.rows.length).toBeGreaterThan(0);
+    expect(teams.rows.every((r) => Number(r.net_rtg) >= 0)).toBe(true);
+    // Hebrew names are Israeli only.
+    if (league !== "il")
+      expect(teams.rows.some((r) => "team_name_he" in r)).toBe(false);
+    // A key the page does not read is refused, not ignored.
+    const bad = await page.goto(`/api/v1/${league}/team-ratings?season=${season}&shape=table&sats=1`);
+    expect(bad!.status()).toBe(400);
+  });

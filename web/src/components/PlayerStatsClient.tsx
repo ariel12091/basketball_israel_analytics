@@ -17,6 +17,7 @@ import {
   queryDefaults,
 } from "@/lib/tabQuery";
 import ui from "@/data/shinyUi.json";
+import { playerStatsPageOptions } from "@/lib/pageState/playerStats";
 import PlayerStatsTable from "./shiny/PlayerStatsTable";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
@@ -43,7 +44,6 @@ import {
   contextChips,
   seasonChipLabel,
   StatFilters,
-  parseStats,
   OutputArea,
   list,
 } from "./shiny/TabKit";
@@ -62,31 +62,18 @@ export default function PlayerStatsClient({
 }) {
   const { query, set } = useTabQuery(league, PLAYER_QUERY_DEFAULTS),
     euro = league !== "il";
-  const mode = PLAYER_MODES.includes(query.view as PlayerMode)
-    ? (query.view as PlayerMode)
-    : "Per Game";
   const { data, loading, error, retry, draw, version } =
     useTabData<PlayerStatsPayload>(playerStatsPath(league, query), initial);
-  const updated = useVersion(league, version, retry),
-    filters = useMemo(() => parseStats(query.stats), [query.stats]);
-  const maxGp = Math.max(
-    1,
-    ...(data?.rows ?? []).map((r) => Number(r.gp) || 0),
+  const updated = useVersion(league, version, retry);
+  // The same page state the API's shape=table and the chat read.
+  const options = useMemo(
+    () => playerStatsPageOptions(query, data?.rows ?? []),
+    [query, data],
   );
-  const minGp = Math.min(
-    maxGp,
-    Math.max(1, Math.trunc(Number(query.min_gp) || 1)),
-  );
+  const { mode, minGp, maxGp, filters } = options;
   const result = useMemo(
-    () =>
-      playerDisplay(data?.rows ?? [], data?.identities ?? [], {
-        mode,
-        players: list(query.players),
-        minGp,
-        showIneligible: query.show_ineligible === "true",
-        filters,
-      }),
-    [data, mode, query.players, minGp, query.show_ineligible, filters],
+    () => playerDisplay(data?.rows ?? [], data?.identities ?? [], options),
+    [data, options],
   );
   const teams = teamChoices(league, query.season, data?.meta.teams),
     bounds = seasonBounds(league, query.season);

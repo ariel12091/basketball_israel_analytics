@@ -1,13 +1,10 @@
 import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { parseLineups } from "./lineupParams";
-import { ParamError } from "./api";
-import {
-  dbArgs,
-  defaultDates,
-  needsFilteredPath,
-  seasonBounds,
-} from "./contextParams";
+import { pageQuery, ParamError } from "./api";
+import { TEAM_QUERY_DEFAULTS, teamRatingsPath } from "../lib/tabQuery";
+import { teamRatingsTable } from "../lib/pageState/teamRatings";
+import { dbArgs, defaultDates, needsFilteredPath, seasonBounds } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { readTabReferences } from "./onoffRepo";
@@ -310,6 +307,14 @@ const cache = new VersionedCache<Awaited<ReturnType<typeof read>>>(
   16,
   (value) => value.meta.version,
 );
+/** shape=table: what a freshly opened Team Ratings link shows. The population
+ * is requested exactly as TeamRatingsClient requests it (teamRatingsPath),
+ * then the page's own table rules run on the full page query. */
+export async function teamRatingsPageAnswer(league: League, s: URLSearchParams) {
+  const query = pageQuery(league, s, TEAM_QUERY_DEFAULTS);
+  const api = new URL(teamRatingsPath(league, query), "http://page.local").searchParams;
+  return teamRatingsTable(await teamRatingsAnswer(league, api), query);
+}
 export function teamRatingsAnswer(league: League, s: URLSearchParams) {
   const p = parseTeamRatings(s, league),
     key = JSON.stringify(p);

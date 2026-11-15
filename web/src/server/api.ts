@@ -1,5 +1,7 @@
 import { BusyError, DeadlineError } from "./deadline";
 import { enterRequestedVersion } from "./dataVersion";
+import { queryFromSearch, type Query } from "../lib/tabQuery";
+import type { League } from "../rules/gameLogs";
 /** A route's query without the client's `v` (lib/dataVersion.ts), which only
  * names the cache entry and never changes the answer; `v` becomes this
  * request's version hint (dataVersion.ts requestedVersion). */
@@ -46,6 +48,21 @@ export function apiError(
     },
   );
 }
+/** A page's query from a request, as the page would read its URL
+ * (queryFromSearch with the tab's defaults); a key the page does not read is
+ * refused, so a typo never silently changes the table. */
+export function pageQuery(
+  league: League,
+  search: URLSearchParams,
+  defaults: Record<string, string>,
+): Query {
+  const values = Object.fromEntries(search);
+  const q = queryFromSearch(league, values, defaults);
+  const unknown = Object.keys(values).find((k) => !(k in q));
+  if (unknown) throw new ParamError(unknown, "Unknown parameter");
+  return q;
+}
+
 /** `shape=table`: the finished table a freshly opened page link shows
  * (filters, auto bars, rate view applied) instead of the page's population.
  * Read and removed here, so answer functions never see it. */

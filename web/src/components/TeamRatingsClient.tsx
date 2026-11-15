@@ -23,7 +23,6 @@ import {
   contextChips,
   GameFiltersAccordion,
   OutputArea,
-  parseStats,
   seasonBounds,
   defaultDates,
   seasonChipLabel,
@@ -55,6 +54,7 @@ const LABELS: Record<TeamView, string> = {
   shot_profile: "Shot Profile",
   traditional: "Traditional",
 };
+import { teamRatingsPageOptions } from "@/lib/pageState/teamRatings";
 export default function TeamRatingsClient({
   league,
   initial,
@@ -64,17 +64,16 @@ export default function TeamRatingsClient({
 }) {
   const euro = league !== "il",
     p = euro ? "euroteam" : "tr";
-  const { query, set } = useTabQuery(league, TEAM_QUERY_DEFAULTS),
-    view = (
-      Object.keys(LABELS).includes(query.view) ? query.view : "summary"
-    ) as TeamView;
+  const { query, set } = useTabQuery(league, TEAM_QUERY_DEFAULTS);
+  // The same page state the API's shape=table and the chat read.
+  const options = useMemo(() => teamRatingsPageOptions(query), [query]),
+    { view, filters } = options;
   const url = teamRatingsPath(league, query),
     { data, loading, error, retry, draw, version } = useTabData<Payload>(
       url,
       initial,
     ),
     updated = useVersion(league, version, retry);
-  const filters = useMemo(() => parseStats(query.stats), [query.stats]);
   const rows = useMemo(
     () =>
       teamTableRows(
@@ -83,9 +82,9 @@ export default function TeamRatingsClient({
         view,
         filters,
         data?.meta.showDelta ?? false,
-        query.side === "defense",
+        options.defense,
       ),
-    [data, view, filters, query.side],
+    [data, view, filters, options.defense],
   );
   const teams = teamChoices(league, query.season, data?.meta.teams),
     bounds = seasonBounds(league, query.season),

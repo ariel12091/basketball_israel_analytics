@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { answerFormat, answerJson, answerParams, answerShape, ParamError } from "./api";
+import { answerFormat, answerJson, answerParams, answerShape, pageQuery, ParamError } from "./api";
+
+describe("pageQuery", () => {
+  it("is the page's query: defaults filled, given values kept", () => {
+    const q = pageQuery("il", new URLSearchParams("view=Totals"), { view: "Per Game", min_gp: "1" });
+    expect(q.view).toBe("Totals");
+    expect(q.min_gp).toBe("1");
+    expect(q.season).toBeTruthy();
+  });
+  it("refuses a key the page does not read, instead of ignoring it", () => {
+    expect(() => pageQuery("il", new URLSearchParams("mn_gp=5"), { min_gp: "1" })).toThrow(ParamError);
+  });
+});
 
 describe("answerShape / answerFormat", () => {
   it("reads shape: absent is the population, table is the finished table", () => {

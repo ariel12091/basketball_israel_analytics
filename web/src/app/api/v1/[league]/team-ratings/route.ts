@@ -3,9 +3,10 @@ import {
   rawQueryGuard,
   answerJson,
   answerParams,
+  answerShape,
 } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
+import { teamRatingsAnswer, teamRatingsPageAnswer } from "@/server/teamRatingsRepo";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export async function GET(
@@ -15,13 +16,12 @@ export async function GET(
   try {
     const url = new URL(request.url);
     rawQueryGuard(url);
-    return answerJson(
-      await teamRatingsAnswer(
-        leagueParam((await context.params).league),
-        answerParams(url),
-      ),
-      url,
-    );
+    const league = leagueParam((await context.params).league),
+      search = answerParams(url);
+    // shape=table: the page's finished table; otherwise the page's population.
+    const answer =
+      answerShape(search) === "table" ? teamRatingsPageAnswer : teamRatingsAnswer;
+    return answerJson(await answer(league, search), url);
   } catch (e) {
     return handleError(e);
   }
