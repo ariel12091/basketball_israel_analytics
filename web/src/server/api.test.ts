@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { answerJson, answerParams } from "./api";
+import { answerFormat, answerJson, answerParams, answerShape, ParamError } from "./api";
+
+describe("answerShape / answerFormat", () => {
+  it("reads shape: absent is the population, table is the finished table", () => {
+    const s = new URLSearchParams("season=2027&shape=table");
+    expect(answerShape(new URLSearchParams("season=2027"))).toBe("population");
+    expect(answerShape(s)).toBe("table");
+    // Consumed: the answer functions never see it.
+    expect(s.has("shape")).toBe(false);
+  });
+  it("refuses any other shape (no silent default)", () => {
+    expect(() => answerShape(new URLSearchParams("shape=full"))).toThrow(ParamError);
+    try {
+      answerShape(new URLSearchParams("shape=full"));
+    } catch (e) {
+      expect((e as ParamError).param).toBe("shape");
+    }
+  });
+  it("reads format: json by default, csv, nothing else", () => {
+    const s = new URLSearchParams("format=csv");
+    expect(answerFormat(new URLSearchParams(""))).toBe("json");
+    expect(answerFormat(new URLSearchParams("format=json"))).toBe("json");
+    expect(answerFormat(s)).toBe("csv");
+    expect(s.has("format")).toBe(false);
+    expect(() => answerFormat(new URLSearchParams("format=xlsx"))).toThrow(ParamError);
+  });
+});
 
 const url = (q: string) => new URL(`https://x.test/api/v1/il/onoff?${q}`);
 describe("answerJson", () => {

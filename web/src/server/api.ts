@@ -46,6 +46,25 @@ export function apiError(
     },
   );
 }
+/** `shape=table`: the finished table a freshly opened page link shows
+ * (filters, auto bars, rate view applied) instead of the page's population.
+ * Read and removed here, so answer functions never see it. */
+export function answerShape(search: URLSearchParams): "population" | "table" {
+  const v = search.get("shape");
+  search.delete("shape");
+  if (v == null || v === "") return "population";
+  if (v === "table") return "table";
+  throw new ParamError("shape", "shape is table");
+}
+/** `format=csv` (a finished table as the page's CSV export) or json. */
+export function answerFormat(search: URLSearchParams): "json" | "csv" {
+  const v = search.get("format");
+  search.delete("format");
+  if (v == null || v === "" || v === "json") return "json";
+  if (v === "csv") return "csv";
+  throw new ParamError("format", "format is json or csv");
+}
+
 export class ParamError extends Error {
   constructor(
     public param: string,
