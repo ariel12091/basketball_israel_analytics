@@ -907,3 +907,27 @@ body.ibpl-touch-tips table.dataTable thead th > .ibpl-m-th-info { width: 22px; h
    one column (centred, each pair sat at a different x). Outranks DataTables'
    table.dataTable td.dt-center. */
 table.dataTable td.ibpl-name-has-img { text-align: left; }
+/* Lineups' On / Any of / Off switch (user 2026-11-15): the chosen mode was
+   surface-2 on bg-sunken, the same colour in light and barely apart in dark.
+   It now wears the look its taps give a player chip. */
+.lineup-chips-mode[aria-checked="true"] { font-weight: 600; box-shadow: inset 0 0 0 1.5px currentColor; }
+.lineup-chips[data-mode="on"] .lineup-chips-mode[aria-checked="true"] { background: var(--ibpl-accent); color: var(--ibpl-bg); box-shadow: none; }
+.lineup-chips[data-mode="on"] .lineup-chips-mode[aria-checked="true"] .lineup-chips-mark.on { background: var(--ibpl-bg); }
+.lineup-chips[data-mode="any"] .lineup-chips-mode[aria-checked="true"] { background: rgba(var(--ibpl-accent-rgb), 0.14); color: var(--ibpl-accent); box-shadow: inset 0 0 0 1.5px var(--ibpl-accent); }
+.lineup-chips[data-mode="off"] .lineup-chips-mode[aria-checked="true"] { background: rgba(var(--ibpl-neg-rgb), 0.12); color: var(--ibpl-neg); box-shadow: inset 0 0 0 1.5px var(--ibpl-neg); }
+.lineup-chips-mode[aria-checked="false"] { color: var(--ibpl-text-muted); }
+.lineup-chips-mode[aria-checked="false"]:hover { color: var(--ibpl-text); }
+@media (forced-colors: active) {
+  .lineup-chips-mode[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
+/* Gameflow's default top lineups (user 2026-11-15): a heading that folds them. */
+.ibpl-ribbon-detail-head.gf-top-toggle {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  width: 100%; padding: 0; border: 0; background: none; text-align: left;
+  font-family: inherit; font-size: inherit; cursor: pointer;
+}
+.gf-top-toggle .gf-top-fold { flex: none; color: var(--ibpl-accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.gf-top-toggle:hover .gf-top-fold { color: var(--ibpl-accent-hover); }
+.gf-top-toggle:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+.gf-top-toggle[aria-expanded="false"] { margin-bottom: 0; }
+.ibpl-ribbon-detail-meta .gf-top-score { color: var(--ibpl-text); font-variant-numeric: tabular-nums; }
