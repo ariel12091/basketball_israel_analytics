@@ -35,6 +35,7 @@ import {
 export { contextParams, parseStats, seasonBounds };
 export type { Patch, Query, StatFilter };
 import type { League } from "@/rules/gameLogs";
+import type { PagePath } from "@/lib/pageTitle";
 import catalogues from "@/data/catalogues.json";
 import { choiceValues } from "@/lib/choices";
 import ui from "@/data/shinyUi.json";
@@ -224,53 +225,61 @@ type Frame = {
 const FrameContext = createContext<Frame | null>(null);
 export const useFrame = () => useContext(FrameContext)!;
 
+/** A native modal <dialog>: the browser owns focus trapping, Escape, the
+ * backdrop and returning focus; closedby="any" adds the backdrop click
+ * where supported (the onClick below covers the rest). */
 function Glossary({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    document.body.classList.add("modal-open");
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", key);
+    const d = ref.current;
+    // React removes the dialog before close() could hand focus back, so
+    // return it to the opener by hand.
+    const opener = document.activeElement as HTMLElement | null;
+    if (d && !d.open) {
+      d.showModal();
+      // Open at the top, with the keyboard on the dialog itself (focusing
+      // Close, at the end, scrolled the glossary to its last section).
+      d.focus();
+      d.scrollTop = 0;
+    }
     return () => {
-      document.body.classList.remove("modal-open");
-      window.removeEventListener("keydown", key);
+      d?.close();
+      opener?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
-    <div id="shiny-modal-wrapper">
-      <div
-        id="shiny-modal"
-        className="modal fade show"
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="glossary-title"
-        style={{ display: "block" }}
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <div className="modal-dialog modal-lg" role="document">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h4 className="modal-title" id="glossary-title">
-                Glossary
-              </h4>
-            </div>
-            <div className="modal-body">
-              <TextBlocks blocks={ui.glossary as TextBlock[]} />
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn btn-default"
-                onClick={onClose}
-                autoFocus
-              >
-                Close
-              </button>
-            </div>
-          </div>
+    <dialog
+      ref={ref}
+      className="ibpl-glossary"
+      aria-labelledby="glossary-title"
+      tabIndex={-1}
+      closedby="any"
+      onClose={onClose}
+      // The filter drawer's panel stays mounted and Radix cancels every
+      // Escape on the page, which also stops the dialog's own close.
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="modal-content">
+        <div className="modal-header">
+          <h2 className="modal-title h4" id="glossary-title">
+            Glossary
+          </h2>
+        </div>
+        <div className="modal-body">
+          <TextBlocks blocks={ui.glossary as TextBlock[]} />
+        </div>
+        <div className="modal-footer">
+          <button
+            type="button"
+            className="btn btn-default"
+            onClick={onClose}
+          >
+            Close
+          </button>
         </div>
       </div>
-      <div className="modal-backdrop fade show"></div>
-    </div>
+    </dialog>
   );
 }
 
@@ -295,9 +304,12 @@ export function TabFrame({
   mainOnly = false,
   layout = "sidebar",
   drawer,
+  page,
 }: {
   league: League;
   tab: TabId;
+  /** The route for the page heading when it is not the tab's own. */
+  page?: PagePath;
   paneValue: string;
   season: string;
   seasons: string[];
@@ -433,12 +445,12 @@ export function TabFrame({
           onGlossary={openGlossary}
           updated={updated}
           collapsedNav={body.collapsedNav}
+          page={page}
         >
           <div className="tab-content">
             <div
               className="tab-pane active show"
               data-value={paneValue}
-              role="tabpanel"
             >
               <div
                 className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
@@ -716,12 +728,10 @@ export function GameFiltersAccordion({
     <>
       {!bare && (
         <div className="text-end mb-2">
-          <a
-            href="#"
-            className="small text-muted fw-bold js-accordion-toggle-all"
-            style={{ textDecoration: "none" }}
-            onClick={(e) => {
-              e.preventDefault();
+          <button
+            type="button"
+            className="ibpl-btn-reset small text-muted fw-bold js-accordion-toggle-all"
+            onClick={() => {
               // app.js: any open -> close all, else open all.
               const any = accordionOpen || (oppRank && strengthOpen);
               setAccordionOpen(() => !any);
@@ -729,7 +739,7 @@ export function GameFiltersAccordion({
             }}
           >
             Collapse/Expand All
-          </a>
+          </button>
         </div>
       )}
       <div className={bare ? "drawer-subgroups" : "accordion"}>
@@ -892,25 +902,21 @@ export function Chip({
     <span
       className={`filter-chip ${className}${focus ? " chip-focusable" : ""}`}
       data-chip-focus={focus}
-      tabIndex={focus ? 0 : undefined}
-      role={focus ? "button" : undefined}
+      // The whole chip answers a click; the label button is the keyboard's
+      // way in (its click bubbles here) and the x is a sibling button.
       onClick={(e) => {
         if (focus && !(e.target as HTMLElement).closest(".chip-x"))
           reveal(focus);
       }}
-      onKeyDown={(e) => {
-        if (
-          focus &&
-          (e.key === "Enter" || e.key === " ") &&
-          !(e.target as HTMLElement).closest(".chip-x")
-        ) {
-          e.preventDefault();
-          reveal(focus);
-        }
-      }}
     >
-      {label}
-      {focus && <i className="bi bi-pencil chip-edit" aria-hidden="true"></i>}
+      {focus ? (
+        <button type="button" className="ibpl-btn-reset chip-label">
+          {label}
+          <i className="bi bi-pencil chip-edit" aria-hidden="true"></i>
+        </button>
+      ) : (
+        label
+      )}
       <button
         className="chip-x"
         type="button"
@@ -1147,43 +1153,39 @@ export function StatFilters({
       {filters.map((f, i) => (
         <span key={`${f.col}-${i}`} className="filter-chip chip-stat">
           {`${label(f.col)} ${f.op === "ge" ? ">=" : "<="} ${f.value.toLocaleString("en-US", { maximumFractionDigits: 7 })}`}{" "}
-          <a
-            href="#"
-            style={{ marginLeft: 4, color: "inherit" }}
+          <button
+            type="button"
+            className="chip-x"
+            style={{ marginLeft: 4 }}
             aria-label={`Remove ${label(f.col)} filter`}
-            onClick={(e) => {
-              e.preventDefault();
-              onChange(filters.filter((_, j) => j !== i));
-            }}
+            onClick={() => onChange(filters.filter((_, j) => j !== i))}
           >
             ×
-          </a>
+          </button>
         </span>
       ))}
       <span style={{ position: "relative", display: "inline-block" }}>
-        <span
+        <button
+          type="button"
           className="filter-chip filter-chip-add"
           id={`${p}_stat_filter_add_btn`}
-          role="button"
-          tabIndex={0}
-          aria-pressed={open}
           aria-expanded={open}
-          style={{ cursor: "pointer" }}
+          aria-controls={`${p}_stat_filter_pop`}
           onClick={() => setOpen((o) => !o)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setOpen((o) => !o);
-            }
-          }}
         >
-          <i className="bi bi-plus"></i> Stat filter
-        </span>
+          <i className="bi bi-plus" aria-hidden="true"></i> Stat filter
+        </button>
         {open && (
           <div
+            id={`${p}_stat_filter_pop`}
             className="popover bs-popover-auto fade show"
             role="dialog"
             aria-label="Add stat filter"
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              setOpen(false);
+              document.getElementById(`${p}_stat_filter_add_btn`)?.focus();
+            }}
             data-popper-placement="bottom"
             ref={keepInViewport}
             style={{
@@ -1257,7 +1259,9 @@ export function StatFilters({
                     className="shiny-input-number form-control"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && add()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && !e.nativeEvent.isComposing && add()
+                    }
                   />
                 </div>
                 {pct && <div className="small text-muted mb-2">{pct}</div>}

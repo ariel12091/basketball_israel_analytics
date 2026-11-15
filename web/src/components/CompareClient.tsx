@@ -319,7 +319,6 @@ function CompareTab({
       id: "entity_name",
       label: lineup ? "Lineup" : "Team",
       onActivate: (r) => open(r),
-      tdProps: () => ({ role: "button", tabIndex: 0 }),
     },
     ...(lineup ? [{ id: "team_name", label: "Team" }] : []),
     // Straight to a team's players, A vs B, without the team detail first
@@ -390,7 +389,6 @@ function CompareTab({
       id: "player_name",
       label: "Player",
       onActivate: (r) => set({ drill_player: String(r.player_id) }),
-      tdProps: () => ({ role: "button", tabIndex: 0 }),
     },
     ...(["a", "b"] as const).flatMap((side, i): Column[] => [
       {

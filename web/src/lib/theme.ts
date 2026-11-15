@@ -24,13 +24,17 @@ export function currentTheme(): Theme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
-/** Switches the page and remembers the choice (storage may be blocked). */
+/** Switches the page and remembers the choice (storage may be blocked).
+ * Picking what the device already asks for forgets the override instead,
+ * so a later change of the device setting is followed again. */
 export function applyTheme(t: Theme): void {
   const d = document.documentElement;
   d.dataset.theme = t;
   d.style.colorScheme = t;
   try {
-    localStorage.setItem(THEME_KEY, t);
+    if (t === resolveTheme(null, matchMedia(LIGHT_QUERY).matches))
+      localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, t);
   } catch {
     // Private mode or blocked storage: the switch still holds for this page.
   }

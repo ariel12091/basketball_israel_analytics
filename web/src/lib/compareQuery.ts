@@ -1,6 +1,7 @@
 // Tab 7 collect_side_params / apply_compare_preset / PRESET_MIRROR_BLOCKS.
 import type { Query, Patch } from "./tabQuery";
 import { seasonBounds } from "./tabQuery";
+import { addDays, parsePlainDate } from "./plainDate";
 import data from "../data/compareUi.json";
 import type { Row } from "../rules/gameLogs";
 export type CompareSelection = { season: string; a: string; b: string };
@@ -214,9 +215,7 @@ export function compareSideParams(
     if (q.split_date) {
       if (side === "a") end = q.split_date;
       else {
-        const d = new Date(q.split_date + "T00:00:00Z");
-        d.setUTCDate(d.getUTCDate() + 1);
-        start = d.toISOString().slice(0, 10);
+        start = addDays(q.split_date, 1) ?? start;
       }
     }
   }
@@ -325,7 +324,8 @@ export function shortSideLabel(q: Query, s: CompareSide) {
   if (q.preset === "gn_split" && q.split_gn)
     return s === "a" ? `GN 1-${q.split_gn}` : `GN ${Number(q.split_gn) + 1}+`;
   if (q.preset === "date_split" && q.split_date) {
-    const d = new Date(q.split_date + "T00:00:00Z");
+    const d = parsePlainDate(q.split_date);
+    if (!d) return s.toUpperCase();
     return `${s === "a" ? "Before" : "From"} ${d.toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" })}`;
   }
   return s.toUpperCase();

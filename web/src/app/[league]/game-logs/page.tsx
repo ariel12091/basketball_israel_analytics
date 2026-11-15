@@ -6,6 +6,9 @@ import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { gameLogsAnswer } from "@/server/gameLogsApi";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("game-logs");
 // The first table is rendered on the server from the same answer the API
 // gives; the client takes over for every later filter change. A failed read
 // answers 500 and app/[league]/error.tsx shows the tab, whose client fetches

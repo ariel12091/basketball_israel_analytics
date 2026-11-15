@@ -15,6 +15,7 @@ import {
   Fragment,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -397,8 +398,16 @@ export default function DataTable({
   const [tip, setTip] = useState<{ label: string; text: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
+  const tipId = useId();
+  const sortedBy = sorting
+    .map((o) => {
+      const label = columns.find((c) => c.id === o.id)?.label;
+      return label && `${label}, ${o.desc ? "descending" : "ascending"}`;
+    })
+    .filter(Boolean)
+    .join(", then ");
 
-  const order = (id: string, shift: boolean) => {
+  const order =(id: string, shift: boolean) => {
     const first = Boolean(columns.find((c) => c.id === id)?.descFirst);
     const onlyDesc = Boolean(columns.find((c) => c.id === id)?.descOnly);
     setPageIndex(0);
@@ -528,7 +537,7 @@ export default function DataTable({
                     <th
                       key={c.id}
                       className={`sub-head${c.cls ? ` ${c.cls}` : ""} dt-center sorting${dir === "desc" ? " sorting_desc" : dir === "asc" ? " sorting_asc" : ""}`}
-                      tabIndex={0}
+                      scope="col"
                       aria-sort={
                         dir === "desc"
                           ? "descending"
@@ -563,20 +572,62 @@ export default function DataTable({
                             }
                           : undefined
                       }
+                      // A click anywhere in the header sorts. The buttons
+                      // inside give the keyboard the same: their click
+                      // bubbles here, so they carry no handler of their own.
                       onClick={(e) => order(c.id, e.shiftKey)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") order(c.id, e.shiftKey);
-                      }}
+                      // The keyboard's column drag: Alt+Left/Right moves
+                      // this column one place and keeps focus on it.
+                      onKeyDown={
+                        onColumnMove
+                          ? (e) => {
+                              if (
+                                !e.altKey ||
+                                (e.key !== "ArrowLeft" && e.key !== "ArrowRight")
+                              )
+                                return;
+                              const at = columns.findIndex(
+                                (col) => col.id === c.id,
+                              );
+                              const to =
+                                columns[at + (e.key === "ArrowLeft" ? -1 : 1)];
+                              if (!to) return;
+                              e.preventDefault();
+                              const focused = e.target as HTMLElement;
+                              const cls = focused.className;
+                              onColumnMove(c.id, to.id);
+                              requestAnimationFrame(() =>
+                                scroller.current
+                                  ?.querySelector<HTMLElement>(
+                                    `th[data-column="${CSS.escape(c.id)}"] [class="${CSS.escape(cls)}"]`,
+                                  )
+                                  ?.focus(),
+                              );
+                            }
+                          : undefined
+                      }
                     >
                       {moreInfo && title ? (
                         <>
                           <MoreInfo label={c.label}>{title}</MoreInfo>
-                          {/* On touch the label opens its definition; this
-                              edge strip (over the sort arrows) sorts. */}
-                          <span className="th-sort-target" aria-hidden="true" />
+                          {/* The label opens its definition; this edge strip
+                              (over the sort arrows) sorts. */}
+                          <button
+                            type="button"
+                            className="th-sort-target"
+                            aria-label={`Sort by ${c.label}`}
+                          />
                         </>
                       ) : (
-                        c.label
+                        <button
+                          type="button"
+                          className="dt-sort"
+                          aria-describedby={
+                            title ? `${tipId}-${c.id}` : undefined
+                          }
+                        >
+                          {c.label}
+                        </button>
                       )}
                       {touchTips && title && !moreInfo && (
                         <InfoButton
@@ -703,32 +754,40 @@ export default function DataTable({
                           data-column={c.id}
                           style={cell.bg ? heatStyle(cell.bg) : undefined}
                           {...(c.tdProps ? c.tdProps(row) : {})}
+                          // The whole cell answers a click; the button inside
+                          // is the keyboard's way in (its click bubbles here).
                           onClick={
                             c.onActivate
-                              ? (e) =>
-                                  c.onActivate!(row, e.currentTarget, {
-                                    x: e.clientX,
-                                    y: e.clientY,
-                                  })
-                              : undefined
-                          }
-                          onKeyDown={
-                            c.onActivate
                               ? (e) => {
-                                  if (e.key !== "Enter" && e.key !== " ")
-                                    return;
-                                  e.preventDefault();
-                                  const r =
-                                    e.currentTarget.getBoundingClientRect();
-                                  c.onActivate!(row, e.currentTarget, {
-                                    x: r.left,
-                                    y: r.bottom,
-                                  });
+                                  const td = e.currentTarget;
+                                  const btn =
+                                    td.querySelector<HTMLElement>(
+                                      ".ibpl-cell-btn",
+                                    ) ?? td;
+                                  // detail 0: Enter or Space, no pointer
+                                  // position, so open at the cell.
+                                  const r = td.getBoundingClientRect();
+                                  c.onActivate!(
+                                    row,
+                                    btn,
+                                    e.detail === 0
+                                      ? { x: r.left, y: r.bottom }
+                                      : { x: e.clientX, y: e.clientY },
+                                  );
                                 }
                               : undefined
                           }
                         >
-                          {cell.node}
+                          {c.onActivate ? (
+                            <button
+                              type="button"
+                              className="ibpl-btn-reset ibpl-cell-btn"
+                            >
+                              {cell.node}
+                            </button>
+                          ) : (
+                            cell.node
+                          )}
                           {j === anchorIndex && names.length > 0 && (
                             <span className="ibpl-row-name">
                               {names.map((n, k) => (
@@ -766,6 +825,23 @@ export default function DataTable({
             </tbody>
           </table>
         </div>
+        {/* Header definitions for the keyboard and screen readers (the
+            title tooltip is mouse-only); outside the table so header text
+            stays the label alone. */}
+        <div hidden>
+          {!moreInfo &&
+            columns.map((c) => {
+              const title = c.title ?? TIPS[c.label];
+              return title ? (
+                <span key={c.id} id={`${tipId}-${c.id}`}>
+                  {title}
+                </span>
+              ) : null;
+            })}
+        </div>
+        <span className="ibpl-sr-only" role="status">
+          {sortedBy && `Sorted by ${sortedBy}`}
+        </span>
       </div>
       {paging && controls && (
         <>
@@ -775,15 +851,14 @@ export default function DataTable({
             {sortedRows.length.toLocaleString("en-US")} entries
           </div>
           <div className="dataTables_paginate paging_simple_numbers">
-            <a
+            <button
+              type="button"
               className={`paginate_button previous${pageIndex === 0 ? " disabled" : ""}`}
-              role="link"
-              aria-disabled={pageIndex === 0}
-              tabIndex={pageIndex === 0 ? -1 : 0}
-              onClick={() => pageIndex > 0 && setPageIndex(pageIndex - 1)}
+              disabled={pageIndex === 0}
+              onClick={() => setPageIndex(pageIndex - 1)}
             >
               Previous
-            </a>
+            </button>
             <span>
               {pageNumbers(pageIndex, pages).map((n, i) =>
                 n === "…" ? (
@@ -791,30 +866,26 @@ export default function DataTable({
                     …
                   </span>
                 ) : (
-                  <a
+                  <button
                     key={n}
+                    type="button"
                     className={`paginate_button${n === pageIndex ? " current" : ""}`}
-                    role="link"
                     aria-current={n === pageIndex ? "page" : undefined}
-                    tabIndex={0}
                     onClick={() => setPageIndex(n)}
                   >
                     {n + 1}
-                  </a>
+                  </button>
                 ),
               )}
             </span>
-            <a
+            <button
+              type="button"
               className={`paginate_button next${pageIndex >= pages - 1 ? " disabled" : ""}`}
-              role="link"
-              aria-disabled={pageIndex >= pages - 1}
-              tabIndex={pageIndex >= pages - 1 ? -1 : 0}
-              onClick={() =>
-                pageIndex < pages - 1 && setPageIndex(pageIndex + 1)
-              }
+              disabled={pageIndex >= pages - 1}
+              onClick={() => setPageIndex(pageIndex + 1)}
             >
               Next
-            </a>
+            </button>
           </div>
         </>
       )}

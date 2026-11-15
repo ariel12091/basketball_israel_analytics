@@ -37,7 +37,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
     expect(psRequests.length).toBeGreaterThan(0);
     expect(new URL(psRequests[0]).searchParams.has("own_starters")).toBe(false);
     await page
-      .getByRole("link", { name: "Remove PTS/G filter", exact: true })
+      .getByRole("button", { name: "Remove PTS/G filter", exact: true })
       .click();
     await expect(
       page.locator('.ibpl-dt-scroll tbody td[data-column="Player"]').first(),

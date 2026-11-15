@@ -7,6 +7,9 @@ import { homeTeams, homePath } from "@/lib/homeQuery";
 import { defaultSeason, type SearchParams } from "@/lib/tabQuery";
 import type { League } from "@/rules/gameLogs";
 import ui from "@/data/shinyUi.json";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("home");
 // Like Shiny's startup team: one automatic choice per season in this worker.
 const automaticTeams = new Map(
   Object.entries(ui.ilTeams).map(([season, teams]) => [

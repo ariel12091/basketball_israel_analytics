@@ -35,7 +35,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
         ),
     );
     await player.click();
-    const item = page.getByRole("menuitem", {
+    const item = page.getByRole("button", {
       name: "Lineups with this player",
     });
     await item.click();

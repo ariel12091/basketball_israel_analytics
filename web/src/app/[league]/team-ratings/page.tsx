@@ -6,6 +6,9 @@ import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
+import { pageMetadata } from "@/lib/pageTitle";
+
+export const generateMetadata = pageMetadata("team-ratings");
 export default async function TeamRatingsPage({
   params,
   searchParams,

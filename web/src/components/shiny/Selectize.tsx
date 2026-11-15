@@ -178,10 +178,14 @@ export default function Selectize({
                   e.preventDefault();
                   setActive((a) => Math.max(a - 1, 0));
                 } else if (e.key === "Enter") {
+                  // An IME's Enter confirms the composed text, not a pick.
+                  if (e.nativeEvent.isComposing) return;
                   e.preventDefault();
                   if (open) pick(options[active]);
                   else setOpen(true);
                 } else if (e.key === "Escape") {
+                  // Closing the list must not also close a popover around it.
+                  if (open) e.stopPropagation();
                   close();
                   input.current?.blur();
                 } else if (e.key === "Backspace" && !query && picked.length) {

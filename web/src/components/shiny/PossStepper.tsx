@@ -59,7 +59,8 @@ export default function PossStepper({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => draft !== null && commit(draft)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && draft !== null) commit(draft);
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && draft !== null)
+              commit(draft);
             if (e.key === "Escape") setDraft(null);
           }}
         />

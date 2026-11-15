@@ -130,7 +130,8 @@ test("[CMP-01][CMP-05][CMP-07][CMP-08][league:il] controls mirror, rearm auto an
     await page.getByRole("button", { name: "Toggle navigation" }).click();
   else await page.locator(".nav-link.active").hover();
   await page
-    .getByRole("menuitemradio", { name: "Lineups", exact: true })
+    .locator("#main_tabs")
+    .getByRole("button", { name: "Lineups", exact: true })
     .click();
   await expect(page).toHaveURL(/view=Lineups/);
   const q = new URL(page.url()).searchParams;
@@ -283,7 +284,7 @@ test("[CMP-02][league:il] the phone menu offers every tab's views", async ({
   ] as const)
     for (const view of views)
       await expect(
-        tab(name).getByRole("menuitemradio", { name: view, exact: true }),
+        tab(name).getByRole("button", { name: view, exact: true }),
       ).toBeVisible();
   // The open menu fits one tall phone screen, and needs no sideways scroll.
   const menu = await page.locator("#main_tabs").boundingBox();
@@ -295,7 +296,7 @@ test("[CMP-02][league:il] the phone menu offers every tab's views", async ({
   ).toBe(0);
   // A view on another tab opens that tab on that view.
   await tab("Lineup Data")
-    .getByRole("menuitemradio", { name: "Four Factors", exact: true })
+    .getByRole("button", { name: "Four Factors", exact: true })
     .click();
   await expect(page).toHaveURL(/\/il\/lineups\?.*view=/);
 });
@@ -311,7 +312,7 @@ test("[CMP-02][league:il] Compare's menu opens the chosen view from another tab"
   if (info.project.name === "phone")
     await page.getByRole("button", { name: "Toggle navigation" }).click();
   else await compare.locator(".nav-link").hover();
-  const players = compare.getByRole("menuitemradio", {
+  const players = compare.getByRole("button", {
     name: "Players",
     exact: true,
   });

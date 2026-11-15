@@ -19,10 +19,14 @@
   --ibpl-surface-hover: #352B1F;
   --ibpl-surface-selected: #3A2A10;
   --ibpl-border: #3A342F;
+  /* Form control edges: 3:1 against bg, surface and surface-2 (WCAG 1.4.11);
+     --ibpl-border stays for dividers and cards, which need no contrast. */
+  --ibpl-control-border: #77706A;
 
   /* text, dimmest to brightest */
   --ibpl-text-faint: #534E47;
-  --ibpl-text-dim: #7A756E;
+  /* 4.5:1 on bg, surface and surface-2 (was #7A756E, 3.46 on surface-2). */
+  --ibpl-text-dim: #938D85;
   --ibpl-text-muted: #98938B;
   --ibpl-text-body: #D4D0CA;
   --ibpl-text: #EEECE8;
@@ -55,7 +59,8 @@
   --ibpl-chip-game-border: #3a6fa0;
   --ibpl-chip-game-text: #7db8e8;
 
-  /* type */
+  /* type: every family goes through these, so the web app can swap in its
+     self-hosted fonts (next/font) by redefining three variables. */
   --ibpl-font-display: "Archivo", "DM Sans", -apple-system, sans-serif;
   --ibpl-font-body: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   --ibpl-font-mono: "JetBrains Mono", "Inter", monospace;
@@ -63,10 +68,10 @@
 
 /* Global Font & Base Colors */
 body, .container-fluid, .form-control, .btn {
-  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--ibpl-font-body);
 }
 table.dataTable {
-  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: var(--ibpl-font-body) !important;
 }
 body {
   background: var(--ibpl-bg);
@@ -136,13 +141,14 @@ body {
 .form-control, .form-select {
   background: var(--ibpl-bg);
   color: var(--ibpl-text);
-  border-color: var(--ibpl-border);
+  border-color: var(--ibpl-control-border);
 }
 .selectize-input, .selectize-dropdown {
   background: var(--ibpl-bg) !important;
   color: var(--ibpl-text) !important;
   border-color: var(--ibpl-border) !important;
 }
+.selectize-input { border-color: var(--ibpl-control-border) !important; }
 .selectize-input { border-radius: 6px !important; }
 .selectize-input.focus { border-color: var(--ibpl-accent) !important; box-shadow: 0 0 0 2px rgba(var(--ibpl-accent-rgb),0.15) !important; }
 .selectize-dropdown { border-radius: 6px !important; border-top: none !important; }
@@ -241,7 +247,7 @@ th.sub-head { background: var(--ibpl-bg-sunken) !important; font-weight: 700; co
 .dataTables_wrapper .dataTables_length select {
   background: var(--ibpl-bg) !important;
   color: var(--ibpl-text) !important;
-  border: 1px solid var(--ibpl-border) !important;
+  border: 1px solid var(--ibpl-control-border) !important;
 }
 .dataTables_wrapper .dataTables_info { color: var(--ibpl-text-muted) !important; }
 .dataTables_wrapper .dataTables_paginate .paginate_button {
@@ -268,13 +274,13 @@ table.dataTable thead input[type='text'],
 table.dataTable thead input[type='search'] {
   background: var(--ibpl-bg) !important;
   color: var(--ibpl-text) !important;
-  border: 1px solid var(--ibpl-border) !important;
+  border: 1px solid var(--ibpl-control-border) !important;
   border-radius: 4px;
 }
 table.dataTable thead select {
   background: var(--ibpl-bg) !important;
   color: var(--ibpl-text) !important;
-  border: 1px solid var(--ibpl-border) !important;
+  border: 1px solid var(--ibpl-control-border) !important;
 }
 
 /* ---- Accordion ---- */
@@ -425,7 +431,7 @@ table.dataTable thead select {
   position: absolute; top: 50%; width: 10px; height: 10px; background: var(--ibpl-accent); border: 1px solid var(--ibpl-bg); border-radius: 50%; transform: translate(-50%, -50%); z-index: 3;
 }
 .sub-text {
-  font-size: 0.75em; color: var(--ibpl-text-dim); margin-top: 4px; white-space: nowrap; font-family: 'JetBrains Mono', 'Inter', monospace;
+  font-size: 0.75em; color: var(--ibpl-text-dim); margin-top: 4px; white-space: nowrap; font-family: var(--ibpl-font-mono);
 }
 
 /* On/Off Four Factors: the rating is the outcome and the four factors are its
@@ -581,7 +587,7 @@ div.dt-buttons > .dt-button:focus-visible {
 .navbar-season-select .form-group { margin: 0; }
 .navbar-season-select .form-select,
 .navbar-season-select select {
-  height: 30px; min-height: 30px;
+  min-height: 30px;
   width: 90px;
   min-width: 90px;
   max-width: 90px;
@@ -612,7 +618,7 @@ div.dt-buttons > .dt-button:focus-visible {
 .navbar-league-select label { display: none; }
 .navbar-league-select .form-select,
 .navbar-league-select select {
-  height: 30px; min-height: 30px;
+  min-height: 30px;
   width: 132px;
   min-width: 132px;
   max-width: 132px;
@@ -713,7 +719,7 @@ div.dt-buttons > .dt-button:focus-visible {
 }
 .idle-countdown {
   color: var(--ibpl-accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--ibpl-font-mono);
   font-size: 0.88rem;
   font-weight: 700;
   margin-top: 14px;
@@ -933,7 +939,7 @@ body.ibpl-idle-expired::before {
 .ts-stat-popover .form-select {
   background-color: var(--ibpl-bg) !important;
   color: var(--ibpl-text-body) !important;
-  border-color: var(--ibpl-border) !important;
+  border-color: var(--ibpl-control-border) !important;
 }
 
 /* ---- Tooltips ---- */
@@ -975,7 +981,7 @@ th[data-tooltip]::after { display: none; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   color: var(--ibpl-text-body);
   font-family: var(--ibpl-font-body);
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   line-height: 1.45;
 }
 .onoff-tip-section { padding-left: 10px; border-left: 3px solid var(--ibpl-tip-color); }
@@ -985,7 +991,7 @@ th[data-tooltip]::after { display: none; }
 .onoff-tip-title {
   margin-bottom: 4px;
   color: var(--ibpl-tip-color);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -994,9 +1000,9 @@ th[data-tooltip]::after { display: none; }
 .onoff-tip-val { color: var(--ibpl-text); font-family: var(--ibpl-font-mono); font-weight: 600; white-space: nowrap; }
 .onoff-tip-val.is-pos { color: var(--ibpl-pos); }
 .onoff-tip-val.is-neg { color: var(--ibpl-neg); }
-.onoff-tip-sub { margin: -1px 0 3px; color: var(--ibpl-text-muted); font-size: 12px; }
+.onoff-tip-sub { margin: -1px 0 3px; color: var(--ibpl-text-muted); font-size: 0.75rem; }
 .onoff-tip-sub .onoff-tip-val { font-weight: 500; }
-.onoff-tip-note { margin-top: 5px; color: var(--ibpl-text-muted); font-size: 12px; font-style: italic; }
+.onoff-tip-note { margin-top: 5px; color: var(--ibpl-text-muted); font-size: 0.75rem; font-style: italic; }
 
 /* App-level JS/CSS behavior */
 /* Navbar mode dropdowns */
@@ -1225,9 +1231,9 @@ th[data-tooltip]::after { display: none; }
 .hub-card { cursor: pointer; transition: border-color .15s ease; }
 .hub-card:hover { border-color: var(--ibpl-accent) !important; }
 .hub-block-title { color: var(--ibpl-text-muted); text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; margin-bottom: 10px; }
-.hub-record { font-family: "JetBrains Mono", monospace; color: var(--ibpl-text); font-weight: 600; }
+.hub-record { font-family: var(--ibpl-font-mono); color: var(--ibpl-text); font-weight: 600; }
 .hub-stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 10px; }
-.hub-stat-value { font-family: "JetBrains Mono", monospace; font-size: 1.25rem; font-weight: 600; color: var(--ibpl-text); }
+.hub-stat-value { font-family: var(--ibpl-font-mono); font-size: 1.25rem; font-weight: 600; color: var(--ibpl-text); }
 .hub-stat-label { color: var(--ibpl-text-muted); font-size: .75rem; }
 .hub-stat-rank { color: var(--ibpl-accent); font-size: .72rem; }
 .hub-ff-groups { display: flex; flex-direction: column; gap: 12px; }
@@ -1237,8 +1243,8 @@ th[data-tooltip]::after { display: none; }
 .hub-ff-chip { background: var(--ibpl-surface-3); border-radius: 999px; padding: 2px 10px; font-size: .72rem; color: var(--ibpl-text-body); }
 .hub-list { list-style: none; padding: 0; margin: 0; }
 .hub-list li { display: flex; justify-content: space-between; padding: 3px 0; font-size: .88rem; }
-.hub-pos { color: var(--ibpl-pos); font-family: "JetBrains Mono", monospace; }
-.hub-neg { color: var(--ibpl-neg); font-family: "JetBrains Mono", monospace; }
+.hub-pos { color: var(--ibpl-pos); font-family: var(--ibpl-font-mono); }
+.hub-neg { color: var(--ibpl-neg); font-family: var(--ibpl-font-mono); }
 .hub-footnote { color: var(--ibpl-text-muted); font-size: .78rem; margin: 8px 0 0 0; }
 .hub-lineup { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-size: .82rem; flex-wrap: wrap; }
 .hub-lineup-tag { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
@@ -1795,7 +1801,7 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 }
 .lineup-chips-eyebrow {
   font-family: var(--ibpl-font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1925,7 +1931,7 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--ibpl-border);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   line-height: 1.55;
   color: var(--ibpl-text-muted);
 }
@@ -1974,8 +1980,8 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 .lineup-chips-clear:hover { color: var(--ibpl-accent); }
 
 /* Touch: no hover preview, so give the targets a finger's worth of room. */
-body.ibpl-mobile .lineup-chip { padding: 7px 11px; font-size: 13.5px; }
-body.ibpl-mobile .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
+body.ibpl-mobile .lineup-chip { padding: 7px 11px; font-size: 0.84375rem; }
+body.ibpl-mobile .lineup-chips-mode { padding: 5px 11px; font-size: 0.8125rem; }
 @media (prefers-reduced-motion: reduce) {
   .lineup-chip, .lineup-chips-mode { transition: none; }
 }
@@ -2036,7 +2042,7 @@ body:not(.ibpl-collapsed-nav) .nav-item.tab-has-dropdown:hover .tab-hover-menu {
    a small caption stacked above the date: that costs height, not width. */
 #last_updated > span {
   display: inline-block;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.15;
   vertical-align: middle;
 }
@@ -2044,7 +2050,7 @@ body:not(.ibpl-collapsed-nav) .nav-item.tab-has-dropdown:hover .tab-hover-menu {
   content: "Updated";
   display: block;
   color: var(--ibpl-text-dim);
-  font-size: 8px;
+  font-size: 0.5rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;

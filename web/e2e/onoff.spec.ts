@@ -270,10 +270,10 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     );
     await player.click();
     await expect(
-      page.getByRole("menuitem", { name: "Lineups with this player" }),
+      page.getByRole("button", { name: "Lineups with this player" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByRole("group", { name: "Go to" })).toHaveCount(0);
     if (info.project.name === "phone")
       await page.locator(".navbar-toggle").click();
     const activeTab = page.locator(".nav-item", {

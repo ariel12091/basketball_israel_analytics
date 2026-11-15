@@ -3,6 +3,7 @@
 // game_context_db_args() / resolve_starters_bounds() in app/R/helpers.R do.
 import type { League } from "../rules/gameLogs";
 import { ParamError } from "./api";
+import { parsePlainDate } from "../lib/plainDate";
 import ui from "../data/shinyUi.json";
 
 export type Context = {
@@ -66,10 +67,7 @@ function ids(s: URLSearchParams, name: string): number[] {
 }
 function date(v: string | null, name: string): string | null {
   if (!v) return null;
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(v) ||
-    new Date(v + "T00:00:00Z").toISOString().slice(0, 10) !== v
-  )
+  if (!parsePlainDate(v))
     throw new ParamError(name, "Invalid date");
   return v;
 }

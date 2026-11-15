@@ -67,9 +67,13 @@ for (const next of ["euroleague", "eurocup"] as const)
     await expect(
       // includeHidden also counts the aria-hidden icon glyph in the name, so
       // match the label at the end rather than the whole name.
-      page.getByRole("tab", { name: /(^|\s)Home$/, includeHidden: true }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("tab", { name: /Compare/ })).toHaveCount(0);
+      page
+        .locator("#main_tabs")
+        .getByRole("link", { name: /(^|\s)Home$/, includeHidden: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.locator("#main_tabs").getByRole("link", { name: /Compare/ }),
+    ).toHaveCount(0);
     await expect(page.locator(".home-nav-card")).toHaveCount(5);
     expect(
       await page.evaluate(() => localStorage.getItem("ibpl_league_select")),

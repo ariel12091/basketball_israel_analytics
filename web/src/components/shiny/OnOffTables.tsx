@@ -290,7 +290,8 @@ function PivotMenu({
   return (
     <div
       className="ibpl-pivot-menu"
-      role="menu"
+      role="group"
+      aria-label="Go to"
       style={{
         position: "fixed",
         left: Math.min(pivot.x, innerWidth - 228),
@@ -302,7 +303,6 @@ function PivotMenu({
           key={it.label}
           type="button"
           className="ibpl-pivot-item"
-          role="menuitem"
           autoFocus={i === 0}
           onClick={() => {
             onClose();
@@ -357,9 +357,6 @@ function nameCols(ctx: Ctx): Column[] {
   const pivot: Partial<Column> = {
     tdProps: () => ({
       "data-pivot-trigger": "",
-      tabIndex: 0,
-      role: "button",
-      "aria-haspopup": "menu",
     }),
     onActivate: (row, cell, at) =>
       ctx.onPivot({ row, x: at.x, y: at.y, opener: cell }),

@@ -486,18 +486,14 @@ export default function OnOffClient({
                 {!euro && (
                   // downloadButton("download_csv"): Shiny registers no handler
                   // for it; here it exports the visible table.
-                  <a
+                  <button
+                    type="button"
                     className="btn btn-default shiny-download-link"
-                    href="#"
-                    role="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      exporter.current?.(`onoff_${view}`);
-                    }}
+                    onClick={() => exporter.current?.(`onoff_${view}`)}
                   >
                     <i className="bi bi-download" aria-hidden="true"></i>{" "}
                     Download CSV
-                  </a>
+                  </button>
                 )}
               </>
             }
@@ -569,16 +565,16 @@ export default function OnOffClient({
             <ViewContent blocks={frag.after[view] as Block[]} />
           )}
           {notice && (
-            <div id="shiny-notification-panel">
+            <div id="shiny-notification-panel" role="status">
               <div className="shiny-notification shiny-notification-message">
-                <div
+                <button
+                  type="button"
                   className="shiny-notification-close"
-                  role="button"
                   aria-label="Close"
                   onClick={() => setNotice(null)}
                 >
                   ×
-                </div>
+                </button>
                 <div className="shiny-notification-content">
                   <div className="shiny-notification-content-text">
                     {notice}

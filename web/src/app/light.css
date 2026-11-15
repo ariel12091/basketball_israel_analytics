@@ -38,6 +38,8 @@ html[data-theme="light"] {
   --ibpl-surface-hover: #EAE3D8;
   --ibpl-surface-selected: #F6E7C8;
   --ibpl-border: #DDD6CC;
+  /* Form control edges, 3:1 on bg, white and surface-2 (3.5, 3.7, 3.2). */
+  --ibpl-control-border: #8C8378;
 
   --ibpl-text-faint: #A39B90;
   --ibpl-text-dim: #736B60;
