@@ -22,13 +22,20 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     expect(html).toContain('class="ibpl-ribbon');
     expect(html).toContain(answer.meta.ownTeam);
     await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
-    // Desktop's status line; phones sum up the (empty) selection in the panel.
+    // Desktop's status line and its top lineups; phones show the top lineups
+    // in the collapsed panel before anything is selected (user 2026-11-15).
     if (info.project.name === "phone")
-      await expect(page.locator(".gf-m-panel-bar")).toContainText("Nothing selected");
-    else
+      await expect(page.locator(".gf-m-panel-bar")).toContainText(
+        /Top 5 lineups per team[\s\S]*Lineups \(\d+\)/,
+      );
+    else {
+      await expect(
+        page.getByRole("button", { name: /Top 5 lineups per team/ }),
+      ).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText(
         "Select two or more",
       );
+    }
     await expect(
       page.getByRole("link", { name: "Back to Game Logs" }),
     ).toHaveAttribute(
