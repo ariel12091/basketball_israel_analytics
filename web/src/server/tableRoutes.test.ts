@@ -16,9 +16,15 @@ vi.mock("@/server/teamRatingsRepo", () => ({
   teamRatingsPageAnswer: answer("teamRatingsPageAnswer"),
 }));
 
+vi.mock("@/server/onoffApi", () => ({
+  onoffAnswer: answer("onoffAnswer"),
+  onoffPageAnswer: answer("onoffPageAnswer"),
+}));
+
 const routes = {
   "player-stats": await import("@/app/api/v1/[league]/player-stats/route"),
   "team-ratings": await import("@/app/api/v1/[league]/team-ratings/route"),
+  onoff: await import("@/app/api/v1/[league]/onoff/route"),
 };
 const get = (route: keyof typeof routes, q: string) =>
   routes[route].GET(new Request(`https://x.test/api/v1/il/${route}?${q}`), {
@@ -28,6 +34,7 @@ const get = (route: keyof typeof routes, q: string) =>
 describe.each([
   ["player-stats", "playerStats"],
   ["team-ratings", "teamRatings"],
+  ["onoff", "onoff"],
 ] as const)("%s", (route, name) => {
   it("shape=table answers with the page answer, without the shape key", async () => {
     calls.length = 0;

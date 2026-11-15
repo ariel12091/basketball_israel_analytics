@@ -7,9 +7,19 @@
 // the stat filters, and renders the table.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
-import { autoBars, autoShare, onoffTableRows, type View } from "@/rules/onoff";
-import { contextParams, onoffPath } from "@/lib/tabQuery";
-import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
+import {
+  autoBars,
+  autoShare,
+  type View,
+} from "@/rules/onoff";
+import { onoffPath } from "@/lib/tabQuery";
+import {
+  onoffAutoBase,
+  onoffPsPath,
+  onoffQueryDefaults,
+  onoffTable,
+} from "@/lib/pageState/onoff";
+import { type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
@@ -130,10 +140,7 @@ export default function OnOffClient({
   const euro = league !== "il";
   const p = euro ? "euro" : "on";
   const defaults = euro ? ui.onoffDefaults.euroleague : ui.onoffDefaults.israel;
-  const { query, set } = useTabQuery(league, {
-    min_all: String(defaults.minAll),
-    min_on: String(defaults.minOn),
-  });
+  const { query, set } = useTabQuery(league, onoffQueryDefaults(league));
   const views: View[] = euro
     ? ["summary", "four_factors"]
     : ["summary", "four_factors", "shot_profile"];
@@ -159,15 +166,14 @@ export default function OnOffClient({
   const dataView = data?.meta.view ?? view;
   const population = data?.rows ?? EMPTY;
   // The auto-min population: teams filtered, no possession bars (onoff_auto_min_base_df).
-  const autoBase = useMemo(() => {
-    if (!data) return null;
-    if (data.meta.filtered && dataView === "summary") return population;
-    return teamIds.length
-      ? population.filter((r) => teamIds.includes(Number(r.team_id)))
-      : population;
+  const autoBase = useMemo(
+    () => (data ? onoffAutoBase(data, dataView, teamIds) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, dataView, query.teams]);
-  const [autoOn, setAutoOn] = useState(true);
+    [data, dataView, query.teams],
+  );
+  // A link that fixes its bars (auto=false) opens with auto off, as the API's
+  // shape=table reads it; any later filter change re-arms auto.
+  const [autoOn, setAutoOn] = useState(query.auto !== "false");
   const autoKey = `${url}|${query.teams}`;
   const [armedFor, setArmedFor] = useState(autoKey);
   if (armedFor !== autoKey) {
@@ -194,33 +200,28 @@ export default function OnOffClient({
   // context, and only while such a chip is active (ps_filter_frame()).
   const psFilters = allStats.filter((f) => f.col.startsWith("ps_"));
   const psActive = psFilters.length > 0;
-  const psUrl = useMemo(() => {
-    if (!psActive) return null;
-    const q = contextParams(query, league);
-    for (const k of [
-      "view",
-      "teams",
-      "team",
-      "stats",
-      "own_starters",
-      "opp_starters",
-    ])
-      q.delete(k);
-    return `/api/v1/${league}/player-stat-filters?${q}`;
+  const psUrl = useMemo(
+    () => (psActive ? onoffPsPath(league, query) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [psActive, url, league]);
+    [psActive, url, league],
+  );
   const ps = useTabData<{ rows: PsRow[]; meta: { version: string } }>(psUrl);
   const psError = psFilters.length > 0 && Boolean(ps.error);
 
+  // The same table the API's shape=table serves; auto off here because
+  // useAutoMin has already written its bars into the query.
   const rows = useMemo(
     () =>
-      onoffTableRows(
-        { rows: population, league3p: data?.league3p ?? null, view: dataView },
-        { teams: teamIds, minAll, minOn, filters: allStats },
-        psFilters.length
-          ? (r) => applyPlayerStatFilters(r, ps.data?.rows ?? [], psFilters)
-          : undefined,
-      ),
+      onoffTable(
+        {
+          rows: population,
+          league3p: data?.league3p ?? null,
+          meta: { view: dataView, filtered: data?.meta.filtered ?? false },
+        },
+        query,
+        ps.data?.rows ?? [],
+        false,
+      ).rows,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       population,
@@ -293,6 +294,7 @@ export default function OnOffClient({
       stats: null,
       min_all: String(defaults.minAll),
       min_on: String(defaults.minOn),
+      auto: null,
     });
   };
   const chips = contextChips({
