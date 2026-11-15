@@ -190,6 +190,12 @@ describe("runTool: page tools build their request as the page does", () => {
     expect(playerStats.mock.calls[0][1].toString()).toBe(want.toString());
   });
 
+  it("lineups refuses min_poss: the page's link opens with auto on, which ignores it", async () => {
+    const r = await runTool("r1", { tool: "lineups", league: "il", query: { min_poss: "0" }, sort: byNet }, later);
+    expect(r).toMatchObject({ param: "min_poss" });
+    expect(lineups).not.toHaveBeenCalled();
+  });
+
   it("table tools need a sort", async () => {
     const r = await runTool("r1", { tool: "lineups", league: "il", query: {} }, later);
     expect(r).toMatchObject({ param: "sort" });

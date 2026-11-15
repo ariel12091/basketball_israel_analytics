@@ -63,6 +63,26 @@ describe.each([
   });
 });
 
+// Lineups and Game Logs already answer with the page's table: shape=table is
+// accepted as a no-op and any other shape is still refused.
+describe.each([
+  ["lineups", "lineupsPageAnswer"],
+  ["game-logs", "gameLogsAnswer"],
+] as const)("%s shape", (route, fn) => {
+  it("accepts shape=table (already the table) and drops the key", async () => {
+    calls.length = 0;
+    const res = await get(route, "season=2027&shape=table");
+    expect(res.status).toBe(200);
+    expect(calls).toEqual([{ fn, search: "season=2027" }]);
+  });
+  it("refuses any other shape", async () => {
+    calls.length = 0;
+    const res = await get(route, "season=2027&shape=full");
+    expect(res.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe.each([
   ["player-stats", "playerStatsPageAnswer", "Team"],
   ["team-ratings", "teamRatingsPageAnswer", "Team"],

@@ -4,6 +4,7 @@ import {
   answerJson,
   answerParams,
   answerFormat,
+  answerShape,
 } from "@/server/api";
 import { answerCsv } from "@/server/csvAnswer";
 import { leagueParam } from "@/server/params";
@@ -19,6 +20,8 @@ export async function GET(
     const league = leagueParam((await context.params).league);
     const search = answerParams(url),
       format = answerFormat(search);
+    // Already the page's table: shape=table is a no-op, any other is a 400.
+    answerShape(search);
     const answer = await gameLogsAnswer(league, search);
     return format === "csv"
       ? answerCsv(answer, url, "game_logs", league)

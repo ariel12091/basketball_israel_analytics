@@ -161,8 +161,11 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
       table: table(
         lineupsPageAnswer,
         (l, q) => {
-          // lineupPageOptions reads a URLSearchParams; route its get() to q.
-          const s = { get: (k: string) => q[k] ?? null } as unknown as URLSearchParams;
+          // lineupPageOptions reads a URLSearchParams; route its get() to q,
+          // with auto on as the real call sends it (so min_poss is not read).
+          const s = {
+            get: (k: string) => (k === "auto" ? "true" : (q[k] ?? null)),
+          } as unknown as URLSearchParams;
           lineupPageOptions(s, l, "summary");
         },
         (l, q) => new URL(lineupsPagePath(l, q, true), "http://page.local").searchParams,
