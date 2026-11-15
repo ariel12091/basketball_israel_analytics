@@ -10,7 +10,8 @@ import { PLAYER_STAT_FILTER_COLS } from "@/rules/playerStats";
 
 const CONTEXT = `Shared game filters (any of these tools except list_teams, gameflow, team_overview and guide): start, end (YYYY-MM-DD), game_type (Israeli game type code: ${gameTypeList}), phase (EuroLeague phase), home_away (home|away), outcome (win|loss), min_gn, max_gn (Israeli game numbers) or last_n, opp_rank_side (top|bottom), opp_rank_n, opp_rank_metric (off|def|net).`;
 
-const DESCRIPTIONS: Record<ToolName, string> = {
+/** Each tool's description (also the OpenAPI operations', server/openapi.ts). */
+export const DESCRIPTIONS: Record<ToolName, string> = {
   list_teams:
     "The season's teams with their ids. Call it first whenever the question names a team, including Hebrew names and nicknames, then use the id. query: season.",
   team_ratings:

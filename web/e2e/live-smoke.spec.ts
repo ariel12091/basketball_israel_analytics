@@ -288,3 +288,15 @@ test("live: format=csv serves the table as CSV", async ({ page }, info) => {
   expect(lines[0].startsWith('"Team","GP"')).toBe(true);
   expect(lines.length).toBeGreaterThan(10);
 });
+
+// The OpenAPI description (server/openapi.ts) is served and lists every route.
+test("live: /api/v1/openapi.json describes the API", async ({ page }, info) => {
+  test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
+  test.skip(info.project.name !== "desktop", "API check, once per run");
+  const r = await page.goto("/api/v1/openapi.json");
+  expect(r!.status()).toBe(200);
+  const spec = (await r!.json()) as { openapi: string; paths: Record<string, unknown> };
+  expect(spec.openapi).toBe("3.1.0");
+  for (const route of ["team-ratings", "player-stats", "onoff", "lineups", "compare", "game-logs", "gameflow", "home", "guide"])
+    expect(spec.paths, route).toHaveProperty([`/api/v1/{league}/${route}`]);
+});

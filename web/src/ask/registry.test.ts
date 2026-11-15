@@ -18,7 +18,7 @@ describe("ask tool registry (spec: API mapping)", () => {
     const top = readdirSync(api).filter((d) =>
       statSync(path.join(api, d)).isDirectory(),
     );
-    expect(top.filter((d) => !["[league]", "version", "ask"].includes(d))).toEqual(
+    expect(top.filter((d) => !["[league]", "version", "ask", "openapi.json"].includes(d))).toEqual(
       [],
     );
   });

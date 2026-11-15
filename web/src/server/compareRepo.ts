@@ -12,7 +12,8 @@ import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
 import { playerIds } from "../rules/lineups";
 import data from "../data/compareUi.json";
 import ui from "../data/shinyUi.json";
-const KINDS = [
+/** The Compare route's side readers (kind=...); also in the OpenAPI spec. */
+export const KINDS = [
   "refs",
   "player_defaults",
   "ratings",
