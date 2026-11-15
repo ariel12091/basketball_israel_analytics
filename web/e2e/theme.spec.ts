@@ -44,9 +44,12 @@ test.describe("the toggle", () => {
   }, info) => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto(HOME);
+    // Phone: in the header bar, outside the burger menu (user 2026-11-15);
+    // desktop: in the right cluster. Exactly one copy shows at a width.
+    const btn = page.locator(".nav-theme-btn:visible");
+    await expect(btn).toHaveCount(1);
     if (info.project.name === "phone")
-      await page.locator(".navbar-toggle").click();
-    const btn = page.locator("#theme_toggle");
+      await expect(page.locator(".navbar-header .nav-theme-btn")).toBeVisible();
     await expect(btn).toHaveAttribute("aria-label", "Switch to light theme");
     await btn.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -55,9 +58,12 @@ test.describe("the toggle", () => {
     );
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    if (info.project.name === "phone")
-      await page.locator(".navbar-toggle").click();
     await expect(btn).toHaveAttribute("aria-label", "Switch to dark theme");
+    if (info.project.name === "phone") {
+      // The open menu holds no second toggle.
+      await page.locator(".navbar-toggle").click();
+      await expect(page.locator(".nav-theme-btn:visible")).toHaveCount(1);
+    }
   });
 
   test("blocked storage still switches for the page", async ({ page }) => {

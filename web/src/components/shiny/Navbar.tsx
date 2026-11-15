@@ -280,7 +280,7 @@ export default function Navbar({
       }}
     >
       {showing}
-      <ThemeToggle />
+      <ThemeToggle id="theme_toggle" />
       <button
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
         id="open_glossary"
@@ -368,6 +368,9 @@ export default function Navbar({
               </span>
             </Link>
             {showing}
+            {/* Collapsed nav: the theme switch stays in the bar, outside the
+                burger menu (user 2026-11-15). */}
+            <ThemeToggle id="theme_toggle_bar" />
           </div>
           <div
             className={`navbar-collapse collapse${collapsed ? "" : " show"}`}

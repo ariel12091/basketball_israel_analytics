@@ -5,9 +5,16 @@
 
 /* ---- The toggle (ThemeToggle.tsx), both themes ---- */
 .nav-theme-btn { margin-right: 4px; padding: 2px 7px; line-height: 1.2; }
-.nav-theme-btn .nav-theme-label { display: none; }
-body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { margin-right: 0; }
-body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn .nav-theme-label { display: inline; }
+/* Two copies (Navbar.tsx), one shown per width, like the "Showing" menus:
+   the header bar's with the collapsed nav (outside the burger menu, user
+   2026-11-15), the right cluster's otherwise. */
+.navbar-header .nav-theme-btn,
+body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { display: none; }
+body.ibpl-collapsed-nav .navbar-header .nav-theme-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  order: 1; flex: 0 0 auto; width: 44px; height: 44px; padding: 0;
+  margin: 0 6px 0 0; border: 0; font-size: 1.05rem;
+}
 /* The desktop tab row has ~4 px spare at a 1440 px window, so below 1600 px
    the Glossary button gives its label to the toggle (user 2026-11-15). The
    collapsed (phone) menu keeps the label: its buttons are full-width rows. */
