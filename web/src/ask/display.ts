@@ -408,6 +408,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["defining", "Defining stretch", text],
         ["explanation", "Explanation", text],
         ["player", "Player", text],
+        ["player_he", "Player (Hebrew)", text, "chat"],
         ["secs", "On the floor", (v) => clock(Number(v))],
         ["pm", "+/-", (v) => pmLabel(num(v))],
         ["net", "Net", (v) => netLabel(num(v))],

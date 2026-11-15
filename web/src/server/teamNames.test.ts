@@ -57,6 +57,8 @@ describe("Hebrew team names for the Ask chat", () => {
     expect(displaySpec("team_ratings", "il", null).team_name_he).toMatchObject({ chatOnly: true });
     expect(displaySpec("list_teams", "il", null).team_name_he).toMatchObject({ chatOnly: true });
     expect(displaySpec("gameflow", "il", null).team_name_he).toMatchObject({ chatOnly: true });
+    // Gameflow's player rows carry the Hebrew player name too (gameflowRepo).
+    expect(displaySpec("gameflow", "il", null).player_he).toMatchObject({ chatOnly: true });
     expect(displaySpec("game_logs", "il", null).opp_team_name_he).toMatchObject({ chatOnly: true });
     expect(displaySpec("team_ratings", "euroleague", null).team_name_he).toBeUndefined();
     // A player list without a team column gets none.

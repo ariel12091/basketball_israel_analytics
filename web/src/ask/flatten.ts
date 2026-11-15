@@ -41,7 +41,7 @@ export function flatten(
 function gameflowRows(payload: unknown): Cells[] {
   const p = (payload ?? {}) as {
     runs?: ExplainedRun[];
-    players?: PlayerRating[];
+    players?: (PlayerRating & { player_he?: string })[];
     bounds?: number[];
     meta?: { ownTeam?: string; oppTeam?: string };
   };
@@ -60,6 +60,7 @@ function gameflowRows(payload: unknown): Cells[] {
       section: "player",
       team: x.team,
       player: x.player,
+      ...(x.player_he ? { player_he: x.player_he } : {}),
       secs: x.secs,
       pm: x.pm,
       net: x.net,
