@@ -1,7 +1,7 @@
 # svc_game_logs(): the one Game Logs service for both leagues. Each preset in
 # tests/goldens/presets/game_logs.R is turned into the service's `p` by hand
 # (preset_to_p(), beside the presets; svc_game_logs_params() builds the same
-# shape from API input, pinned in api/tests) and run against the recorded database answers; the rows must equal what
+# shape from a query) and run against the recorded database answers; the rows must equal what
 # Shiny rendered for that preset -- the golden -- on every column the golden
 # has except the Gameflow link, which Shiny adds after the service.
 
@@ -24,7 +24,6 @@ svc_gl_env <- golden_app_env(golden_replay_conn(svc_gl_fixture_dir))
 
 test_that("svc_game_logs reproduces every Game Logs golden", {
   # Ruling R5: the union of the presets' ids, written as literals.
-  covers("GL-01", "GL-02", "GL-03", "GL-04", "GL-05", "GL-06", "GL-07", "X-09")
   literal <- c("GL-01", "GL-02", "GL-03", "GL-04", "GL-05", "GL-06", "GL-07", "X-09")
   expect_setequal(literal, unique(unlist(lapply(GAME_LOGS_PRESETS, `[[`, "covers"))))
 
@@ -56,7 +55,6 @@ test_that("svc_game_logs reproduces every Game Logs golden", {
 })
 
 test_that("shot averages are reported for Israeli Summary only", {
-  covers("GL-07")
   for (name in names(GAME_LOGS_PRESETS)) {
     preset <- GAME_LOGS_PRESETS[[name]]
     p <- preset_to_p(preset, svc_gl_env)
@@ -71,7 +69,6 @@ test_that("shot averages are reported for Israeli Summary only", {
 })
 
 test_that("the Shiny defaults match the descriptor", {
-  covers("GL-01")
   expect_named(svc_gl_env$GL_LEAGUE, c("il", "euroleague"))
   expect_identical(svc_gl_env$GL_LEAGUE$il$round_col, "gn")
   expect_identical(svc_gl_env$GL_LEAGUE$euroleague$round_col, "round_number")
@@ -80,7 +77,6 @@ test_that("the Shiny defaults match the descriptor", {
 })
 
 test_that("a blank end of the date range: open in Israel, no games in EuroLeague (D25)", {
-  covers("GL-02")
   three <- data.frame(
     game_id = 1:3, team_id = 1L,
     game_date = as.Date(c("2025-10-01", "2025-11-01", "2025-12-01"))
@@ -99,7 +95,6 @@ test_that("a blank end of the date range: open in Israel, no games in EuroLeague
 })
 
 test_that("last N counts games, not starter-split rows (D24 fixed)", {
-  covers("GL-02")
   # Team 1: game 3 (newest) has three starter-split rows, game 2 two, game 1 one.
   rows <- data.frame(
     game_id = c(3L, 3L, 3L, 2L, 2L, 1L, 9L),

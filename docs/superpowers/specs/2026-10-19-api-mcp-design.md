@@ -1,5 +1,7 @@
 # API and MCP server for IBPL Analytics -- design (2026-10-19)
 
+> **Superseded 2026-11-15.** The API is the web app's `/api/v1/[league]/*` (finished tables with `shape=table`, CSV with `format=csv`, Hebrew team names), not the R Plumber API below, which was retired; an MCP server, when built, sits on `/api/v1`. Inventory coverage: `web/src/server/apiCoverage.ts`. Plan: `docs/superpowers/plans/2026-11-15-web-api-complete.md`.
+
 Companion: `2026-10-19-api-mcp-feature-inventory.md` (109 features with IDs, checked
 against the live app). This document says how every one of them reaches the API.
 

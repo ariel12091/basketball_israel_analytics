@@ -148,11 +148,6 @@ golden_query_is_strict <- function(strict, params, stack = golden_stack_function
   any(vapply(hits, function(h) is.null(strict[[h]]) || ptxt %in% strict[[h]], logical(1)))
 }
 
-# Task-level feature coverage markers (`covers(...)`) live in the API tree.
-# Sourced here when present so app-side golden tests can call covers().
-golden_coverage_file <- file.path(golden_repo_root(), "api", "coverage.R")
-if (file.exists(golden_coverage_file)) source(golden_coverage_file, local = TRUE)
-rm(golden_coverage_file)
 
 # The app's own query label, lifted from global.R rather than retyped, so a
 # replay miss names a query the same way the app's slow-query log does.

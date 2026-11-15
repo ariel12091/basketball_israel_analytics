@@ -686,8 +686,8 @@ svc_game_logs <- function(p, readers = gl_default_readers()) {
 # ---------------- Parameters from a query ----------------
 # svc_game_logs_params() builds svc_game_logs()'s `p` from an untrusted query
 # (svc_params.R has the parsers and the query shape). Shiny builds the same
-# list from its inputs; for an equivalent query the two are identical, pinned
-# by api/tests/testthat/test-api-params.R against preset_to_p().
+# list from its inputs; for an equivalent query the two are identical (the
+# R API's pin against preset_to_p() retired with api/ on 2026-11-15).
 
 # Parameter names per league. `sort` and `format` shape the response and are
 # not part of `p`. The league-specific names are the GL_LEAGUE dimensions:

@@ -1,5 +1,5 @@
-# Runs the app suite (from app/) and then the API suite (from api/). Both run
-# even when the first fails; the process fails if either did.
+# Runs the app suite (from app/); the process fails if it did. (The R API
+# suite retired with api/ on 2026-11-15.)
 owd <- getwd()
 on.exit(setwd(owd), add = TRUE)
 
@@ -17,7 +17,7 @@ run_suite <- function(label, dir) {
   ok
 }
 
-results <- c(app = run_suite("app", "app"), api = run_suite("api", "api"))
+results <- c(app = run_suite("app", "app"))
 cat("[tests] done\n")
 if (!all(results)) {
   cat(sprintf("[tests] failed suites: %s\n", paste(names(results)[!results], collapse = ", ")))
