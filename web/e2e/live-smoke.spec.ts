@@ -269,11 +269,22 @@ test("live: Israeli answers carry Hebrew team names, EuroLeague none", async ({ 
 test("live: format=csv serves the table as CSV", async ({ page }, info) => {
   test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
   test.skip(info.project.name !== "desktop", "API check, once per run");
-  const r = await page.request.get("/api/v1/il/team-ratings?season=2026&format=csv");
-  expect(r.status()).toBe(200);
-  expect(r.headers()["content-type"]).toBe("text/csv; charset=utf-8");
-  expect(r.headers()["content-disposition"]).toBe('attachment; filename="team-ratings_il_2026.csv"');
-  const lines = (await r.text()).split("\r\n");
+  // A download would end a navigation, and page.request skips the Preview
+  // bypass (preview.ts routes the browser context): fetch from a page instead.
+  await page.goto("/api/v1/il/team-ratings?season=2026&shape=table");
+  const r = await page.evaluate(async () => {
+    const res = await fetch("/api/v1/il/team-ratings?season=2026&format=csv");
+    return {
+      status: res.status,
+      type: res.headers.get("content-type"),
+      disposition: res.headers.get("content-disposition"),
+      text: await res.text(),
+    };
+  });
+  expect(r.status).toBe(200);
+  expect(r.type).toBe("text/csv; charset=utf-8");
+  expect(r.disposition).toBe('attachment; filename="team-ratings_il_2026.csv"');
+  const lines = r.text.split("\r\n");
   expect(lines[0].startsWith('"Team","GP"')).toBe(true);
   expect(lines.length).toBeGreaterThan(10);
 });
