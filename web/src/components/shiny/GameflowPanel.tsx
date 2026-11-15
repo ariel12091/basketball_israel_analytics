@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -37,7 +38,9 @@ import {
 } from "@/rules/gameflow";
 import type { Side, Window as Span } from "@/rules/gameflow";
 import {
+  gameRating,
   netLabel,
+  ratingTone,
   stintRatings,
   windowsRatings,
   type StintRatings,
@@ -975,16 +978,42 @@ function lineupPmText(
     ? ` · +/- ${pmLabel(g.pm)}`
     : ` · +/- ${d.pm || "0"} (${d.pf}–${d.pa})`;
 }
+/** The game's average rating, once per payload: the tones' midpoint. */
+const gameBase = new WeakMap<GameflowPayload["events"], number | null>();
+function baseOf(data: GameflowPayload) {
+  if (!gameBase.has(data.events)) gameBase.set(data.events, gameRating(data.events));
+  return gameBase.get(data.events)!;
+}
+/** A tone (-1 red .. +1 green) as a tint behind the number; none near 0. */
+function toneStyle(t: number | null): CSSProperties | undefined {
+  if (t == null || Math.abs(t) < 0.05) return undefined;
+  return {
+    backgroundColor: `rgba(${t > 0 ? "var(--gf-good-rgb)" : "var(--gf-bad-rgb)"}, ${(0.12 + 0.43 * Math.abs(t)).toFixed(2)})`,
+  };
+}
 /** " · Net +12.3 · ORtg 110.0 · DRtg 97.7" for a listed lineup (user
- * 2026-11-12: Net with both ratings), or "" without events. */
+ * 2026-11-12: Net with both ratings), or nothing without events. Each number
+ * is tinted green or red by how it compares with the game (user 2026-11-15). */
 function lineupRatingText(
   data: GameflowPayload,
   g: ReturnType<typeof aggregateSegments>[number],
 ) {
   const r = lineupRatings(data, g);
-  return r
-    ? ` · Net ${netLabel(r.net)} · ORtg ${ratingLabel(r.ortg)} · DRtg ${ratingLabel(r.drtg)}`
-    : "";
+  if (!r) return null;
+  const base = baseOf(data);
+  const parts = [
+    ["Net", "net", netLabel(r.net), r.net],
+    ["ORtg", "ortg", ratingLabel(r.ortg), r.ortg],
+    ["DRtg", "drtg", ratingLabel(r.drtg), r.drtg],
+  ] as const;
+  return parts.map(([label, kind, text, v]) => (
+    <Fragment key={kind}>
+      {" · "}
+      <span className="gf-rtg" style={toneStyle(ratingTone(kind, v, base))}>
+        {label} {text}
+      </span>
+    </Fragment>
+  ));
 }
 /** What a hovered stint holds, floating clear of its bar: nothing moves. */
 function GameflowHoverTip({

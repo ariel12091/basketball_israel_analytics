@@ -22,6 +22,35 @@ export type StintRatings = {
 
 const rate = (pts: number, poss: number) => (poss ? (100 * pts) / poss : null);
 
+/** Points per 100 off the game's average at which a tone is full (user
+ * 2026-11-15: green/red gradient on the lineup ratings). */
+export const TONE_SPAN = 25;
+
+/**
+ * How good a lineup rating is, from -1 (full red) to +1 (full green): ORtg
+ * above `base` is good, DRtg below it is good, Net above zero is good.
+ * `base` is the game's own rating, both teams' points over both teams'
+ * possessions, so the colour says "better than this game" (no league
+ * constant). Null when there is no rating.
+ */
+export function ratingTone(
+  kind: "ortg" | "drtg" | "net",
+  v: number | null,
+  base: number | null,
+): number | null {
+  if (v == null || (kind !== "net" && base == null)) return null;
+  const d =
+    kind === "net" ? v / (2 * TONE_SPAN) : kind === "ortg" ? (v - base!) / TONE_SPAN : (base! - v) / TONE_SPAN;
+  return Math.max(-1, Math.min(1, d));
+}
+
+/** The game's average rating: every credited event of one side, both ways. */
+export function gameRating(events: GameflowEvent[]): number | null {
+  const r = windowsRatings(events, "own", [], null),
+    poss = r.offPoss + r.defPoss;
+  return poss ? (100 * (r.offPts + r.defPts)) / poss : null;
+}
+
 /**
  * Ratings over `side`'s rows whose credited five holds every one of
  * `players` (lane keys), within `window` when given (both ends inclusive).
