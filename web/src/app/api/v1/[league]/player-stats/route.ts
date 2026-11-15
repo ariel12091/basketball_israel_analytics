@@ -6,7 +6,8 @@ import {
   answerShape,
 } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { playerStatsAnswer, playerStatsPageAnswer } from "@/server/playerStatsRepo";
+import { playerStatsAnswer } from "@/server/playerStatsRepo";
+import { playerStatsPageAnswer } from "@/server/pageAnswers";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export async function GET(

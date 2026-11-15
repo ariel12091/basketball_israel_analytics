@@ -23,7 +23,7 @@ export type ColumnSpec = {
   label: string;
   format: Fmt;
   derived?: boolean;
-  /** Computed for the chat, not shown on the page (pageRows.ts). */
+  /** Computed for the chat, not shown on the page (ask/flatten.ts, run.ts). */
   chatOnly?: boolean;
 };
 
@@ -131,7 +131,7 @@ const spPart =
   (id: string, on: string, off: string): Fmt =>
   (v, c) =>
     num(c[id]) == null || num(c[on]) == null || num(c[off]) == null ? "--" : Number(v).toFixed(1);
-/** pageRows.withTeamNetRank: the net impact's rank on the player's team. */
+/** flatten.withTeamNetRank: the net impact's rank on the player's team. */
 const TEAM_RANK: [string, string, Fmt, "chat"][] = [
   ["team_rank_net", "Net impact rank on his team (#1 is the team's best)", rank, "chat"],
   ["team_ranked", "Players ranked on his team", fixed(0), "chat"],

@@ -2,7 +2,7 @@ import "server-only";
 // One ask tool call: the route's answer function, its own parser and guards,
 // then presentation only (row ids, sort by a returned column, limit, link).
 import ui from "@/data/shinyUi.json";
-import { parseStats, queryFromSearch } from "@/lib/tabQuery";
+import { queryFromSearch, type Query } from "@/lib/tabQuery";
 import type { League } from "@/rules/gameLogs";
 import { orderKey } from "@/rules/order";
 import { ParamError, rawQueryGuard } from "@/server/api";
@@ -107,6 +107,7 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
   for (const [k, v] of Object.entries(q)) if (v) page.append(k, v);
   // A dry run of the page's table rules shows which keys they read.
   flatten(entry.name, call.league, { rows: [], meta: {} }, page);
+  entry.table?.reads(call.league, recording(page));
   // A key that neither reaches the request nor the table rules is one the
   // page ignores (e.g. teams on Lineups): the answer would not be filtered.
   const ignored = Object.keys(values).find(
@@ -115,6 +116,22 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
   if (ignored)
     return { error: `${entry.name} does not use ${ignored}; check the tool description`, param: ignored };
   return { api, page };
+}
+
+/** The page query as a Query whose reads go through page.get, so they are
+ * recorded (RecordingParams). */
+const recording = (page: URLSearchParams): Query =>
+  new Proxy({} as Query, {
+    get: (_t, k) => (typeof k === "string" ? (page.get(k) ?? undefined) : undefined),
+  });
+
+/** On/Off bars the model sets itself (to reach low-possession players) are
+ * kept: auto=false, as a link that fixes its bars. Without, the page's auto
+ * sets them, as on a freshly opened link. */
+function withOwnBars(call: ToolCall): ToolCall {
+  const q = call.query;
+  if (call.tool !== "onoff" || "auto" in q || !("min_on" in q || "min_all" in q)) return call;
+  return { ...call, query: { ...q, auto: "false" } };
 }
 
 /** Lineups ranked by a rating need a sample: the Home hub's 100 possessions,
@@ -150,7 +167,7 @@ export async function runTool(
   requested: ToolCall,
   deadlineAt: number,
 ): Promise<ToolResult | ToolError> {
-  const candidates = sampleMinimums(requested);
+  const candidates = sampleMinimums(withOwnBars(requested));
   let call = candidates[0];
   const fail = (error: string, param: string | null = null): ToolError => ({
     id,
@@ -171,21 +188,24 @@ export async function runTool(
     const prep = prepare(entry, call);
     if ("error" in prep) return fail(prep.error, prep.param);
     rawQueryGuard(new URL(`${BASE}/?${prep.api}`));
+    // Table pages: the page's finished table (shape=table), never a copy.
+    const read = (page: URLSearchParams) =>
+      entry.table!.answer(call.league, entry.table!.search(call.league, Object.fromEntries(page)));
     payload =
       entry.name === "list_teams"
         ? await listTeams(call.league, prep.api)
-        : await entry.answer!(call.league, prep.api);
-    // On/Off's Player Stats chips need the page's second read.
-    if (entry.playerStats && parseStats(prep.page.get("stats") ?? "").some((f) => f.col.startsWith("ps_")))
-      payload = { ...(payload as object), psRows: await entry.playerStats(call.league, prep.api) };
+        : entry.table
+          ? await read(prep.page)
+          : await entry.answer!(call.league, prep.api);
     flat = flatten(entry.name, call.league, payload, prep.page);
-    // A lower minimum changes only the page's own filter, not the request, so
-    // the same payload is re-filtered; the first that leaves enough rows wins.
+    // A lower minimum changes only the page's own filter: the population is
+    // cached, so each step re-reads the table; the first with enough rows wins.
     for (const next of candidates.slice(1)) {
       if (flat.rows.length >= LINEUP_MIN_ROWS) break;
       const p = prepare(entry, next);
       if ("error" in p) break;
       call = next;
+      payload = await read(p.page);
       flat = flatten(entry.name, call.league, payload, p.page);
     }
   } catch (e) {

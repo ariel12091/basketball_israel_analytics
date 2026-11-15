@@ -5,7 +5,7 @@ import {
   answerParams,
 } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { lineupsPageAnswer } from "@/server/lineupsApi";
+import { lineupsPageAnswer } from "@/server/pageAnswers";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export async function GET(

@@ -5,9 +5,6 @@ import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readTabReferences } from "./onoffRepo";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
-import { pageQuery } from "./api";
-import { PLAYER_QUERY_DEFAULTS, playerStatsPath } from "../lib/tabQuery";
-import { playerStatsTable } from "../lib/pageState/playerStats";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
@@ -154,14 +151,6 @@ const cache = new VersionedCache<PlayerStatsPayload>(
   16,
   (value) => value.meta.version,
 );
-/** shape=table: what a freshly opened Player Stats link shows. The population
- * is requested exactly as PlayerStatsClient requests it (playerStatsPath),
- * then the page's own table rules run on the full page query. */
-export async function playerStatsPageAnswer(league: League, s: URLSearchParams) {
-  const query = pageQuery(league, s, PLAYER_QUERY_DEFAULTS);
-  const api = new URL(playerStatsPath(league, query), "http://page.local").searchParams;
-  return playerStatsTable(await playerStatsAnswer(league, api), query);
-}
 export function playerStatsAnswer(league: League, s: URLSearchParams) {
   const p = parsePlayerStats(s, league),
     key = JSON.stringify(p);

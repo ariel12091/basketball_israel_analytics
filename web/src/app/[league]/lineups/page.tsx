@@ -5,7 +5,7 @@ import LineupsClient from "@/components/LineupsClient";
 import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
-import { lineupsPageAnswer } from "@/server/lineupsApi";
+import { lineupsPageAnswer } from "@/server/pageAnswers";
 import { pageMetadata } from "@/lib/pageTitle";
 
 export const generateMetadata = pageMetadata("lineups");

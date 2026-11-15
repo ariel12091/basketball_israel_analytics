@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LINEUP_QUERY_DEFAULTS,
   PLAYER_QUERY_DEFAULTS,
-  lineupsPath,
+  lineupsPagePath,
   playerStatsPath,
   queryFromSearch,
 } from "@/lib/tabQuery";
@@ -77,6 +77,21 @@ describe("runTool: derived On/Off values", () => {
     expect(r.extras).toMatchObject({ season_label: "2026-27", rating_basis: "points per 100 possessions" });
   });
 
+  it("bars the model sets itself are kept (auto=false), on the page link too", async () => {
+    // Auto would raise the bars above every row here; the model asked for 0.
+    const many = Array.from({ length: 30 }, (_, i) => ({ team_id: 2, player_id: i, Player: `P${i}`, "ON Poss": 10 + i * 100, "OFF Poss": 4000 }));
+    onoff.mockResolvedValue({ rows: many, league3p: null, meta: { view: "summary", version: "v1", filtered: false } });
+    const r = await runTool("r1", { tool: "onoff", league: "il", query: { min_on: "0", min_all: "0" }, sort: { key: "ON Poss", desc: false }, limit: 10 }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.rowCount).toBe(30);
+    expect(r.link).toContain("auto=false");
+    // Without bars of its own, the page's auto applies.
+    const auto = await runTool("r1", { tool: "onoff", league: "il", query: {}, sort: { key: "ON Poss", desc: false } }, later);
+    if (!("rows" in auto)) throw new Error(auto.error);
+    expect(auto.rowCount).toBeLessThan(30);
+    expect(auto.link).not.toContain("auto=");
+  });
+
   it("sorts by the 3PT% half of the Off Shot cell", async () => {
     const shot = (id: number, m3: number) => ({
       team_id: 3, player_id: id, Team: "H", Player: `P${id}`, "ON Poss": 500, "OFF Poss": 500,
@@ -115,11 +130,13 @@ describe("runTool: derived On/Off values", () => {
 });
 
 describe("runTool: page tools build their request as the page does", () => {
-  it("the API request equals the page builder's, and team reaches the page rows", async () => {
+  it("the request equals the page's own (lineupsPagePath, auto on), and team reaches the page rows", async () => {
     const query = { season: "2027", team: "2", size: "5" };
     const r = await runTool("r1", { tool: "lineups", league: "il", query, sort: byNet }, later);
+    // The first step of the automatic sample minimum (100 possessions).
+    const stats = JSON.stringify([{ col: "total_poss", op: "ge", value: 100 }]);
     const want = new URL(
-      lineupsPath("il", queryFromSearch("il", query, LINEUP_QUERY_DEFAULTS)),
+      lineupsPagePath("il", queryFromSearch("il", { ...query, stats }, LINEUP_QUERY_DEFAULTS), true),
       "http://x",
     ).searchParams;
     expect(lineups.mock.calls[0][1].toString()).toBe(want.toString());
@@ -194,9 +211,12 @@ describe("runTool: page tools build their request as the page does", () => {
 
 describe("runTool: errors, sorting, limits, links", () => {
   it("ParamError becomes a tool error with its param", async () => {
-    lineups.mockRejectedValue(new ParamError("size", "Invalid size"));
-    const r = await runTool("r1", { tool: "lineups", league: "il", query: { size: "9" }, sort: byNet }, later);
-    expect(r).toMatchObject({ param: "size", error: "Invalid size" });
+    lineups.mockRejectedValue(new ParamError("min_gn", "Invalid round"));
+    const r = await runTool("r1", { tool: "lineups", league: "il", query: { size: "3" }, sort: byNet }, later);
+    expect(r).toMatchObject({ param: "min_gn", error: "Invalid round" });
+    // The page answer's own parser refuses a bad size before any read.
+    const bad = await runTool("r1", { tool: "lineups", league: "il", query: { size: "9" }, sort: byNet }, later);
+    expect(bad).toMatchObject({ param: "size" });
   });
 
   it("deadline error becomes a 'took too long' tool error", async () => {
@@ -317,7 +337,9 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(r.rows.map((x) => x.cells.Players)).toEqual(["a", "b", "c"]);
     expect(r.extras).toMatchObject({ min_poss: "50" });
     expect(r.link).toContain(encodeURIComponent('"value":50'));
-    expect(lineups).toHaveBeenCalledTimes(1);
+    // One read per step tried; the reader's cache (getLineups, keyed without
+    // the stat filter) answers the repeat without the database.
+    expect(lineups).toHaveBeenCalledTimes(2);
   });
 
   it("an explicit stats filter, or a volume sort, gets no automatic minimum", async () => {

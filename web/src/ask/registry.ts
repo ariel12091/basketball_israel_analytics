@@ -2,12 +2,12 @@ import "server-only";
 // The ask tools, one per /api/v1/[league]/* route, calling that route's answer
 // function in-process (spec 2026-10-24-home-ask-box-design.md, "API mapping").
 // Only this file may import answer functions; registry.test.ts enforces it.
-import ui from "@/data/shinyUi.json";
 import {
   LINEUP_QUERY_DEFAULTS,
   PLAYER_QUERY_DEFAULTS,
   TEAM_QUERY_DEFAULTS,
   gameLogsPath,
+  lineupsPagePath,
   lineupsPath,
   onoffPath,
   playerStatsPath,
@@ -23,10 +23,18 @@ import { homeAnswer } from "@/server/homeRepo";
 import { lineupGames } from "@/server/lineupGamesRepo";
 import { lineupRosterAnswer, lineupsAnswer } from "@/server/lineupsApi";
 import { onoffAnswer } from "@/server/onoffApi";
-import { parseContext } from "@/server/contextParams";
-import { playerStatFrame } from "@/server/playerStatFilterRepo";
+import {
+  lineupsPageAnswer,
+  onoffPageAnswer,
+  playerStatsPageAnswer,
+  teamRatingsPageAnswer,
+} from "@/server/pageAnswers";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
+import { lineupPageOptions } from "@/lib/lineupPageState";
+import { onoffPageOptions, onoffQueryDefaults } from "@/lib/pageState/onoff";
+import { playerStatsPageOptions } from "@/lib/pageState/playerStats";
+import { teamRatingsPageOptions } from "@/lib/pageState/teamRatings";
 import { compareLink, compareTable } from "./compareTool";
 
 export type ToolName =
@@ -69,11 +77,26 @@ export type ToolEntry = {
   };
   /** Other tools: the only query keys they take. */
   keys?: string[];
-  /** On/Off's Player Stats chips (ps_*): the page's second read, the
-   * per-game Player Stats of every team-player for the same game context
-   * (OnOffClient psUrl -> /player-stat-filters). */
-  playerStats?: (league: League, api: URLSearchParams) => Promise<unknown[]>;
+  /** Table pages: the page's finished table (the route's shape=table), which
+   * the chat reads instead of the population. `search`: that answer's query
+   * for a page query; `reads`: runs the table rules' options on a recording
+   * query, so run.ts knows which keys they read. */
+  table?: {
+    answer: (league: League, s: URLSearchParams) => Promise<unknown>;
+    answerName: string;
+    search: (league: League, q: Query) => URLSearchParams;
+    reads: (league: League, q: Query) => void;
+  };
 };
+
+/** The page query as a page answer's query (empty values left out). */
+const asSearch = (_l: League, q: Query) =>
+  new URLSearchParams(Object.entries(q).filter(([, v]) => v !== ""));
+const table = (
+  answer: NonNullable<ToolEntry["table"]>["answer"],
+  reads: NonNullable<ToolEntry["table"]>["reads"],
+  search: NonNullable<ToolEntry["table"]>["search"] = asSearch,
+): ToolEntry["table"] => ({ answer, answerName: answer.name, search, reads });
 
 const ALL: League[] = ["il", "euroleague", "eurocup"];
 const ids = (prefix: string, from: number, to: number) =>
@@ -111,20 +134,14 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     [...ids("ON", 1, 14), "X-05", "X-11"],
     {
       request: {
-        // app/[league]/onoff/page.tsx: the league's possession bars.
-        defaults: (l) => {
-          const d = l === "il" ? ui.onoffDefaults.israel : ui.onoffDefaults.euroleague;
-          return { min_all: String(d.minAll), min_on: String(d.minOn) };
-        },
+        // app/[league]/onoff/page.tsx: the league's possession bars, auto on.
+        defaults: onoffQueryDefaults,
         path: onoffPath,
         pathName: "onoffPath",
       },
-      playerStats: (l, api) => {
-        const q = new URLSearchParams(api);
-        for (const k of ["view", "teams", "team", "stats", "own_starters", "opp_starters"])
-          q.delete(k);
-        return playerStatFrame(parseContext(q, l));
-      },
+      table: table(onoffPageAnswer, (_l, q) => {
+        onoffPageOptions(q, { rows: [], meta: {} }, true);
+      }),
     },
   ),
   lineups: tool(
@@ -140,6 +157,16 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
         path: lineupsPath,
         pathName: "lineupsPath",
       },
+      // A link opens the Lineups page with auto on (lineupsPagePath).
+      table: table(
+        lineupsPageAnswer,
+        (l, q) => {
+          // lineupPageOptions reads a URLSearchParams; route its get() to q.
+          const s = { get: (k: string) => q[k] ?? null } as unknown as URLSearchParams;
+          lineupPageOptions(s, l, "summary");
+        },
+        (l, q) => new URL(lineupsPagePath(l, q, true), "http://page.local").searchParams,
+      ),
     },
   ),
   lineup_games: tool(
@@ -173,6 +200,9 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
         path: teamRatingsPath,
         pathName: "teamRatingsPath",
       },
+      table: table(teamRatingsPageAnswer, (_l, q) => {
+        teamRatingsPageOptions(q);
+      }),
     },
   ),
   game_logs: tool(
@@ -197,6 +227,9 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
         path: playerStatsPath,
         pathName: "playerStatsPath",
       },
+      table: table(playerStatsPageAnswer, (_l, q) => {
+        playerStatsPageOptions(q, []);
+      }),
     },
   ),
   compare: tool(

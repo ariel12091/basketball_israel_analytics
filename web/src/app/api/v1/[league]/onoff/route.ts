@@ -6,7 +6,8 @@ import {
   answerShape,
 } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { onoffAnswer, onoffPageAnswer } from "@/server/onoffApi";
+import { onoffAnswer } from "@/server/onoffApi";
+import { onoffPageAnswer } from "@/server/pageAnswers";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 

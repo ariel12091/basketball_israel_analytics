@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { NOT_TOOLS, TOOLS } from "./registry";
@@ -29,15 +29,24 @@ describe("ask tool registry (spec: API mapping)", () => {
         path.join(api, "[league]", t.route!, "route.ts"),
         "utf8",
       );
-      // Lineups: the route serves the page's table, lineupsPageAnswer, which
-      // is the tool's lineupsAnswer plus the lineupPage that pageRows applies.
-      const name =
-        t.answerName === "lineupsAnswer" ? "lineupsPageAnswer" : t.answerName;
-      expect(src, t.name).toMatch(
-        new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\}`),
-      );
+      // Lineups' route serves only the page's table (lineupsPageAnswer).
+      const name = t.name === "lineups" ? t.table!.answerName : t.answerName;
+      expect(src, t.name).toMatch(new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\}`));
       expect(typeof t.answer, t.name).toBe("function");
+      // The page's finished table, from the same route (shape=table).
+      if (t.table)
+        expect(src, t.name).toMatch(new RegExp(`import \\{[^}]*\\b${t.table.answerName}\\b[^}]*\\}`));
     }
+  });
+
+  it("table tools read the pages' finished tables (shape=table), not a copy", () => {
+    expect(TOOLS.onoff.table?.answerName).toBe("onoffPageAnswer");
+    expect(TOOLS.lineups.table?.answerName).toBe("lineupsPageAnswer");
+    expect(TOOLS.team_ratings.table?.answerName).toBe("teamRatingsPageAnswer");
+    expect(TOOLS.player_stats.table?.answerName).toBe("playerStatsPageAnswer");
+    for (const t of Object.values(TOOLS))
+      if (t.table) expect(t.table.answer.name, t.name).toBe(t.table.answerName);
+    expect(existsSync(path.resolve("src/ask/pageRows.ts"))).toBe(false);
   });
 
   it("inventory ids exist", () => {
@@ -70,7 +79,8 @@ describe("ask tool registry (spec: API mapping)", () => {
         /from "@\/server\/(\w+)"/g,
       ))
         routeImports.add(m[1]);
-    const allowedRepos = [...registry.matchAll(/from "@\/server\/(\w+(?:Repo|Api))"/g)].map(
+    // Answer modules: the readers (*Repo, *Api) and the finished tables (pageAnswers).
+    const allowedRepos = [...registry.matchAll(/from "@\/server\/(\w+(?:Repo|Api|pageAnswers))"/g)].map(
       (m) => m[1],
     );
     for (const m of allowedRepos) expect(routeImports, m).toContain(m);
@@ -79,7 +89,7 @@ describe("ask tool registry (spec: API mapping)", () => {
       expect(src, f).not.toMatch(/(from|import\(|require\()\s*"(@\/server\/db[^"]*|[^"]*\/db|pg)"/);
       expect(src, f).not.toMatch(/\bimport\(|\brequire\(/);
       expect(src, f).not.toMatch(/\bSELECT\b|\bFROM basketball/);
-      for (const m of src.matchAll(/from "@\/server\/(\w+(?:Repo|Api))"/g)) {
+      for (const m of src.matchAll(/from "@\/server\/(\w+(?:Repo|Api|pageAnswers))"/g)) {
         expect(path.basename(f), `${f} imports ${m[1]}`).toBe("registry.ts");
         expect(allowedRepos).toContain(m[1]);
       }

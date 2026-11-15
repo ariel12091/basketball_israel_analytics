@@ -7,19 +7,15 @@ const answer = (fn: string) => async (_league: string, s: URLSearchParams) => {
   calls.push({ fn, search: s.toString() });
   return { rows: [{ fn }], meta: { version: "v1" } };
 };
-vi.mock("@/server/playerStatsRepo", () => ({
-  playerStatsAnswer: answer("playerStatsAnswer"),
+vi.mock("@/server/playerStatsRepo", () => ({ playerStatsAnswer: answer("playerStatsAnswer") }));
+vi.mock("@/server/teamRatingsRepo", () => ({ teamRatingsAnswer: answer("teamRatingsAnswer") }));
+vi.mock("@/server/pageAnswers", () => ({
   playerStatsPageAnswer: answer("playerStatsPageAnswer"),
-}));
-vi.mock("@/server/teamRatingsRepo", () => ({
-  teamRatingsAnswer: answer("teamRatingsAnswer"),
   teamRatingsPageAnswer: answer("teamRatingsPageAnswer"),
-}));
-
-vi.mock("@/server/onoffApi", () => ({
-  onoffAnswer: answer("onoffAnswer"),
   onoffPageAnswer: answer("onoffPageAnswer"),
 }));
+
+vi.mock("@/server/onoffApi", () => ({ onoffAnswer: answer("onoffAnswer") }));
 
 // Compare's readers take the query only (Israeli League only).
 const one = (fn: string) => async (s: URLSearchParams) => answer(fn)("il", s);

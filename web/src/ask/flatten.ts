@@ -2,7 +2,6 @@
 // are derived here except through the pages' own rules (rules/home.ts).
 import { homeDashboard, type HomeFrames } from "@/rules/home";
 import type { League } from "@/rules/gameLogs";
-import { pageRows } from "./pageRows";
 import type { ExplainedRun, PlayerRating } from "@/rules/gameflowSummary";
 import { periodClock } from "@/rules/gameflowRuns";
 import type { ToolName } from "./registry";
@@ -20,7 +19,13 @@ export function flatten(
   if (tool === "gameflow") return { rows: gameflowRows(payload), total: null };
   if (tool === "team_overview")
     return { rows: overview(p.frames, query.get("team_id") ?? ""), total: null };
-  const rows: Cells[] = pageRows(tool, league, payload, query);
+  // Table tools read the page's finished table (shape=table); On/Off adds the
+  // chat's on-team net impact rank.
+  const view = (payload as { meta?: { view?: string } } | null)?.meta?.view;
+  const rows: Cells[] =
+    tool === "onoff"
+      ? withTeamNetRank(p.rows ?? [], view === "four_factors" ? "Net Diff" : "Net RTG Diff")
+      : (p.rows ?? []);
   if (tool === "lineups") {
     // LineupTable: the is_total === 0 row is the pinned "- All Lineups -" TOTAL.
     const total = rows.find((r) => r.is_total === 0) ?? null;
@@ -105,4 +110,26 @@ function overview(frames: HomeFrames | undefined, team: string): Cells[] {
       opp_team_name: d.lastGame.row.opp_team_name,
     });
   return out;
+}
+
+/** For the chat only ("his net impact is #5 on the team"): each row's net
+ * impact rank among its team's rows in the table the page shows, ties
+ * sharing the better rank, and how many of the team's rows are ranked. The
+ * model may not count rows itself, so the app supplies the rank. */
+export function withTeamNetRank(rows: Cells[], col: string): Cells[] {
+  const value = (r: Cells) => (r[col] == null || r[col] === "" ? NaN : Number(r[col]));
+  const byTeam = new Map<string, number[]>();
+  for (const r of rows) {
+    const v = value(r);
+    if (!Number.isFinite(v)) continue;
+    const k = String(r.team_id);
+    byTeam.set(k, [...(byTeam.get(k) ?? []), v]);
+  }
+  return rows.map((r) => {
+    const v = value(r),
+      team = byTeam.get(String(r.team_id)) ?? [];
+    return Number.isFinite(v)
+      ? { ...r, team_rank_net: 1 + team.filter((x) => x > v).length, team_ranked: team.length }
+      : r;
+  });
 }

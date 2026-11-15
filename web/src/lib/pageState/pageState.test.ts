@@ -31,7 +31,6 @@ describe("the finished tables (shape=table)", () => {
     expect(teamRatingsTable({ rows: [], previous: [], meta: { ...meta, showDelta: false } }, {}).rows).toEqual([]);
   });
 });
-import { pageRows } from "@/ask/pageRows";
 
 const rows = [
   { team_id: 2, player_id: 10, player_name: "A", gp: 8, pts: 80, minutes: 200, poss_on_floor: 400 },
@@ -61,11 +60,10 @@ describe("playerStatsPageOptions", () => {
     expect(o.showIneligible).toBe(true);
     expect(o.filters).toEqual([{ col: "pts", op: "ge", value: 10 }]);
   });
-  it("gives the chat's table today (parity pin until pageRows goes)", () => {
-    const query = { view: "Totals", min_gp: "4", stats: '[{"col":"pts","op":"ge","value":20}]' };
-    expect(playerDisplay(rows, [], playerStatsPageOptions(query, rows)).rows).toEqual(
-      pageRows("player_stats", "il", { rows }, new URLSearchParams(query)),
-    );
+  it("shows Per Game by default and Totals when asked", () => {
+    const one = [{ team_id: 2, player_id: 1, Player: "A", gp: 4, pts: 80, poss_on_floor: 400, minutes: 120 }];
+    expect(playerStatsTable({ rows: one, meta: {} }, {}).rows[0].pts).toBe(20);
+    expect(playerStatsTable({ rows: one, meta: {} }, { view: "Totals" }).rows[0].pts).toBe(80);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flatten } from "./flatten";
+import { flatten, withTeamNetRank } from "./flatten";
 import { cellText } from "./display";
 
 const payload = {
@@ -21,5 +21,27 @@ describe("lineup_roster tool", () => {
     const row = { id: "row1", cells: payload.rows[0] };
     expect(cellText("lineup_roster", "il", null, "name", row)).toBe("YAM MADAR");
     expect(cellText("lineup_roster", "il", null, "minutes", row)).toBeNull();
+  });
+});
+
+describe("withTeamNetRank: the chat's on-team net impact rank", () => {
+  it("ranks within each team, ties share the better rank, blanks are unranked", () => {
+    const got = withTeamNetRank(
+      [
+        { team_id: 2, "Net RTG Diff": 3 },
+        { team_id: 2, "Net RTG Diff": 9 },
+        { team_id: 3, "Net RTG Diff": -1 },
+        { team_id: 2, "Net RTG Diff": 3 },
+        { team_id: 2, "Net RTG Diff": null },
+      ],
+      "Net RTG Diff",
+    );
+    expect(got.map((r) => [r.team_rank_net, r.team_ranked])).toEqual([
+      [2, 3],
+      [1, 3],
+      [1, 1],
+      [2, 3],
+      [undefined, undefined],
+    ]);
   });
 });
