@@ -931,3 +931,8 @@ table.dataTable td.ibpl-name-has-img { text-align: left; }
 .gf-top-toggle:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
 .gf-top-toggle[aria-expanded="false"] { margin-bottom: 0; }
 .ibpl-ribbon-detail-meta .gf-top-score { color: var(--ibpl-text); font-variant-numeric: tabular-nums; }
+/* Gameflow lineup ratings tinted against the game (user 2026-11-15). The
+   tint sits behind the text, which keeps its own colour in both themes. */
+.ibpl-react-gameflow { --gf-good-rgb: 46, 160, 90; --gf-bad-rgb: 214, 72, 60; }
+html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf-bad-rgb: 200, 50, 45; }
+.gf-rtg { padding: 0 4px; border-radius: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
