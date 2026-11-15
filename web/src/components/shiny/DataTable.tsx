@@ -736,11 +736,7 @@ export default function DataTable({
                         : null;
                       const content = img ? (
                         <span className="ibpl-name-with-img">
-                          <NameImage
-                            key={img.src ?? ""}
-                            src={img.src}
-                            kind={img.kind}
-                          />
+                          <NameImage src={img.src} kind={img.kind} />
                           <span>{cell.node}</span>
                         </span>
                       ) : (
@@ -754,7 +750,6 @@ export default function DataTable({
                           ? "ibpl-name-source"
                           : "",
                         c.cls ?? "",
-                        img ? "ibpl-name-has-img" : "",
                         cell.className ?? "",
                         // Only ramp colours are re-tinted in light; a
                         // token-based bg (the TOTAL row) already follows it.

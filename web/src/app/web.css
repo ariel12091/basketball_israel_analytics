@@ -903,7 +903,3 @@ body.ibpl-touch-tips table.dataTable thead th > .ibpl-m-th-info { width: 22px; h
 .ibpl-name-img-photo { object-fit: cover; object-position: center top; border-radius: 50%; background: var(--ibpl-surface); box-shadow: 0 0 0 1px var(--ibpl-border); }
 /* The On/Off pivot caret (::after on the cell button) stays beside the name.  */
 .ibpl-cell-btn:has(> .ibpl-name-with-img) { display: inline-flex; align-items: center; }
-/* Name cells with an image slot start at the left so the logos/headshots form
-   one column (centred, each pair sat at a different x). Outranks DataTables'
-   table.dataTable td.dt-center. */
-table.dataTable td.ibpl-name-has-img { text-align: left; }
