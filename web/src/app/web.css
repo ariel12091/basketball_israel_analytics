@@ -2017,3 +2017,34 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 @media (max-width: 767.98px) {
   .ibpl-columns-moves button { width: 36px; height: 36px; }
 }
+
+/* Columns menu: drag by the grip (pointer events, mouse and touch). */
+.ibpl-columns-hint { flex: 1 1 auto; margin-left: 8px; color: var(--ibpl-text-dim); font-size: 0.72rem; }
+.ibpl-columns-list { position: relative; }
+.ibpl-columns-list li { position: relative; transition: transform 150ms ease; }
+.ibpl-columns-list li.is-dragged {
+  z-index: 2;
+  transition: none;
+  background: var(--ibpl-surface-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(var(--ibpl-accent-rgb), 0.6);
+}
+.ibpl-columns-list.is-dragging li:not(.is-dragged):hover { background: transparent; }
+.ibpl-columns-grip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 32px;
+  margin-right: -4px;
+  color: var(--ibpl-text-dim);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ibpl-columns-grip:hover { color: var(--ibpl-accent); }
+.ibpl-columns-list.is-dragging,
+.ibpl-columns-list.is-dragging .ibpl-columns-grip { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) {
+  .ibpl-columns-list li { transition: none; }
+}
