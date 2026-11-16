@@ -945,8 +945,7 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
    but a soft underline that firms up on hover and a chevron that nudges
    forward. Lineups list their players split by middle dots (LineupNames). */
 .lineup-names-name { white-space: nowrap; }
-.lineup-names-sep { color: var(--ibpl-text-dim); font-weight: 400; }
-.ibpl-lineup-link,
+.lineup-names-sep { color: var(--ibpl-text-dim); font-weight: 700; }
 .ribbon-link,
 .ld-lineup-link {
   color: var(--ibpl-accent);
@@ -956,7 +955,10 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
   text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
   transition: color 120ms ease, text-decoration-color 120ms ease;
 }
+/* Only the names are underlined, so the dots between them stay clean. */
 .ibpl-lineup-link {
+  color: var(--ibpl-accent);
+  transition: color 120ms ease;
   display: inline;
   padding: 0;
   border: 0;
@@ -966,7 +968,16 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
   text-align: left;
   cursor: pointer;
 }
-.ibpl-lineup-link .lineup-names-sep { color: rgba(var(--ibpl-accent-rgb), 0.55); }
+.ibpl-lineup-link .lineup-names-name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color 120ms ease;
+}
+.ibpl-lineup-link:hover .lineup-names-name,
+.ibpl-lineup-link:focus-visible .lineup-names-name { text-decoration-color: currentColor; }
+.ibpl-lineup-link .lineup-names-sep { color: var(--ibpl-text-muted); }
 .ibpl-lineup-link::after {
   content: "\203A";
   display: inline-block;
