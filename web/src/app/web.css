@@ -572,7 +572,7 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-panel { position: fixed; left: 0; right: 0; bottom: var(--ibpl-tabbar-h, 0px); z-index: 1040;
   background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
-  max-height: 62vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  max-height: 62vh; }
 .gf-m-panel-bar { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   background: none; border: 0; color: var(--ibpl-text); padding: 10px 16px; }
 .gf-m-sum { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 0.84375rem; }
@@ -1017,7 +1017,7 @@ td .ribbon-link:focus-visible {
   bottom: 0;
   z-index: 2;
   margin: 8px -16px 0;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  padding: 10px 16px;
   border-top: 1px solid var(--ibpl-border);
   background: var(--ibpl-surface);
 }
@@ -1969,7 +1969,11 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
    dividers and labels, then the update date and the round buttons.
    --ibpl-tabbar-h is the bottom bar's height (0 when there is none); the
    page padding, the Ask button and the Gameflow phone panel stay above it. */
-:root { --ibpl-tabbar-h: calc(54px + env(safe-area-inset-bottom, 0px)); }
+:root { --ibpl-tabbar-h: 54px; }
+/* No env(safe-area-inset-bottom) here or on the other bottom-pinned pieces:
+   the page does not draw under the system bars (no viewport-fit=cover), yet
+   Android Chrome reports a 47 px inset while its address bar shows, which
+   became an empty band under the tab bar (measured on a phone 2026-11-16). */
 .ibpl-topbar { background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
 .ibpl-topbar-row { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 14px; }
 .ibpl-brand { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ibpl-accent); font-family: var(--ibpl-font-display); font-size: 1.05rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
@@ -2006,7 +2010,7 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 .ibpl-menu-list .active:hover { background: rgba(var(--ibpl-accent-rgb), 0.22); color: var(--ibpl-accent); }
 
 /* The bottom tab bar. */
-.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 0 4px env(safe-area-inset-bottom, 0px); box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); }
+.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 0 4px; box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); }
 .ibpl-pages ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 720px; height: 100%; margin: 0 auto; padding: 0; list-style: none; }
 .ibpl-page { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%; border-radius: 12px; color: var(--ibpl-text-muted); font-size: 0.66rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .ibpl-page .bi { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 26px; border-radius: 999px; font-size: 1.1rem; transition: background-color 120ms ease; }

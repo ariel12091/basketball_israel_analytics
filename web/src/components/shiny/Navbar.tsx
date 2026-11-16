@@ -121,73 +121,6 @@ function lastUpdatedLong(txt: string) {
   return `${lastUpdatedShort(txt)}${t ? `, ${t[1]}` : ""}`;
 }
 
-/** TEMPORARY (Preview only, remove before merge): ?vv=1 shows the viewport
- * numbers behind the phone tab bar's position, to diagnose a band under it
- * in an Android in-app browser. */
-function ViewportReadout() {
-  const [text, setText] = useState("");
-  useEffect(() => {
-    if (!new URLSearchParams(window.location.search).has("vv")) return;
-    const probe = document.createElement("div");
-    probe.style.cssText =
-      "position:fixed;left:0;bottom:0;width:1px;height:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none";
-    document.body.appendChild(probe);
-    const read = () => {
-      const vv = window.visualViewport;
-      const bar = document
-        .getElementById("ibpl_pages")
-        ?.getBoundingClientRect();
-      const p = probe.getBoundingClientRect();
-      setText(
-        [
-          `innerH ${window.innerHeight}  clientH ${document.documentElement.clientHeight}`,
-          `vv h ${vv?.height.toFixed(1)} top ${vv?.offsetTop.toFixed(1)} scale ${vv?.scale.toFixed(2)}`,
-          `bar top ${bar?.top.toFixed(1)} bottom ${bar?.bottom.toFixed(1)} h ${bar?.height.toFixed(1)}`,
-          `fixed probe bottom ${p.bottom.toFixed(1)}  safe-area ${p.height.toFixed(1)}`,
-          `screen ${window.screen.height}  dpr ${window.devicePixelRatio}  scrollY ${Math.round(window.scrollY)}`,
-        ].join("\n"),
-      );
-    };
-    read();
-    const vv = window.visualViewport;
-    vv?.addEventListener("resize", read);
-    vv?.addEventListener("scroll", read);
-    window.addEventListener("scroll", read, { passive: true });
-    window.addEventListener("resize", read);
-    const t = window.setInterval(read, 500);
-    return () => {
-      window.clearInterval(t);
-      vv?.removeEventListener("resize", read);
-      vv?.removeEventListener("scroll", read);
-      window.removeEventListener("scroll", read);
-      window.removeEventListener("resize", read);
-      probe.remove();
-    };
-  }, []);
-  if (!text) return null;
-  return (
-    <pre
-      style={{
-        position: "fixed",
-        top: 60,
-        left: 4,
-        right: 4,
-        zIndex: 20000,
-        margin: 0,
-        padding: 6,
-        background: "rgba(0,0,0,0.8)",
-        color: "#fff",
-        fontSize: 11,
-        lineHeight: 1.35,
-        whiteSpace: "pre-wrap",
-        pointerEvents: "none",
-      }}
-    >
-      {text}
-    </pre>
-  );
-}
-
 function rememberLeague(league: League) {
   try {
     window.localStorage.setItem("ibpl_league_select", LEAGUE_VALUE[league]);
@@ -248,7 +181,6 @@ export default function Navbar({
   );
   return (
     <>
-      <ViewportReadout />
       <header className="ibpl-topbar">
         <div className="ibpl-topbar-row">
           <Link
