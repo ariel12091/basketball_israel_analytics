@@ -284,10 +284,28 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .poss-stepper-box input:focus { background: var(--ibpl-surface-2); }
 /* The box clips its children's outlines, so the ring goes on the box. */
 .poss-stepper-box:has(:focus-visible) { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
-.view-tabs-list { display: flex; gap: 2px; margin: 8px 0; border-bottom: 1px solid var(--ibpl-border); overflow-x: auto; }
-.view-tabs-tab { padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ibpl-text-dim); font-size: .88rem; font-weight: 600; white-space: nowrap; }
-.view-tabs-tab:hover { color: var(--ibpl-text); }
-.view-tabs-tab[data-state="active"] { color: var(--ibpl-accent); border-bottom-color: var(--ibpl-accent); }
+/* The page's views as a segmented control (user 2026-11-16: the navbar no
+   longer has view menus, so these are the one way to switch and must read
+   as a primary control): a pill track, the active view filled amber. */
+.view-tabs-list { display: flex; gap: 4px; width: max-content; max-width: 100%; margin: 10px 0 8px; padding: 4px; box-sizing: border-box; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-bg-sunken); overflow-x: auto; scrollbar-width: none; }
+.view-tabs-list::-webkit-scrollbar { display: none; }
+.view-tabs-tab { flex: 0 0 auto; height: 38px; padding: 0 20px; border: 0; border-radius: 999px; background: transparent; color: var(--ibpl-text-body); font-size: .95rem; font-weight: 700; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
+.view-tabs-tab:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+.view-tabs-tab[data-state="active"] { background: var(--ibpl-accent); color: var(--ibpl-bg); box-shadow: 0 2px 10px rgba(var(--ibpl-accent-rgb), 0.3); }
+.view-tabs-tab:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+@media (max-width: 767.98px) {
+  .view-tabs-tab { height: 36px; padding: 0 14px; font-size: .9rem; }
+}
+/* When the views overflow (Player Stats on a phone), the right edge fades
+   until the row is scrolled: a scroll timeline only runs on a list that
+   scrolls, so a list that fits never fades. */
+@supports (animation-timeline: scroll()) {
+  .view-tabs-list { animation: view-tabs-more linear both; animation-timeline: scroll(self inline); }
+  @keyframes view-tabs-more {
+    from { mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent); }
+    to { mask-image: none; }
+  }
+}
 .ibpl-more { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; text-decoration: underline dashed; text-decoration-color: var(--ibpl-text-dim); text-underline-offset: 3px; cursor: help; }
 .ibpl-more:hover, .ibpl-more[data-state="open"] { text-decoration-color: var(--ibpl-accent); }
 .ibpl-more-pop { z-index: 10050; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); color: var(--ibpl-text); font-size: .82rem; line-height: 1.4; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
@@ -2102,7 +2120,7 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   .ibpl-drawer-layout .chips-row-controls .poss-stepper { flex-direction: column; align-items: flex-start; gap: 3px; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-label { font-size: 0.68rem; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-box input { width: 40px; }
-  .ibpl-drawer-layout .view-tabs-list { margin: 4px 0; }
+  .ibpl-drawer-layout .view-tabs-list { margin: 6px 0; }
   .ibpl-drawer-layout .chips-row-controls .shiny-download-link { height: 32px; padding: 0 10px; font-size: 0.75rem; }
   .ibpl-drawer-layout .chips-row-controls > .poss-stepper + :not(.poss-stepper) { margin-left: auto; }
   /* Lineups: group size beside the team; the player chips below. Player
