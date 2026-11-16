@@ -395,41 +395,6 @@ export default function LineupsClient({
       }}
       main={
         <>
-          <ChipsRow
-            p={p}
-            seasonChip={seasonChipLabel(league, query.season)}
-            chips={chips}
-            activeCount={activeCount}
-            active={activeCount > 0 || filters.length > 0}
-            onClearAll={reset}
-            extra={
-              <>
-                <StatFilters
-                  p={p}
-                  cols={ui.lineupStatFilterCols[view]}
-                  filters={filters}
-                  onChange={(fs) =>
-                    set({ stats: fs.length ? JSON.stringify(fs) : null })
-                  }
-                />
-              </>
-            }
-            controls={
-              <PossStepper
-                id={`${p}_minposs`}
-                label={tt("Min Poss", "min_poss_lineup")}
-                name="Min Poss"
-                min={0}
-                max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
-                step={10}
-                value={min}
-                onChange={(v) => {
-                  setAuto(false);
-                  set({ min_poss: String(v) });
-                }}
-              />
-            }
-          />
           {/* Team and players sit above the table, always in reach (user
               2026-10-28); the rest of the filters are in the panel. */}
           <div className="lineup-bar">
@@ -485,6 +450,41 @@ export default function LineupsClient({
             views={Object.values(LABELS)}
             view={LABELS[view]}
             onView={changeView}
+          />
+          <ChipsRow
+            p={p}
+            seasonChip={seasonChipLabel(league, query.season)}
+            chips={chips}
+            activeCount={activeCount}
+            active={activeCount > 0 || filters.length > 0}
+            onClearAll={reset}
+            extra={
+              <>
+                <StatFilters
+                  p={p}
+                  cols={ui.lineupStatFilterCols[view]}
+                  filters={filters}
+                  onChange={(fs) =>
+                    set({ stats: fs.length ? JSON.stringify(fs) : null })
+                  }
+                />
+              </>
+            }
+            controls={
+              <PossStepper
+                id={`${p}_minposs`}
+                label={tt("Min Poss", "min_poss_lineup")}
+                name="Min Poss"
+                min={0}
+                max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
+                step={10}
+                value={min}
+                onChange={(v) => {
+                  setAuto(false);
+                  set({ min_poss: String(v) });
+                }}
+              />
+            }
           />
           <div className="table-top">
             <ViewIntro

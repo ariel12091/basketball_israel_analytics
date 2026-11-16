@@ -230,6 +230,11 @@ export default function TeamRatingsClient({
       }}
       main={
         <>
+          <ViewTabs
+            views={views.map((v) => LABELS[v])}
+            view={LABELS[view]}
+            onView={changeView}
+          />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
@@ -287,11 +292,6 @@ export default function TeamRatingsClient({
                 )}
               </div>
             }
-          />
-          <ViewTabs
-            views={views.map((v) => LABELS[v])}
-            view={LABELS[view]}
-            onView={changeView}
           />
           <div className="table-top">
             <ViewIntro

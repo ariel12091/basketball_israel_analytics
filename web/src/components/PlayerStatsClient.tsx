@@ -220,6 +220,41 @@ export default function PlayerStatsClient({
       }}
       main={
         <>
+          {/* Teams and players sit above the table, always in reach, as on
+              Lineups (user 2026-10-28). */}
+          <div className="lineup-bar ps-bar">
+            <Selectize
+              id="ts_teams"
+              label="Teams"
+              multiple
+              choices={teams}
+              value={list(query.teams)}
+              onChange={(v) =>
+                set({
+                  teams: v.join(","),
+                  players: choices
+                    .filter(
+                      (c) =>
+                        list(query.players).includes(c.value) &&
+                        (!v.length || v.includes(c.value.split(":")[0])),
+                    )
+                    .map((c) => c.value)
+                    .join(","),
+                })
+              }
+              placeholder="All teams"
+            />
+            <Selectize
+              id="ts_players"
+              label="Players"
+              multiple
+              choices={choices}
+              value={list(query.players)}
+              onChange={(v) => set({ players: v.join(",") })}
+              placeholder="All players"
+            />
+          </div>
+          <ViewTabs views={[...PLAYER_MODES]} view={mode} onView={onMode} />
           <ChipsRow
             p="ts"
             seasonChip={seasonChipLabel(league, query.season)}
@@ -267,41 +302,6 @@ export default function PlayerStatsClient({
               </>
             }
           />
-          {/* Teams and players sit above the table, always in reach, as on
-              Lineups (user 2026-10-28). */}
-          <div className="lineup-bar ps-bar">
-            <Selectize
-              id="ts_teams"
-              label="Teams"
-              multiple
-              choices={teams}
-              value={list(query.teams)}
-              onChange={(v) =>
-                set({
-                  teams: v.join(","),
-                  players: choices
-                    .filter(
-                      (c) =>
-                        list(query.players).includes(c.value) &&
-                        (!v.length || v.includes(c.value.split(":")[0])),
-                    )
-                    .map((c) => c.value)
-                    .join(","),
-                })
-              }
-              placeholder="All teams"
-            />
-            <Selectize
-              id="ts_players"
-              label="Players"
-              multiple
-              choices={choices}
-              value={list(query.players)}
-              onChange={(v) => set({ players: v.join(",") })}
-              placeholder="All players"
-            />
-          </div>
-          <ViewTabs views={[...PLAYER_MODES]} view={mode} onView={onMode} />
           <div className="table-top">
             <ViewIntro
               blocks={introBlocks}
