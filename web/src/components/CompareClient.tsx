@@ -683,9 +683,7 @@ function CompareTab({
         />
       </div>
       <div className={`cmp-layout${filtersFlipped ? " is-flipped" : ""}`}>
-        <section className="cmp-sides" aria-label="Sides A and B">
-          {sides}
-        </section>
+        {sides}
         <div className="cmp-results">
           {!playerMode && q.preset === "date_split" && !q.split_date && (
             <p role="alert">
