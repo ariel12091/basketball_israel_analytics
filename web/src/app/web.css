@@ -2207,3 +2207,16 @@ html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0
   .table-tools .shiny-download-link::after { content: ""; position: absolute; inset: -8px; }
   .table-top .tl-tag::after { content: ""; position: absolute; inset: -13px 0; }
 }
+/* Gameflow's tied line (user 2026-11-16: much more prominent, but not to be
+   read as the score line). Heavier and darker than the faint gridlines, kept
+   dashed and muted so the solid score line, drawn over it, stays the chart. */
+.ibpl-react-gameflow .ibpl-ribbon-zero {
+  stroke: var(--ibpl-text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.85;
+}
+.ibpl-react-gameflow .ibpl-ribbon-zero-label {
+  fill: var(--ibpl-text);
+  font-weight: 600;
+}

@@ -307,6 +307,7 @@ export function GameflowView({
     active: hover ?? active,
     stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
+    previewing: preview != null,
     layout,
     ratingMode,
     runs,
@@ -320,16 +321,22 @@ export function GameflowView({
         if (how === "tap" && r) selectRun(r);
         return;
       }
-      const run = r as ExplainedRun | null;
+      const tipRun = r as ExplainedRun | null;
+      // A tap on a chip also lists the run's lineups, as a click on its band
+      // does (user 2026-11-17), and pins its tip; a second tap closes both.
+      if (how === "tap") {
+        const open =
+          tipRun != null &&
+          !(run && run.side === tipRun.side && run.start === tipRun.start);
+        if (tipRun) selectRun(tipRun);
+        else if (run) clear();
+        setRunTip(open ? { run: tipRun, box: box!, pinned: true } : null);
+        return;
+      }
+      // A pointer shows the tip while resting and leaves a pinned one alone.
       setRunTip((tip) => {
-        // A tap pins the tip (touch has no hover) and a second tap closes it;
-        // a pointer shows it while resting and leaves a pinned one alone.
-        if (how === "tap")
-          return run && !(tip?.pinned && tip.run === run)
-            ? { run, box: box!, pinned: true }
-            : null;
         if (tip?.pinned) return tip;
-        return run && box ? { run, box, pinned: false } : null;
+        return tipRun && box ? { run: tipRun, box, pinned: false } : null;
       });
     },
   };
