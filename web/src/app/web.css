@@ -635,7 +635,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-runrow.is-defining.is-opp .gf-m-dot { background: var(--ibpl-text-muted); }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 0.75rem; line-height: 1.4; }
-.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; max-height: inherit; }
+/* The row's max-height is the room the chart gave up (set inline); without
+   inheriting it a long lineup list spilled over the chart below. */
 /* Several cards (Together first): a wider column with each card's numbers
    on one line, so all of them fit without scrolling (user 2026-11-11). */
 .gf-details .gf-player-cards.is-multi { flex-basis: 470px; width: 470px; }
@@ -1295,3 +1297,10 @@ button.cmp-back-btn:hover > span[aria-hidden],
 @media (prefers-reduced-motion: reduce) {
   :root { --ibpl-btn-ease: 0s; }
 }
+
+/* Desktop navbar stays put (2026-11-16). Its right cluster (league, season,
+   theme, glossary, updated) is position: fixed with no background, while the
+   bar itself scrolled away, so page content showed through the cluster. A
+   sticky bar keeps the cluster on its own background. Phones are unaffected:
+   there the cluster is static inside the collapsed menu. */
+body:not(.ibpl-collapsed-nav) nav.navbar { position: sticky; top: 0; z-index: 9998; }
