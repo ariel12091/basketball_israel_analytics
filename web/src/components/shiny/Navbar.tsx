@@ -121,54 +121,6 @@ function lastUpdatedLong(txt: string) {
   return `${lastUpdatedShort(txt)}${t ? `, ${t[1]}` : ""}`;
 }
 
-/** Some mobile browsers (Android in-app Chrome tabs) do not move
- * bottom-fixed elements when their address bar slides away, so the tab bar
- * floats above an empty band. Measure the bar against the visual viewport
- * and shift everything pinned to the bottom (web.css --ibpl-vv-shift). */
-function useBottomPin(bar: React.RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const vv = window.visualViewport;
-    const el = bar.current;
-    if (!vv || !el) return;
-    const root = document.documentElement.style;
-    let shift = 0;
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      let next = 0;
-      if (
-        getComputedStyle(el).position === "fixed" &&
-        Math.abs(vv.scale - 1) < 0.01
-      ) {
-        const bottom = el.getBoundingClientRect().bottom - shift;
-        const gap = Math.round(vv.offsetTop + vv.height - bottom);
-        if (gap > 1) next = gap;
-      }
-      if (next !== shift) {
-        shift = next;
-        if (shift) root.setProperty("--ibpl-vv-shift", `${shift}px`);
-        else root.removeProperty("--ibpl-vv-shift");
-      }
-    };
-    const queue = () => {
-      if (!frame) frame = requestAnimationFrame(measure);
-    };
-    measure();
-    vv.addEventListener("resize", queue);
-    vv.addEventListener("scroll", queue);
-    window.addEventListener("scroll", queue, { passive: true });
-    window.addEventListener("resize", queue);
-    return () => {
-      cancelAnimationFrame(frame);
-      vv.removeEventListener("resize", queue);
-      vv.removeEventListener("scroll", queue);
-      window.removeEventListener("scroll", queue);
-      window.removeEventListener("resize", queue);
-      root.removeProperty("--ibpl-vv-shift");
-    };
-  }, [bar]);
-}
-
 function rememberLeague(league: League) {
   try {
     window.localStorage.setItem("ibpl_league_select", LEAGUE_VALUE[league]);
@@ -198,8 +150,6 @@ export default function Navbar({
   children: React.ReactNode;
 }) {
   const euro = league !== "il";
-  const pagesRef = useRef<HTMLElement>(null);
-  useBottomPin(pagesRef);
   const currentTab = TABS.find((t) => t.value === tab);
   // app.js applyValue(): a league-only page falls back to Home when switching
   // away from its league. EuroLeague and EuroCup share a season convention,
@@ -242,12 +192,7 @@ export default function Navbar({
             <i className="bi bi-activity" aria-hidden="true"></i>
             <span className="ibpl-brand-name">IBPL Analytics</span>
           </Link>
-          <nav
-            className="ibpl-pages"
-            id="ibpl_pages"
-            aria-label="Pages"
-            ref={pagesRef}
-          >
+          <nav className="ibpl-pages" id="ibpl_pages" aria-label="Pages">
             <ul>
               {TABS.filter((t) => !(euro && t.ilOnly)).map((t) => {
                 const here = t.value === tab;
