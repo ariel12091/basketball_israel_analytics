@@ -433,6 +433,11 @@ export default function OnOffClient({
       }}
       main={
         <>
+          <ViewTabs
+            views={views.map((v) => VIEW_LABEL[v])}
+            view={VIEW_LABEL[view]}
+            onView={changeView}
+          />
           <ChipsRow
             p={p === "on" ? "on" : "euro"}
             seasonChip={seasonChipLabel(league, query.season)}
@@ -485,11 +490,6 @@ export default function OnOffClient({
                 )}
               </>
             }
-          />
-          <ViewTabs
-            views={views.map((v) => VIEW_LABEL[v])}
-            view={VIEW_LABEL[view]}
-            onView={changeView}
           />
           <div className="table-top">
             <ViewIntro

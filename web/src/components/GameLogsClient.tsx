@@ -232,6 +232,15 @@ export default function GameLogsClient({
       }}
       main={
         <>
+          <ViewTabs
+            views={VIEWS}
+            view={view === "four_factors" ? "Four Factors" : "Summary"}
+            onView={changeView}
+            tips={{
+              Summary: FILTER_TIPS.view_summary,
+              "Four Factors": FILTER_TIPS.view_ff,
+            }}
+          />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
@@ -251,15 +260,6 @@ export default function GameLogsClient({
             }
             active={activeCount > 0 || stats.length > 0}
             onClearAll={reset}
-          />
-          <ViewTabs
-            views={VIEWS}
-            view={view === "four_factors" ? "Four Factors" : "Summary"}
-            onView={changeView}
-            tips={{
-              Summary: FILTER_TIPS.view_summary,
-              "Four Factors": FILTER_TIPS.view_ff,
-            }}
           />
           {/* Gameflow takes over the table's area (user 2026-10-28: no modal
               windows); the table stays mounted beneath, so Back returns to

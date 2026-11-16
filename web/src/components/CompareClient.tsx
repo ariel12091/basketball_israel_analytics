@@ -616,6 +616,14 @@ function CompareTab({
   );
   const main = (
     <>
+      <ViewTabs
+        views={["Teams", "Lineups", "Players"]}
+        view={q.view}
+        onView={mode}
+      />
+      <div className="cmp-settings" role="group" aria-label="Compare settings">
+        {shared}
+      </div>
       <ChipsRow
         p="cmp"
         seasonChip={seasonLabel(q.season)}
@@ -668,14 +676,6 @@ function CompareTab({
           )
         }
       />
-      <ViewTabs
-        views={["Teams", "Lineups", "Players"]}
-        view={q.view}
-        onView={mode}
-      />
-      <div className="cmp-settings" role="group" aria-label="Compare settings">
-        {shared}
-      </div>
       <div className="table-top">
         <ViewIntro
           blocks={ui.compare.blocks as Block[]}
