@@ -58,7 +58,14 @@ export const metadata: Metadata = {
   title: { default: "IBPL Analytics", template: "%s | IBPL Analytics" },
   description: "Basketball game logs for Israel, EuroLeague and EuroCup",
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+// viewport-fit=cover: on iPhones the page reaches the bottom edge, so the
+// phone tab bar (web.css, padded by env(safe-area-inset-bottom)) sits flush
+// with it instead of floating above an empty band.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export default function RootLayout({
   children,
