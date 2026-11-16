@@ -288,7 +288,7 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
    so these are the one way to switch and must read as a primary control):
    tabs rounded on top, standing on an amber line, the active one filled
    amber. */
-.view-tabs-list { display: flex; gap: 4px; margin: 10px 0 8px; border-bottom: 2px solid var(--ibpl-accent); overflow-x: auto; scrollbar-width: none; }
+.view-tabs-list { display: flex; gap: 4px; margin: 8px 0; border-bottom: 2px solid var(--ibpl-accent); overflow-x: auto; scrollbar-width: none; }
 .view-tabs-list::-webkit-scrollbar { display: none; }
 .view-tabs-tab { flex: 0 0 auto; height: 38px; padding: 0 20px; border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--ibpl-surface); color: var(--ibpl-text-body); font-size: .95rem; font-weight: 700; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
 .view-tabs-tab:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
@@ -416,9 +416,13 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .onoff-tip-why p { margin: 0 0 6px; }
 .onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
 .ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-/* The view's question shares the legend's row: question left, key right. */
-.table-top { align-items: flex-start; }
-.table-top .view-intro { flex: 1 1 320px; margin: 0; align-self: center; }
+/* The view's question shares the legend's row (user 2026-11-16: it took a
+   whole boxed strip with the key pushed to the far edge): a quiet line of
+   text, the key right after it, wrapping under it when there is no room. */
+.table-top { align-items: center; justify-content: flex-start; gap: 4px 16px; }
+.table-top .view-intro { flex: 0 1 auto; margin: 0; padding: 0; border: 0; background: transparent; font-size: .78rem; color: var(--ibpl-text-muted); }
+.table-top .view-intro-line b { color: var(--ibpl-text-body); font-weight: 600; }
+.table-top .table-legend { margin-left: 0; justify-content: flex-start; }
 /* The panel's title, Close and Clear all stay pinned while it scrolls. */
 .filter-drawer { padding-top: 0; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
@@ -2121,7 +2125,7 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   .ibpl-drawer-layout .chips-row-controls .poss-stepper { flex-direction: column; align-items: flex-start; gap: 3px; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-label { font-size: 0.68rem; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-box input { width: 40px; }
-  .ibpl-drawer-layout .view-tabs-list { margin: 6px 0; }
+  .ibpl-drawer-layout .view-tabs-list { margin: 4px 0; }
   .ibpl-drawer-layout .chips-row-controls .shiny-download-link { height: 32px; padding: 0 10px; font-size: 0.75rem; }
   .ibpl-drawer-layout .chips-row-controls > .poss-stepper + :not(.poss-stepper) { margin-left: auto; }
   /* Lineups: group size beside the team; the player chips below. Player
