@@ -411,15 +411,37 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .onoff-tip-why p { margin: 0 0 6px; }
 .onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
 .ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-/* The legend at the table's top right, the view's "?" (ViewIntro) at its
-   end, beside the row tags (user 2026-11-16). */
-.table-top { align-items: center; justify-content: flex-end; }
-.table-top .view-intro { order: 2; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; }
+/* Above the table (user 2026-11-16): the row tags, the view's "?" and the
+   table tools (CSV as an arrow, Columns) on the left; the colour key at the
+   top right. Two rows when one is too crowded. */
+.table-top { align-items: center; justify-content: flex-start; }
+.table-top .tl-tags { order: 0; }
+.table-top .view-intro { order: 1; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; }
+.table-top .table-legend { order: 4; margin-left: auto; }
 .view-intro-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55); border-radius: 50%; background: transparent; color: var(--ibpl-accent); font-size: .9rem; transition: background-color 120ms ease; }
 .view-intro-btn:hover, .view-intro-btn[data-state="open"] { background: rgba(var(--ibpl-accent-rgb), 0.14); }
 .view-intro-pop { max-width: min(380px, calc(100vw - 24px)); max-height: min(70vh, var(--radix-popover-content-available-height, 70vh)); overflow-y: auto; font-size: .82rem; }
 .view-intro-pop .view-intro-question { margin: 0 0 6px; color: var(--ibpl-accent); font-weight: 700; }
 .view-intro-pop ul { margin: 0 0 8px; padding-left: 18px; }
+/* CSV and Columns (toolsSlot.tsx) end the row, after the "?". */
+.table-top .table-tools { order: 2; display: inline-flex; align-items: center; gap: 8px; }
+.table-top .table-tools:empty { display: none; }
+.table-tools div.dt-buttons { margin: 0; gap: 8px; flex-wrap: nowrap; }
+body .table-tools div.dt-buttons > .dt-button,
+body .table-tools .shiny-download-link.btn { height: 28px; padding: 0 10px !important; font-size: .75rem; line-height: 1; white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .table-top { gap: 6px; }
+  .table-top .table-legend { gap: 6px; }
+  .table-top .tl-tags { gap: 4px; }
+  .table-top .tl-shot { padding-left: 4px; padding-right: 4px; }
+  body .table-top .tl-tag { padding: 0 4px; }
+}
+/* CSV is a round download arrow like the "?" (its name says "Download CSV"). */
+body .table-tools div.dt-buttons > .buttons-csv,
+body .table-tools .shiny-download-link.btn { width: 28px; padding: 0 !important; justify-content: center; font-size: 0; gap: 0; border-radius: 50% !important; }
+.table-tools div.dt-buttons > .buttons-csv span { display: none; }
+.table-tools div.dt-buttons > .buttons-csv .bi,
+.table-tools .shiny-download-link.btn .bi { font-size: .85rem; }
 /* The panel's title, Close and Clear all stay pinned while it scrolls. */
 .filter-drawer { padding-top: 0; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
@@ -1119,7 +1141,8 @@ body:has(.filter-drawer[data-state="open"])::after {
 
 /* CSV download, in the table toolbar and On/Off's. */
 div.dt-buttons > .dt-button,
-.chips-row-controls .shiny-download-link.btn {
+.chips-row-controls .shiny-download-link.btn,
+.table-tools .shiny-download-link.btn {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
@@ -1130,7 +1153,8 @@ div.dt-buttons > .dt-button,
   transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
 }
 div.dt-buttons > .dt-button:hover:not(.disabled),
-.chips-row-controls .shiny-download-link.btn:hover {
+.chips-row-controls .shiny-download-link.btn:hover,
+.table-tools .shiny-download-link.btn:hover {
   background: rgba(var(--ibpl-accent-rgb), 0.16) !important;
 }
 
@@ -2115,7 +2139,9 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
      chips where they fit, the steppers on the next line. */
   .ibpl-drawer-layout .chips-row { align-items: flex-end; justify-content: flex-start; }
   .ibpl-drawer-layout .chips-row-controls { display: contents; }
-  body .ibpl-drawer-layout .chips-row-controls > .poss-stepper.poss-stepper { order: 2; }
+  body .ibpl-drawer-layout .chips-row-controls > .poss-stepper.poss-stepper { order: 3; }
+  /* The steppers start their own line (a full-width break before them). */
+  .ibpl-drawer-layout .chips-row:has(.poss-stepper)::after { content: ""; order: 2; flex-basis: 100%; height: 0; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper { flex-direction: column; align-items: flex-start; gap: 3px; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-label { font-size: 0.68rem; }
   .ibpl-drawer-layout .chips-row-controls .poss-stepper-box input { width: 40px; }

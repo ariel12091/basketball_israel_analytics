@@ -48,6 +48,7 @@ import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
 import { ClearFiltersContext } from "./EmptyState";
 import * as Popover from "@radix-ui/react-popover";
+import { ToolsSlotProvider } from "./toolsSlot";
 export type { DrawerSection } from "./FilterDrawer";
 
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
@@ -441,6 +442,7 @@ export function TabFrame({
   };
   return (
     <ImageScopeContext.Provider value={imageScope}>
+      <ToolsSlotProvider>
       <TouchTipsContext.Provider value={body.touchTips}>
         <FrameContext.Provider value={frame}>
           <Navbar
@@ -503,6 +505,7 @@ export function TabFrame({
           {glossary && <Glossary onClose={() => setGlossary(false)} />}
         </FrameContext.Provider>
       </TouchTipsContext.Provider>
+      </ToolsSlotProvider>
     </ImageScopeContext.Provider>
   );
 }

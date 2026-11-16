@@ -491,11 +491,7 @@ export default function LineupsClient({
               blocks={frag.views[view] as Block[]}
               summary={layout.intro.lineups[view]}
             />
-            <TableLegend
-              league={league}
-              shots={viewKey.shots}
-              rank={viewKey.rank}
-            />
+            <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
           </div>
           <OutputArea
             id={euro ? "euro_ld_dt" : "ld_table"}

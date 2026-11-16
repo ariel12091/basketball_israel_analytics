@@ -15,6 +15,7 @@ import DateRangeInput from "./shiny/DateRangeInput";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
@@ -301,11 +302,8 @@ export default function TeamRatingsClient({
                 ]
               }
             />
-            <TableLegend
-              league={league}
-              shots={viewKey.shots}
-              rank={viewKey.rank}
-            />
+            <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+            <ToolsSlot />
           </div>
           <OutputArea
             id={euro ? "euroteam_table" : "tr_table"}

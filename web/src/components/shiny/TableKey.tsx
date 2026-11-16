@@ -15,19 +15,14 @@ import { useFrame } from "./TabKit";
 const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
 
 /** A compact visual key for the table's top right: the shading scale, a
- * miniature shot cell, the on/off markers and the row tags, each only when
- * the view has them. Captions are one or two words; tags explain themselves
- * in one sentence on hover or tap. */
+ * miniature shot cell and the on/off markers, each only when the view has
+ * them. Captions are one or two words. */
 export default function TableLegend({
-  league,
   shots = false,
   rank = false,
-  tags = false,
 }: {
-  league: League;
   shots?: boolean;
   rank?: boolean;
-  tags?: boolean;
 }) {
   const t = text.legend;
   return (
@@ -82,20 +77,26 @@ export default function TableLegend({
           </span>
         </span>
       )}
-      {tags && (
-        <span className="tl-tags">
-          {(["luck", "sample"] as const).map((k) => (
-            <MoreInfo
-              key={k}
-              label={text.tags[k].label}
-              className="onoff-luck-tag tl-tag"
-            >
-              <TagWhy league={league} kind={k} />
-            </MoreInfo>
-          ))}
-        </span>
-      )}
     </div>
+  );
+}
+
+/** On/Off's row tags ("3PT luck", "small sample"), each explained in one
+ * sentence on hover or tap. They sit with the "?" and CSV at the start of
+ * the row, apart from the colour key at the top right (user 2026-11-16). */
+export function TableTags({ league }: { league: League }) {
+  return (
+    <span className="tl-tags">
+      {(["luck", "sample"] as const).map((k) => (
+        <MoreInfo
+          key={k}
+          label={text.tags[k].label}
+          className="onoff-luck-tag tl-tag"
+        >
+          <TagWhy league={league} kind={k} />
+        </MoreInfo>
+      ))}
+    </span>
   );
 }
 
