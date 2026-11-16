@@ -11,6 +11,7 @@
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
 import MoreInfo, { HoverTip } from "./MoreInfo";
+import EmptyState from "./EmptyState";
 import {
   Fragment,
   useContext,
@@ -847,6 +848,13 @@ export default function DataTable({
                   })()}
                 </Fragment>
               ))}
+              {sortedRows.length === 0 && (
+                <tr className="ibpl-empty-row">
+                  <td colSpan={columns.length}>
+                    <EmptyState />
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

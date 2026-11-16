@@ -329,6 +329,7 @@ export default function PlayerStatsClient({
             loading={loading}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             {data ? (
               <PlayerStatsTable

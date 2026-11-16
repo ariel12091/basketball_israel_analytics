@@ -1702,3 +1702,73 @@ table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(
 .popover.ibpl-stat-pop { position: relative; z-index: 1070; max-width: min(320px, calc(100vw - 16px)); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 .popover.ibpl-stat-pop[data-state="closed"] { display: none; }
 .ibpl-stat-pop-arrow { fill: var(--ibpl-surface); stroke: var(--ibpl-border); }
+
+/* ---- Empty, loading and error states (user 2026-11-16) -------------------- */
+/* No rows: a short card where the table would be. */
+.ibpl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 12px auto;
+  padding: 28px 20px;
+  max-width: 420px;
+  border: 1px dashed var(--ibpl-border);
+  border-radius: 12px;
+  background: var(--ibpl-surface);
+  text-align: center;
+}
+.ibpl-empty-state-icon { color: var(--ibpl-accent); font-size: 1.4rem; line-height: 1; }
+.ibpl-empty-state-text { margin: 0; color: var(--ibpl-text-body); font-size: 0.9rem; font-weight: 600; }
+table.dataTable tbody tr.ibpl-empty-row > td { padding: 0 8px; border: 0; background: transparent !important; box-shadow: none !important; }
+table.dataTable tbody tr.ibpl-empty-row:hover > td { box-shadow: none; }
+/* The phone table is wide; keep the card in view at the left. */
+tr.ibpl-empty-row .ibpl-empty-state { position: sticky; left: 8px; margin-left: 0; }
+
+/* Loading: the old table dims (Shiny's recalculating) and a bar runs along
+   the top of the table area. */
+/* Always rendered (3px, empty) so nothing shifts when loading starts. */
+.ibpl-loading-bar {
+  position: relative;
+  height: 3px;
+  margin: 2px 0;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.ibpl-loading-bar:not(.is-on)::before { display: none; }
+.ibpl-loading-bar.is-on { background: rgba(var(--ibpl-accent-rgb), 0.15); }
+.ibpl-loading-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: 999px;
+  background: var(--ibpl-accent);
+  animation: ibpl-loading-slide 1.1s ease-in-out infinite;
+}
+@keyframes ibpl-loading-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibpl-loading-bar::before { width: 100%; animation: none; opacity: 0.6; }
+}
+
+/* Error: a card with what failed and a Retry button. */
+.shiny-output-error.ibpl-error-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--ibpl-neg-rgb), 0.45);
+  border-left: 3px solid var(--ibpl-neg);
+  border-radius: 10px;
+  background: rgba(var(--ibpl-neg-rgb), 0.08);
+  color: var(--ibpl-text-body);
+}
+.shiny-output-error.ibpl-error-card::before { display: none; content: none; }
+.ibpl-error-card-icon { flex: none; color: var(--ibpl-neg); font-size: 1.25rem; }
+.ibpl-error-card-body { flex: 1 1 auto; min-width: 0; }
+.ibpl-error-card-title { margin: 0; color: var(--ibpl-text); font-size: 0.88rem; font-weight: 700; }
+.ibpl-error-card-detail { margin: 2px 0 0; color: var(--ibpl-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }

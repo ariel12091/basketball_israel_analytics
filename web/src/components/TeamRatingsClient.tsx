@@ -312,6 +312,7 @@ export default function TeamRatingsClient({
             loading={loading}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             {data ? (
               <TeamRatingsTable
