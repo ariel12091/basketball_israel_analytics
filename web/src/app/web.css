@@ -394,12 +394,7 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 .tl-dot-off { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 2px solid var(--ibpl-text-muted); background: var(--ibpl-bg); }
 .tl-rank .rank-bar-container.tl-rank-bar { display: block; width: 100% !important; height: 10px; margin: 2px 0 0; }
 .tl-tag.ibpl-more { display: inline-block; margin: 0; }
-.view-intro { margin: 6px 0 4px; padding: 6px 10px; border-left: 3px solid var(--ibpl-accent); border-radius: 4px; background: var(--ibpl-surface); font-size: .8rem; color: var(--ibpl-text-body); }
-.view-intro-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
-.view-intro-line b { color: var(--ibpl-accent); font-weight: 600; }
-.view-intro-more { padding: 0; border: 0; background: transparent; color: var(--ibpl-accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.view-intro-body { margin-top: 6px; }
-.view-intro-body ul { margin: 0 0 6px; padding-left: 18px; }
+.view-intro { display: inline-flex; }
 .view-intro-example { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
 .view-intro-example-text { flex: 1 1 260px; }
 .view-intro-example-text p { margin: 2px 0 0; }
@@ -416,13 +411,15 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .onoff-tip-why p { margin: 0 0 6px; }
 .onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
 .ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-/* The view's question shares the legend's row (user 2026-11-16: it took a
-   whole boxed strip with the key pushed to the far edge): a quiet line of
-   text, the key right after it, wrapping under it when there is no room. */
-.table-top { align-items: center; justify-content: flex-start; gap: 4px 16px; }
-.table-top .view-intro { flex: 0 1 auto; margin: 0; padding: 0; border: 0; background: transparent; font-size: .78rem; color: var(--ibpl-text-muted); }
-.table-top .view-intro-line b { color: var(--ibpl-text-body); font-weight: 600; }
-.table-top .table-legend { margin-left: 0; justify-content: flex-start; }
+/* The legend at the table's top right, the view's "?" (ViewIntro) at its
+   end, beside the row tags (user 2026-11-16). */
+.table-top { align-items: center; justify-content: flex-end; }
+.table-top .view-intro { order: 2; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; }
+.view-intro-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55); border-radius: 50%; background: transparent; color: var(--ibpl-accent); font-size: .9rem; transition: background-color 120ms ease; }
+.view-intro-btn:hover, .view-intro-btn[data-state="open"] { background: rgba(var(--ibpl-accent-rgb), 0.14); }
+.view-intro-pop { max-width: min(380px, calc(100vw - 24px)); max-height: min(70vh, var(--radix-popover-content-available-height, 70vh)); overflow-y: auto; font-size: .82rem; }
+.view-intro-pop .view-intro-question { margin: 0 0 6px; color: var(--ibpl-accent); font-weight: 700; }
+.view-intro-pop ul { margin: 0 0 8px; padding-left: 18px; }
 /* The panel's title, Close and Clear all stay pinned while it scrolls. */
 .filter-drawer { padding-top: 0; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
@@ -1231,7 +1228,6 @@ button.cmp-back-btn:hover > span[aria-hidden],
 .ibpl-gameflow-back:hover > span[aria-hidden] { transform: translateX(-3px); }
 
 /* "More", "Glossary" and other in-text actions: the soft underline. */
-.view-intro-more,
 .ibpl-link-btn {
   color: var(--ibpl-accent);
   text-decoration: underline;
@@ -1240,8 +1236,6 @@ button.cmp-back-btn:hover > span[aria-hidden],
   text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
   transition: text-decoration-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
 }
-.view-intro-more:hover,
-.view-intro-more:focus-visible,
 :where(.ibpl-link-btn):hover,
 .ibpl-link-btn:focus-visible { color: var(--ibpl-accent-hover, var(--ibpl-accent)); text-decoration-color: currentColor; }
 
