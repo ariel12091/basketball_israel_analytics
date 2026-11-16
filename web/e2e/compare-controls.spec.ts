@@ -126,7 +126,7 @@ test("[CMP-01][CMP-05][CMP-07][CMP-08][league:il] controls mirror, rearm auto an
     .getByRole("button", { name: "Offense", exact: true })
     .click();
   await expect(page).toHaveURL(/metric=off_ppp/);
-  await page.getByRole("tab", { name: "Lineups", exact: true }).click();
+  await page.getByRole("button", { name: "Lineups", exact: true }).click();
   await expect(page).toHaveURL(/view=Lineups/);
   const q = new URL(page.url()).searchParams;
   expect(q.get("preset")).toBeNull();

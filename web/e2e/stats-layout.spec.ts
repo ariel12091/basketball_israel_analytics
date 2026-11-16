@@ -116,19 +116,22 @@ test("the legend is a compact key at the table's top right", async ({
   for (const word of ["worse", "better", "2P%", "3P%", "shot mix"])
     await expect(legend).toContainText(word);
   await expect(page.locator(".legend-box")).toHaveCount(0);
-  // A tag pill explains itself in one sentence.
-  await legend.getByRole("button", { name: "3PT luck" }).click();
+  // The row tags sit on the left of the same row, apart from the key
+  // (user 2026-11-16); a tag pill explains itself in one sentence.
+  const tags = page.locator(".table-top .tl-tags");
+  await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
+  await tags.getByRole("button", { name: "3PT luck" }).click();
   await expect(page.locator(".ibpl-more-pop")).toContainText(
     layout.tags.luck.text,
   );
   // With Shiny's worked example.
   await expect(page.locator(".ibpl-more-pop")).toContainText("Example:");
   await page.keyboard.press("Escape");
-  await page.getByRole("tab", { name: "Four Factors" }).click();
+  await page.getByRole("button", { name: "Four Factors", exact: true }).click();
   await expect(page).toHaveURL(/view=four_factors/);
   await expect(legend).toContainText("worse");
   await expect(legend).not.toContainText("shot mix");
-  await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
+  await expect(tags).toHaveCount(0);
 });
 
 test("the view question is a ? button that opens the explainer", async ({
@@ -220,7 +223,9 @@ for (const [league, teamName] of [
 
     await page.getByRole("button", { name: "Increase Min ON Poss" }).click();
     await expect(minOn).toHaveValue("10");
-    await page.getByRole("tab", { name: "Four Factors" }).click();
+    await page
+      .getByRole("button", { name: "Four Factors", exact: true })
+      .click();
     await expect(minOn).toHaveValue("0");
     await expect(minAll).toHaveValue("0");
   });
@@ -231,7 +236,7 @@ test("possession columns are on screen without scrolling sideways", async ({
 }) => {
   await stub(page);
   for (const view of ["Summary", "Four Factors", "Shot Profile"]) {
-    await page.getByRole("tab", { name: view }).click();
+    await page.getByRole("button", { name: view, exact: true }).click();
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toBeVisible();

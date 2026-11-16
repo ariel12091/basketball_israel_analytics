@@ -154,7 +154,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     // Mode and display narrowing are local: no repeat SQL request.
     const count = requests.length;
     await page
-      .getByRole("tab", { name: "Per 30 Minutes", exact: true })
+      .getByRole("button", { name: "Per 30 Minutes", exact: true })
       .click();
     await expect(page.locator('th[data-column="base_min_pg"]')).toBeVisible();
     expect(requests.length).toBe(count);

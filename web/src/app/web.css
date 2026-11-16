@@ -288,7 +288,7 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
    so these are the one way to switch and must read as a primary control):
    tabs rounded on top, standing on an amber line, the active one filled
    amber. */
-.view-tabs-list { display: flex; gap: 4px; margin: 8px 0; border-bottom: 2px solid var(--ibpl-accent); overflow-x: auto; scrollbar-width: none; }
+.view-tabs-list { position: relative; display: flex; gap: 4px; margin: 8px 0; border-bottom: 2px solid var(--ibpl-accent); overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 3rem; }
 .view-tabs-list::-webkit-scrollbar { display: none; }
 .view-tabs-tab { flex: 0 0 auto; height: 38px; padding: 0 20px; border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--ibpl-surface); color: var(--ibpl-text-body); font-size: .95rem; font-weight: 700; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
 .view-tabs-tab:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
@@ -297,15 +297,25 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 @media (max-width: 767.98px) {
   .view-tabs-tab { height: 36px; padding: 0 14px; font-size: .9rem; }
 }
-/* When the views overflow (Player Stats on a phone), the right edge fades
-   until the row is scrolled: a scroll timeline only runs on a list that
-   scrolls, so a list that fits never fades. */
+/* When the views overflow (Player Stats on a phone), each edge with more
+   views beyond it fades (modern-web-guidance "tabs", fading the edges): a
+   scroll timeline only runs on a row that scrolls, so a row that fits never
+   fades. The sizes are registered so they animate smoothly. */
+@property --vt-fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --vt-fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @supports (animation-timeline: scroll()) {
-  .view-tabs-list { animation: view-tabs-more linear both; animation-timeline: scroll(self inline); }
-  @keyframes view-tabs-more {
-    from { mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent); }
-    to { mask-image: none; }
+  .view-tabs-list {
+    --vt-fade: 3rem;
+    mask:
+      linear-gradient(black, black) no-clip subtract,
+      linear-gradient(to right, black, transparent) 0 0 / var(--vt-fade-start) 100% no-repeat no-clip,
+      linear-gradient(to right, transparent, black) 100% 0 / var(--vt-fade-end) 100% no-repeat no-clip;
+    animation: view-tabs-fade-start linear both, view-tabs-fade-end linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 var(--vt-fade), calc(100% - var(--vt-fade)) 100%;
   }
+  @keyframes view-tabs-fade-start { to { --vt-fade-start: var(--vt-fade); } }
+  @keyframes view-tabs-fade-end { from { --vt-fade-end: var(--vt-fade); } }
 }
 .ibpl-more { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; text-decoration: underline dashed; text-decoration-color: var(--ibpl-text-dim); text-underline-offset: 3px; cursor: help; }
 .ibpl-more:hover, .ibpl-more[data-state="open"] { text-decoration-color: var(--ibpl-accent); }
@@ -2040,8 +2050,7 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 .ibpl-menu-btn:hover { border-color: var(--ibpl-control-border); }
 .ibpl-menu-btn[aria-expanded="true"] { border-color: var(--ibpl-text-muted); background: var(--ibpl-surface-hover); }
 .ibpl-menu-btn[aria-expanded="true"] .bi { transform: rotate(180deg); }
-.ibpl-menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10003; min-width: 180px; padding: 6px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
-.ibpl-menu-list.is-end { left: auto; right: 0; }
+.ibpl-menu-list { z-index: 10003; min-width: 180px; padding: 6px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
 .ibpl-menu-list ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .ibpl-menu-title { padding: 6px 10px 4px; color: var(--ibpl-text-muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .ibpl-menu-list a, .ibpl-menu-list button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ibpl-text); font-size: 0.9rem; font-weight: 600; text-align: left; text-decoration: none; white-space: nowrap; }
@@ -2154,4 +2163,28 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   body .ibpl-drawer-layout .lineup-bar > :nth-child(n + 3) { grid-column: 1 / -1; }
   body .ibpl-drawer-layout .ps-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ibpl-drawer-layout .lineup-bar .control-label { margin-bottom: 4px; font-size: 0.75rem; }
+}
+
+/* ---- Accessibility fixes (modern-web-guidance audit, 2026-11-16) --------
+   Fixed bars never cover the focused element (WCAG 2.4.11): the browser
+   scrolls focus clear of the sticky top bar (desktop) and of the bottom
+   tab bar plus its Filters tab (narrow screens). */
+html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0px) + 40px); }
+@media (min-width: 1024px) {
+  html { scroll-padding-top: 64px; scroll-padding-bottom: 0; }
+}
+/* Touch screens: the small round "?" and CSV buttons, Columns and the row
+   tags keep their look but get a 44 px hit area from a pseudo-element; the
+   row spaces them so the areas do not overlap. */
+@media (pointer: coarse) {
+  .table-top { column-gap: 16px; }
+  .table-top .table-tools, .table-tools div.dt-buttons { gap: 16px; }
+  .view-intro-btn,
+  .table-tools div.dt-buttons > .dt-button,
+  .table-tools .shiny-download-link,
+  .table-top .tl-tag { position: relative; }
+  .view-intro-btn::after,
+  .table-tools div.dt-buttons > .dt-button::after,
+  .table-tools .shiny-download-link::after { content: ""; position: absolute; inset: -8px; }
+  .table-top .tl-tag::after { content: ""; position: absolute; inset: -13px 0; }
 }

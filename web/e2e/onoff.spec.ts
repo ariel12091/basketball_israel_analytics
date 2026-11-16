@@ -274,7 +274,9 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("group", { name: "Go to" })).toHaveCount(0);
-    await page.getByRole("tab", { name: "Four Factors", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Four Factors", exact: true })
+      .click();
     await expect(
       table.locator("td.onoff-factor-cell .sub-text").first(),
     ).toBeVisible();

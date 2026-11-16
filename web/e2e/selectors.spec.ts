@@ -186,7 +186,9 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
     await expect(page.locator(".filter-chip.chip-stat")).toHaveCount(0);
 
     // The view tabs switch to Four Factors.
-    await page.getByRole("tab", { name: "Four Factors", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Four Factors", exact: true })
+      .click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get("view"))
       .toBe("four_factors");
