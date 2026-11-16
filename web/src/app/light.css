@@ -1,26 +1,6 @@
 /* Light theme (docs/superpowers/specs/2026-11-15-web-light-theme-design.md).
    Loaded last. Dark is Shiny's look and needs no rules here: every light rule
-   is scoped under html[data-theme="light"], set before paint by ThemeScript.
-   The only unscoped rules are the toggle's own, which apply in both themes. */
-
-/* ---- The toggle (ThemeToggle.tsx), both themes ---- */
-.nav-theme-btn { margin-right: 4px; padding: 2px 7px; line-height: 1.2; }
-/* Two copies (Navbar.tsx), one shown per width, like the "Showing" menus:
-   the header bar's with the collapsed nav (outside the burger menu, user
-   2026-11-15), the right cluster's otherwise. */
-.navbar-header .nav-theme-btn,
-body.ibpl-collapsed-nav #navbar_right_cluster .nav-theme-btn { display: none; }
-body.ibpl-collapsed-nav .navbar-header .nav-theme-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  order: 1; flex: 0 0 auto; width: 44px; height: 44px; padding: 0;
-  margin: 0 6px 0 0; border: 0; font-size: 1.05rem;
-}
-/* The desktop tab row has ~4 px spare at a 1440 px window, so below 1600 px
-   the Glossary button gives its label to the toggle (user 2026-11-15). The
-   collapsed (phone) menu keeps the label: its buttons are full-width rows. */
-@media (max-width: 1599.98px) {
-  body:not(.ibpl-collapsed-nav) #navbar_right_cluster .nav-help-label { display: none; }
-}
+   is scoped under html[data-theme="light"], set before paint by ThemeScript. */
 
 /* ---- Tokens: app.css :root, light values ----
    Text values are checked against white and --ibpl-bg for WCAG AA (4.5:1):
@@ -142,22 +122,6 @@ html[data-theme="light"] .ibpl-heat {
 }
 html[data-theme="light"] .ibpl-acc {
   color: color-mix(in srgb, var(--ibpl-acc) 55%, #000000) !important;
-}
-
-/* ---- Navbar: Bootstrap's toggler icon is a data-URI SVG with a light
-   stroke baked in (vendor/bootstrap.min.css), and its navbar colours are
-   compiled for dark. ---- */
-html[data-theme="light"] .navbar {
-  --bs-navbar-color: rgba(31, 26, 20, 0.7);
-  --bs-navbar-hover-color: rgba(31, 26, 20, 0.9);
-  --bs-navbar-active-color: #1F1A14;
-  --bs-navbar-brand-color: #1F1A14;
-  --bs-navbar-brand-hover-color: #1F1A14;
-  --bs-navbar-toggler-border-color: rgba(31, 26, 20, 0.15);
-}
-/* Outranks the vendor's .navbar[data-bs-theme="light"] .navbar-toggle>.icon-bar:last-child. */
-html[data-theme="light"] .navbar[data-bs-theme] .navbar-toggle > .icon-bar:last-child {
-  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2831,26,20,0.75%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 }
 
 /* ---- Bootstrap utilities used as "card surface" (Compare's summary cards:

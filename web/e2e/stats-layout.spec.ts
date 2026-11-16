@@ -131,7 +131,7 @@ test("the legend is a compact key at the table's top right", async ({
   await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
 });
 
-test("the view intro is one visible line; More opens the rest", async ({
+test("the view question is a ? button that opens the explainer", async ({
   page,
 }) => {
   await stub(page);
@@ -141,17 +141,21 @@ test("the view intro is one visible line; More opens the rest", async ({
     bullets?: { t?: string }[][];
   }[];
   const explainer = blocks.find((b) => b.kind === "explainer")!;
-  const intro = page.locator(".view-intro");
-  await expect(intro).toContainText(layout.intro.onoff.summary);
-  await expect(intro).not.toContainText(
+  // The question is the "?" button's name (user 2026-11-16); a click opens
+  // the explainer in a popover.
+  const button = page.getByRole("button", {
+    name: layout.intro.onoff.summary,
+    exact: true,
+  });
+  await expect(button).toBeVisible();
+  const pop = page.locator(".view-intro-pop");
+  await expect(pop).toHaveCount(0);
+  await button.click();
+  await expect(pop).toContainText(layout.intro.onoff.summary);
+  await expect(pop).toContainText(
     String(explainer.intro![0].t ?? "").slice(0, 30),
   );
-  await expect(intro).not.toContainText("3PT luck");
-  await intro.getByRole("button", { name: "More" }).click();
-  await expect(intro).toContainText(
-    String(explainer.intro![0].t ?? "").slice(0, 30),
-  );
-  await expect(intro).toContainText(
+  await expect(pop).toContainText(
     String(explainer.bullets![0][0].t ?? "").slice(0, 20),
   );
 });

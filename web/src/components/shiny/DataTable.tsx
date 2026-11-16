@@ -43,6 +43,7 @@ import { defuseCsvCell } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
 import { NameImage, nameCellImage } from "./NameImage";
 import { useImageScope } from "@/lib/images";
+import { InToolsSlot } from "./toolsSlot";
 
 export type Cell = {
   node: ReactNode;
@@ -505,18 +506,23 @@ export default function DataTable({
         </div>
       )}
       {csvName && (
-        <div className="dt-buttons">
-          <button
-            className="dt-button buttons-csv buttons-html5"
-            tabIndex={0}
-            type="button"
-            onClick={() => downloadCsv(csvName, columns, sortedRows)}
-          >
-            <i className="bi bi-download" aria-hidden="true"></i>{" "}
-            <span>{csvLabel}</span>
-          </button>{" "}
-          {tools}
-        </div>
+        // In the legend's row above the table when the page has the slot.
+        <InToolsSlot>
+          <div className="dt-buttons">
+            <button
+              className="dt-button buttons-csv buttons-html5"
+              tabIndex={0}
+              type="button"
+              aria-label={csvLabel}
+              title={csvLabel}
+              onClick={() => downloadCsv(csvName, columns, sortedRows)}
+            >
+              <i className="bi bi-download" aria-hidden="true"></i>{" "}
+              <span>{csvLabel.replace(/^Download /, "")}</span>
+            </button>{" "}
+            {tools}
+          </div>
+        </InToolsSlot>
       )}
       <div className="dataTables_scroll">
         {touchTips && (

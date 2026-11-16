@@ -21,6 +21,7 @@ import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
 import PossStepper from "./shiny/PossStepper";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 import {
   TabFrame,
@@ -306,11 +307,8 @@ export default function PlayerStatsClient({
               blocks={introBlocks}
               summary={layout.intro.playerStats}
             />
-            <TableLegend
-              league={league}
-              shots={viewKey.shots}
-              rank={viewKey.rank}
-            />
+            <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+            <ToolsSlot />
           </div>
           {result.ineligible > 0 && (
             <div

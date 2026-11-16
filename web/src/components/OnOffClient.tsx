@@ -7,12 +7,7 @@
 // the stat filters, and renders the table.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
-import {
-  autoBars,
-  autoShare,
-  onoffTableRows,
-  type View,
-} from "@/rules/onoff";
+import { autoBars, autoShare, onoffTableRows, type View } from "@/rules/onoff";
 import { contextParams, onoffPath } from "@/lib/tabQuery";
 import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
@@ -20,7 +15,11 @@ import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import PossStepper from "./shiny/PossStepper";
 import ViewTabs from "./shiny/ViewTabs";
-import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import TableLegend, {
+  keyFromBlocks,
+  TableTags,
+  ViewIntro,
+} from "./shiny/TableKey";
 import OnOffTable from "./shiny/OnOffTables";
 import { type Block } from "./shiny/Blocks";
 import layout from "@/data/layoutUi.json";
@@ -484,18 +483,6 @@ export default function OnOffClient({
                     </span>
                   </button>
                 )}
-                {!euro && (
-                  // downloadButton("download_csv"): Shiny registers no handler
-                  // for it; here it exports the visible table.
-                  <button
-                    type="button"
-                    className="btn btn-default shiny-download-link"
-                    onClick={() => exporter.current?.(`onoff_${view}`)}
-                  >
-                    <i className="bi bi-download" aria-hidden="true"></i>{" "}
-                    Download CSV
-                  </button>
-                )}
               </>
             }
           />
@@ -512,11 +499,25 @@ export default function OnOffClient({
               }
             />
             <TableLegend
-              league={league}
               shots={viewKey.shots}
               rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
-              tags={view === "summary"}
             />
+            {view === "summary" && <TableTags league={league} />}
+            {!euro && (
+              <div className="table-tools">
+                {/* downloadButton("download_csv"): Shiny registers no
+                    handler for it; here it exports the visible table. */}
+                <button
+                  type="button"
+                  className="btn btn-default shiny-download-link"
+                  aria-label="Download CSV"
+                  title="Download CSV"
+                  onClick={() => exporter.current?.(`onoff_${view}`)}
+                >
+                  <i className="bi bi-download" aria-hidden="true"></i> CSV
+                </button>
+              </div>
+            )}
           </div>
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}

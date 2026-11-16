@@ -34,6 +34,7 @@ import {
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 
 export { seasonBounds };
@@ -278,11 +279,8 @@ export default function GameLogsClient({
                 blocks={viewBlocks}
                 summary={layout.intro.gameLogs[view]}
               />
-              <TableLegend
-                league={league}
-                shots={viewKey.shots}
-                rank={viewKey.rank}
-              />
+              <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+              <ToolsSlot />
             </div>
             <OutputArea
               id={`${p}_table`}

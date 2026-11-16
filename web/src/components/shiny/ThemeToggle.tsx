@@ -12,16 +12,20 @@ function subscribe(onChange: () => void) {
 }
 const serverTheme = (): Theme => "dark";
 
-/** The navbar's light/dark switch, icon only. Navbar renders two copies, the
- * header bar's (collapsed nav) and the right cluster's (desktop); light.css
- * shows one by the body width class, like the "Showing" menus. */
-export default function ThemeToggle({ id }: { id: string }) {
+/** The navbar's light/dark switch, icon only. */
+export default function ThemeToggle({
+  id,
+  className = "btn btn-sm btn-outline-secondary nav-help-btn nav-theme-btn",
+}: {
+  id: string;
+  className?: string;
+}) {
   const theme = useSyncExternalStore(subscribe, currentTheme, serverTheme);
   const next: Theme = theme === "light" ? "dark" : "light";
   const label = `Switch to ${next} theme`;
   return (
     <button
-      className="btn btn-sm btn-outline-secondary nav-help-btn nav-theme-btn"
+      className={className}
       id={id}
       type="button"
       aria-label={label}
