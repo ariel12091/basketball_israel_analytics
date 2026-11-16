@@ -115,6 +115,11 @@ export function lastUpdatedShort(txt: string) {
   const m = /(\d{4})-(\d{2})-(\d{2})/.exec(txt);
   return m ? `${MONTH_ABB[Number(m[2]) - 1]} ${Number(m[3])}` : "n/a";
 }
+/** "Nov 14, 22:27" from "2026-11-14 22:27:46" (the time when it has one). */
+function lastUpdatedLong(txt: string) {
+  const t = /\d{4}-\d{2}-\d{2}[ T](\d{2}:\d{2})/.exec(txt);
+  return `${lastUpdatedShort(txt)}${t ? `, ${t[1]}` : ""}`;
+}
 
 function rememberLeague(league: League) {
   try {
@@ -154,7 +159,9 @@ export default function Navbar({
       l !== "il" && currentTab?.ilOnly ? "home" : (currentTab?.path ?? "home");
     return `/${l}/${path}${euro && l !== "il" ? `?season=${season}` : ""}`;
   };
-  const stamp = updated ? `Data updated ${updated}` : "Update time unavailable";
+  const stamp = updated
+    ? `Data updated ${lastUpdatedLong(updated)}`
+    : "Update time unavailable";
   const short = updated ? lastUpdatedShort(updated) : "n/a";
   const seasonMenu = (
     <NavMenu
@@ -163,6 +170,7 @@ export default function Navbar({
       title={`${LEAGUE_SHORT[league]} season`}
       current={seasonLabel(season, !euro)}
       align="end"
+      footer={stamp}
       items={seasons.map((s) => ({
         key: s,
         label: seasonLabel(s, !euro),
@@ -276,10 +284,6 @@ export default function Navbar({
         </div>
       </header>
       <div className="container-fluid">
-        {/* Narrow screens have no room in the bar for the date. */}
-        <p className="ibpl-updated-line" aria-hidden="true" title={stamp}>
-          <span className="ibpl-updated-dot"></span>Updated {short}
-        </p>
         {/* One h1 per page for screen readers and outlines; the bar's
             active page already says it on screen. */}
         <h1 className="ibpl-sr-only">
@@ -305,6 +309,7 @@ function NavMenu({
   id,
   name,
   title,
+  footer,
   current,
   items,
   className,
@@ -314,6 +319,8 @@ function NavMenu({
   name: string;
   /** A heading inside the menu. */
   title?: string;
+  /** A quiet line under the choices. */
+  footer?: string;
   current: string;
   items: NavMenuItem[];
   className?: string;
@@ -397,6 +404,7 @@ function NavMenu({
               </li>
             ))}
           </ul>
+          {footer && <p className="ibpl-menu-footer">{footer}</p>}
         </div>
       )}
     </div>

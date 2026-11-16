@@ -1984,7 +1984,6 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 .ibpl-league-switch { display: none; }
 .ibpl-updated { display: none; align-items: center; gap: 6px; color: var(--ibpl-text-muted); font-size: 0.75rem; white-space: nowrap; }
 .ibpl-updated-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ibpl-pos); }
-.ibpl-updated-line { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 6px 0 -2px; color: var(--ibpl-text-muted); font-size: 0.72rem; }
 .ibpl-icon-btn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; padding: 0; border: 1px solid var(--ibpl-border); border-radius: 50%; background: transparent; color: var(--ibpl-text-body); font-size: 1rem; transition: border-color 120ms ease, color 120ms ease; }
 .ibpl-icon-btn:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
 #open_glossary { margin-left: auto; }
@@ -2003,6 +2002,7 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 .ibpl-menu-list a, .ibpl-menu-list button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ibpl-text); font-size: 0.9rem; font-weight: 600; text-align: left; text-decoration: none; white-space: nowrap; }
 .ibpl-menu-list a:hover, .ibpl-menu-list button:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
 .ibpl-menu-list .active { background: rgba(var(--ibpl-accent-rgb), 0.16); color: var(--ibpl-accent); font-weight: 700; }
+.ibpl-menu-footer { margin: 4px 0 0; padding: 8px 10px 4px; border-top: 1px solid var(--ibpl-border); color: var(--ibpl-text-muted); font-size: 0.75rem; white-space: nowrap; }
 .ibpl-menu-list .active:hover { background: rgba(var(--ibpl-accent-rgb), 0.22); color: var(--ibpl-accent); }
 
 /* The bottom tab bar. */
@@ -2043,7 +2043,6 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   .ibpl-league-menu { display: none; }
   .ibpl-menu-btn { height: 36px; font-size: 0.8125rem; }
   .ibpl-updated { display: inline-flex; }
-  .ibpl-updated-line { display: none; }
   .ibpl-icon-btn { width: 36px; height: 36px; font-size: 0.9rem; }
   #open_glossary { margin-left: 0; }
 }
@@ -2057,4 +2056,55 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   .ibpl-topbar-row { gap: 14px; padding: 0 14px; }
   .ibpl-league-switch { display: none; }
   .ibpl-league-menu { display: inline-flex; }
+}
+
+/* ---- Narrow screens: Filters rides on the bottom bar (user 2026-11-16) ----
+   The drawer's trigger stays in the chips row's markup (FilterDrawer anchors
+   to it and focus returns to it); here it is a small tab on top of the tab
+   bar, so it is always one tap away and the row above the table is gone. */
+@media (max-width: 1023.98px) {
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle {
+    position: fixed; left: 50%; bottom: calc(var(--ibpl-tabbar-h) - 1px); z-index: 1036;
+    transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px;
+    border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0;
+    background: var(--ibpl-surface); color: var(--ibpl-accent);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25); font-size: 0.78rem; font-weight: 700;
+  }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle::after {
+    content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-bottom: 5px solid currentColor;
+  }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle .bi { font-size: 0.85rem; }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle:hover,
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle[aria-expanded="true"] {
+    background: var(--ibpl-surface-hover); border-color: var(--ibpl-border); color: var(--ibpl-accent-hover); box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
+  }
+  /* The chips no longer share a line with the Filters button: let the
+     controls sit beside them when they fit. */
+  .ibpl-drawer-layout .chips-row { gap: 8px 16px; margin: 10px 0 4px; }
+  .ibpl-drawer-layout .chips-row-chips { flex: 0 1 auto; }
+}
+/* Phones: less air above the table. A 16 px side gutter, chips and
+   controls 8 px apart, steppers side by side with their labels above. */
+@media (max-width: 767.98px) {
+  .container-fluid.ibpl-drawer-layout { padding-left: 4px; padding-right: 4px; }
+  .ibpl-drawer-layout .chips-row { gap: 8px; }
+  /* The controls join the chips' row: buttons (CSV, ranges) beside the
+     chips where they fit, the steppers on the next line. */
+  .ibpl-drawer-layout .chips-row { align-items: flex-end; justify-content: flex-start; }
+  .ibpl-drawer-layout .chips-row-controls { display: contents; }
+  body .ibpl-drawer-layout .chips-row-controls > .poss-stepper.poss-stepper { order: 2; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper-label { font-size: 0.68rem; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper-box input { width: 40px; }
+  .ibpl-drawer-layout .view-tabs-list { margin: 4px 0; }
+  .ibpl-drawer-layout .chips-row-controls .shiny-download-link { height: 32px; padding: 0 10px; font-size: 0.75rem; }
+  .ibpl-drawer-layout .chips-row-controls > .poss-stepper + :not(.poss-stepper) { margin-left: auto; }
+  /* Lineups: group size beside the team; the player chips below. Player
+     Stats: teams beside players. */
+  body .ibpl-drawer-layout .lineup-bar { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 8px 10px; }
+  body .ibpl-drawer-layout .lineup-bar > :nth-child(n + 3) { grid-column: 1 / -1; }
+  body .ibpl-drawer-layout .ps-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ibpl-drawer-layout .lineup-bar .control-label { margin-bottom: 4px; font-size: 0.75rem; }
 }
