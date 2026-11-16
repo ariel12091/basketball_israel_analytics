@@ -412,14 +412,6 @@ export default function LineupsClient({
                     set({ stats: fs.length ? JSON.stringify(fs) : null })
                   }
                 />
-                {euro && (
-                  <span className="filter-chip">
-                    {query.size}-player units / {data?.meta.shown ?? 0} shown
-                    {min > 0
-                      ? ` / min ${min} poss${auto ? " (auto)" : ""}`
-                      : ""}
-                  </span>
-                )}
               </>
             }
             controls={
