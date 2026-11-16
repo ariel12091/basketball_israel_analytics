@@ -505,6 +505,7 @@ export default function DataTable({
             type="button"
             onClick={() => downloadCsv(csvName, columns, sortedRows)}
           >
+            <i className="bi bi-download" aria-hidden="true"></i>{" "}
             <span>{csvLabel}</span>
           </button>{" "}
         </div>
@@ -875,7 +876,8 @@ export default function DataTable({
               disabled={pageIndex === 0}
               onClick={() => setPageIndex(pageIndex - 1)}
             >
-              Previous
+              <span aria-hidden="true">‹</span>{" "}
+              <span className="paginate-label">Previous</span>
             </button>
             <span>
               {pageNumbers(pageIndex, pages).map((n, i) =>
@@ -902,7 +904,8 @@ export default function DataTable({
               disabled={pageIndex >= pages - 1}
               onClick={() => setPageIndex(pageIndex + 1)}
             >
-              Next
+              <span className="paginate-label">Next</span>{" "}
+              <span aria-hidden="true">›</span>
             </button>
           </div>
         </>

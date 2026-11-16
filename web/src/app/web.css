@@ -1127,3 +1127,171 @@ body:has(.filter-drawer[data-state="open"])::after {
   .filter-drawer { transition: none; }
   body:has(.filter-drawer[data-state="open"])::after { animation: none; }
 }
+
+/* ---- Buttons, modernised (user 2026-11-16) --------------------------------
+   One family with the new links and the filters sheet: rounded pills,
+   amber outline at rest, a soft amber fill on hover, short transitions. */
+:root { --ibpl-btn-ease: 120ms ease; }
+
+/* Plain buttons: Retry, Show all lineups, Move left/right, Close. */
+.btn.btn-default:not(.action-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-weight: 600;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.btn.btn-default:not(.action-button):hover,
+.btn.btn-default:not(.action-button):focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+}
+.btn.btn-default.btn-sm:not(.action-button) { padding: 3px 12px; font-size: 0.8rem; }
+.ibpl-move-btn .bi { font-size: 0.85em; }
+
+/* CSV download, in the table toolbar and On/Off's. */
+div.dt-buttons > .dt-button,
+.chips-row-controls .shiny-download-link.btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.06) !important;
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+div.dt-buttons > .dt-button:hover:not(.disabled),
+.chips-row-controls .shiny-download-link.btn:hover {
+  background: rgba(var(--ibpl-accent-rgb), 0.16) !important;
+}
+
+/* Table pager: rounded page buttons, the current page filled amber. On
+   phones the arrows stand alone. */
+.dataTables_wrapper .dataTables_paginate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate > span { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  min-width: 32px;
+  height: 32px;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
+  line-height: 30px !important;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current):not(:disabled) {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  border-color: var(--ibpl-accent) !important;
+  background: var(--ibpl-accent) !important;
+  color: var(--ibpl-bg) !important;
+  font-weight: 700;
+}
+.dataTables_wrapper .dataTables_paginate .ellipsis { padding: 0 4px; color: var(--ibpl-text-dim); }
+@media (max-width: 767.98px) {
+  .dataTables_wrapper .dataTables_paginate .paginate-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
+/* "Show 50 entries": a rounded menu. */
+.dataTables_wrapper .dataTables_length select {
+  height: 32px;
+  padding: 0 28px 0 12px;
+  border-radius: 999px !important;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Filter chips: the x is a round target with its own hover, the pencil
+   brightens with the chip, and the chip itself eases into its hover. */
+.filter-chip { transition: border-color var(--ibpl-btn-ease), background-color var(--ibpl-btn-ease); }
+.filter-chip .chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -6px -2px 2px;
+  border-radius: 50%;
+  font-size: 1em;
+  transition: background-color var(--ibpl-btn-ease), opacity var(--ibpl-btn-ease);
+}
+.filter-chip .chip-x:hover,
+.filter-chip .chip-x:focus-visible { opacity: 1; background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.filter-chip.chip-focusable:hover { background: rgba(var(--ibpl-accent-rgb), 0.08); }
+.filter-chip-add:hover { background: rgba(var(--ibpl-accent-rgb), 0.08) !important; }
+.chip-clear-all { transition: background-color var(--ibpl-btn-ease); }
+
+/* Min Poss stepper: round - and + inside the pill. */
+.poss-stepper-box button { display: inline-flex; align-items: center; justify-content: center; margin: 2px; width: 28px; border-radius: 50%; transition: background-color var(--ibpl-btn-ease); }
+.poss-stepper-box button:hover:not(:disabled) { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+/* Back: a quiet pill whose arrow steps back on hover. */
+button.cmp-back-btn,
+.ibpl-gameflow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+button.cmp-back-btn:hover,
+button.cmp-back-btn:focus-visible,
+.ibpl-gameflow-back:hover,
+.ibpl-gameflow-back:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+  text-decoration: none;
+}
+button.cmp-back-btn > span[aria-hidden],
+.ibpl-gameflow-back > span[aria-hidden] { display: inline-block; font-weight: 700; transition: transform var(--ibpl-btn-ease); }
+button.cmp-back-btn:hover > span[aria-hidden],
+.ibpl-gameflow-back:hover > span[aria-hidden] { transform: translateX(-3px); }
+
+/* "More", "Glossary" and other in-text actions: the soft underline. */
+.view-intro-more,
+.ibpl-link-btn {
+  color: var(--ibpl-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.view-intro-more:hover,
+.view-intro-more:focus-visible,
+:where(.ibpl-link-btn):hover,
+.ibpl-link-btn:focus-visible { color: var(--ibpl-accent-hover, var(--ibpl-accent)); text-decoration-color: currentColor; }
+
+/* Gameflow phone panel: All runs / Show / Clear as small pills. */
+.gf-m-links { align-items: center; }
+.gf-m-link {
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.gf-m-link:hover,
+.gf-m-link:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --ibpl-btn-ease: 0s; }
+}

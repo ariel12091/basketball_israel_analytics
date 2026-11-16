@@ -809,7 +809,7 @@ function CompareTab({
                     className="cmp-back-btn"
                     onClick={() => set({ cmp_view: "league", entity: null })}
                   >
-                    &lt;- Back to league view
+                    <span aria-hidden="true">‹</span> Back to league view
                   </button>
                   {/* The team's players, A vs B: easy to miss as a third pill
                       beside League and Detail (user 2026-10-29). */}
@@ -864,7 +864,8 @@ function CompareTab({
                   )
                 }
               >
-                &lt;- Back to {selectedPlayer ? "players" : "team detail"}
+                <span aria-hidden="true">‹</span> Back to{" "}
+                {selectedPlayer ? "players" : "team detail"}
               </button>
               {selectedPlayer ? (
                 <TeamPlayerDetail row={selectedPlayer} q={q} labels={labels} />
