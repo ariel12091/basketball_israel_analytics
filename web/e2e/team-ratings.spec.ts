@@ -119,9 +119,8 @@ test("Traditional column order persists and is usable on phone", async ({
     page
       .locator(".ibpl-dt-scroll thead th")
       .evaluateAll((ths) => ths.map((t) => t.getAttribute("data-column")));
-  await page
-    .getByRole("button", { name: "Move PTS earlier", exact: true })
-    .click();
+  await page.getByRole("button", { name: /^PTS:/ }).focus();
+  await page.keyboard.press("Alt+ArrowLeft");
   await page.keyboard.press("Escape");
   expect((await ids()).slice(0, 5)).toEqual([
     "team_name",

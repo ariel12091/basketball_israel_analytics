@@ -177,13 +177,14 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await page.getByRole("button", { name: "Columns", exact: true }).click();
     const before = await ids(),
       index = before.indexOf("pts");
-    await page
-      .getByRole("button", { name: "Move PTS earlier", exact: true })
-      .click();
+    // Chips (2026-11-16): Alt + arrow moves, a click hides or shows.
+    const pts = page.getByRole("button", { name: /^PTS:/ });
+    await pts.focus();
+    await page.keyboard.press("Alt+ArrowLeft");
     expect((await ids()).indexOf("pts")).toBe(index - 1);
-    await page.getByRole("checkbox", { name: "Show PTS", exact: true }).uncheck();
+    await pts.click();
     expect(await ids()).not.toContain("pts");
-    await page.getByRole("checkbox", { name: "Show PTS", exact: true }).check();
+    await pts.click();
     expect((await ids()).indexOf("pts")).toBe(index - 1);
     await page.keyboard.press("Escape");
     await page.reload();
