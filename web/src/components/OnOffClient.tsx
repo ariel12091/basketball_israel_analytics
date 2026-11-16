@@ -523,6 +523,7 @@ export default function OnOffClient({
             loading={loading || (psFilters.length > 0 && ps.loading)}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             {psError ? (
               // PLAYER_STAT_FILTER_ERROR_TEXT, as an Info table.

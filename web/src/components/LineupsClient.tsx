@@ -502,6 +502,7 @@ export default function LineupsClient({
             loading={loading}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             <LineupTable
               key={JSON.stringify([

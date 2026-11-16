@@ -46,6 +46,7 @@ import { useShinyBody } from "./useShinyBody";
 import { ImageScopeContext } from "@/lib/images";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+import { ClearFiltersContext } from "./EmptyState";
 import * as Popover from "@radix-ui/react-popover";
 export type { DrawerSection } from "./FilterDrawer";
 
@@ -1348,31 +1349,50 @@ export function seasonChipLabel(league: League, season: string) {
     : `${ui.euroCompetitionLabels[league === "euroleague" ? "E" : "U"]} ${seasonLabel(season, false)}`;
 }
 
-/** Output area states: the error with a retry, or the busy dimming. */
+/** Output area states: the error card with a retry, or the busy dimming
+ * with a progress bar along the top (user 2026-11-16). `onClear` is the
+ * tab's Clear all, offered by an empty table (EmptyState). */
 export function OutputArea({
   id,
   loading,
   error,
   retry,
+  onClear,
   children,
 }: {
   id: string;
   loading: boolean;
   error: string;
   retry: () => void;
+  onClear?: () => void;
   children: ReactNode;
 }) {
   return (
+    <>
+    {/* Outside the dimmed area, so the bar stays at full strength. */}
+    <div
+      className={`ibpl-loading-bar${loading ? " is-on" : ""}`}
+      aria-hidden="true"
+    />
     <div
       id={id}
-      className={`datatables html-widget html-widget-output${loading ? " recalculating" : ""}`}
+      className={`datatables html-widget html-widget-output ibpl-output${loading ? " recalculating" : ""}`}
       style={{ width: "100%", height: "auto" }}
       aria-busy={loading}
       aria-live="polite"
     >
       {error ? (
-        <div className="shiny-output-error" role="alert">
-          <span>{error}</span>{" "}
+        <div className="shiny-output-error ibpl-error-card" role="alert">
+          <i
+            className="bi bi-exclamation-triangle ibpl-error-card-icon"
+            aria-hidden="true"
+          ></i>
+          <div className="ibpl-error-card-body">
+            <p className="ibpl-error-card-title">
+              The data couldn&apos;t be loaded.
+            </p>
+            <p className="ibpl-error-card-detail">{error}</p>
+          </div>
           <button
             type="button"
             className="btn btn-default btn-sm"
@@ -1382,8 +1402,11 @@ export function OutputArea({
           </button>
         </div>
       ) : (
-        children
+        <ClearFiltersContext.Provider value={onClear ?? null}>
+          {children}
+        </ClearFiltersContext.Provider>
       )}
     </div>
+    </>
   );
 }

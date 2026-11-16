@@ -1,4 +1,5 @@
 "use client";
+import EmptyState from "./shiny/EmptyState";
 import { useEffect, useRef, useState } from "react";
 import GameflowPanel from "./shiny/GameflowPanel";
 // The Game Logs tab as Shiny draws it: ui_tab4_gamelogs.R (Israeli League) and
@@ -288,6 +289,7 @@ export default function GameLogsClient({
               loading={loading}
               error={error}
               retry={retry}
+              onClear={reset}
             >
               {!data ? null : rows.length ? (
                 <GameLogsTable
@@ -298,26 +300,11 @@ export default function GameLogsClient({
                   shotAverages={data.meta.shot_averages}
                   onGameflow={openGameflow}
                 />
-              ) : euro ? (
-                // empty_game_log() in server_tab11_euro_gamelogs.R
-                <div className="dataTables_wrapper no-footer">
-                  <table
-                    className="display dataTable no-footer"
-                    style={{ width: "100%" }}
-                  >
-                    <thead>
-                      <tr>
-                        <th className="sorting_disabled">Info</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="odd">
-                        <td>No games match the current filters</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
+              ) : (
+                // Both leagues (EuroLeague had empty_game_log()'s Info table;
+                // the Israeli tab showed nothing): user 2026-11-16.
+                <EmptyState text="No games match the current filters" />
+              )}
             </OutputArea>
           </div>
         </>
