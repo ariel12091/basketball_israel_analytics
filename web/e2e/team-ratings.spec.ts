@@ -114,13 +114,15 @@ test("Traditional column order persists and is usable on phone", async ({
   );
   await page.goto(`/il/team-ratings?${new URLSearchParams(g.query)}`);
   await expect(page.locator(".dataTables_info")).toContainText("14 entries");
-  await page.getByText("Column order", { exact: true }).click();
-  await page.getByLabel("Reorder column", { exact: true }).selectOption("pts");
+  await page.getByRole("button", { name: "Columns", exact: true }).click();
   const ids = () =>
     page
       .locator(".ibpl-dt-scroll thead th")
       .evaluateAll((ths) => ths.map((t) => t.getAttribute("data-column")));
-  await page.getByRole("button", { name: "Move left", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Move PTS earlier", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
   expect((await ids()).slice(0, 5)).toEqual([
     "team_name",
     "gp",

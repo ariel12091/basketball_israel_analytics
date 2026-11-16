@@ -294,6 +294,7 @@ export default function DataTable({
   lengthMenu,
   columnFilters = false,
   csvLabel = "Download CSV",
+  tools,
   onColumnMove,
   moreInfo = false,
   onRowActivate,
@@ -325,6 +326,8 @@ export default function DataTable({
   lengthMenu?: number[];
   columnFilters?: boolean;
   csvLabel?: string;
+  /** More buttons beside Download CSV (the Columns menu). */
+  tools?: ReactNode;
   onColumnMove?: (from: string, to: string) => void;
   /** Header definitions in the stats-tab popover, shown when the mouse
    * rests on the header (HoverTip), instead of the native title. Either
@@ -512,6 +515,7 @@ export default function DataTable({
             <i className="bi bi-download" aria-hidden="true"></i>{" "}
             <span>{csvLabel}</span>
           </button>{" "}
+          {tools}
         </div>
       )}
       <div className="dataTables_scroll">
