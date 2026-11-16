@@ -12,6 +12,7 @@ import { rate, zero } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
 import ui from "@/data/shinyUi.json";
 import MoreInfo from "./MoreInfo";
+import LineupNames from "./LineupNames";
 export default function LineupTable({
   rows,
   view,
@@ -33,14 +34,15 @@ export default function LineupTable({
       render: (r) => ({
         node:
           r.is_total === 0 ? (
-            String(r.Players)
+            <LineupNames value={r.Players} />
           ) : (
             <button
               type="button"
               className="ibpl-lineup-link"
+              aria-label={String(r.Players)}
               onClick={() => onLineup(r)}
             >
-              {r.Players}
+              <LineupNames value={r.Players} />
             </button>
           ),
         text: String(r.Players ?? ""),

@@ -62,6 +62,7 @@ import {
 import data from "@/data/compareUi.json";
 import ui from "@/data/shinyUi.json";
 import { comparePairReady, compareDefaultPlayers } from "@/lib/compareAsync";
+import LineupNames from "./shiny/LineupNames";
 import { seasonLabel } from "./shiny/Navbar";
 const EMPTY_ROWS: Row[] = [];
 export default function CompareClient({
@@ -319,6 +320,14 @@ function CompareTab({
       id: "entity_name",
       label: lineup ? "Lineup" : "Team",
       onActivate: (r) => open(r),
+      ...(lineup
+        ? {
+            render: (r: Row) => ({
+              node: <LineupNames value={r.entity_name} />,
+              text: String(r.entity_name ?? ""),
+            }),
+          }
+        : {}),
     },
     ...(lineup ? [{ id: "team_name", label: "Team" }] : []),
     // Straight to a team's players, A vs B, without the team detail first

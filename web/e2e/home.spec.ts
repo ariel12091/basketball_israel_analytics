@@ -8,6 +8,7 @@ import ui from "../src/data/homeUi.json";
 import shiny from "../src/data/shinyUi.json";
 import { loadGameflow } from "../test/gameflowGoldens";
 import { loadLineup } from "../test/lineupGoldens";
+import { lineupDotted } from "../src/components/shiny/LineupNames";
 type Golden = {
   season: number;
   team: string;
@@ -137,8 +138,8 @@ for (const name of [
     if (g.expected.lineups)
       await expect(page.locator("#hub_lineups .hub-lineup-players")).toHaveText(
         [
-          String(g.expected.lineups.best.player_names_str),
-          String(g.expected.lineups.worst.player_names_str),
+          lineupDotted(g.expected.lineups.best.player_names_str),
+          lineupDotted(g.expected.lineups.worst.player_names_str),
         ],
       );
     else await expect(page.locator("#hub_lineups .hub-lineup")).toHaveCount(0);

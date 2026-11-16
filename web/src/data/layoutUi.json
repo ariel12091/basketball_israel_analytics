@@ -33,7 +33,8 @@
     "clearAll": "Clear all filters",
     "close": "Close filters",
     "open": "Open filters",
-    "closeLabel": "Close"
+    "closeLabel": "Close",
+    "done": "Done"
   },
   "legend": {
     "worse": "worse",
