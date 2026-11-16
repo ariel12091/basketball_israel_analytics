@@ -126,13 +126,7 @@ test("[CMP-01][CMP-05][CMP-07][CMP-08][league:il] controls mirror, rearm auto an
     .getByRole("button", { name: "Offense", exact: true })
     .click();
   await expect(page).toHaveURL(/metric=off_ppp/);
-  if (page.viewportSize()!.width < 1000)
-    await page.getByRole("button", { name: "Toggle navigation" }).click();
-  else await page.locator(".nav-link.active").hover();
-  await page
-    .locator("#main_tabs")
-    .getByRole("button", { name: "Lineups", exact: true })
-    .click();
+  await page.getByRole("tab", { name: "Lineups", exact: true }).click();
   await expect(page).toHaveURL(/view=Lineups/);
   const q = new URL(page.url()).searchParams;
   expect(q.get("preset")).toBeNull();
@@ -261,67 +255,35 @@ test("[CMP-02][league:il] desktop can hide the filters and give the table the wi
   await expect(firstRow).toBeVisible();
 });
 
-test("[CMP-02][league:il] the phone menu offers every tab's views", async ({
+test("[X-NAV][league:il] the top bar links every page, one tap each", async ({
   page,
 }, info) => {
-  test.skip(info.project.name !== "phone");
   await stub(page);
   await page.goto("/il/compare?season=2026");
-  await page.getByRole("button", { name: "Toggle navigation" }).click();
-  const tab = (name: string) =>
-    page.locator("#main_tabs .nav-item", {
-      has: page.locator(".nav-link", { hasText: name }),
-    });
-  for (const [name, views] of [
-    ["On/Off Impact", ["Summary", "Four Factors", "Shot Profile"]],
-    ["Lineup Data", ["Summary", "Four Factors"]],
-    [
-      "Team Ratings",
-      ["Summary", "Four Factors", "Shot Profile", "Traditional"],
-    ],
-    ["Game Logs", ["Summary", "Four Factors"]],
-    ["Compare", ["Teams", "Lineups", "Players"]],
-  ] as const)
-    for (const view of views)
-      await expect(
-        tab(name).getByRole("button", { name: view, exact: true }),
-      ).toBeVisible();
-  // The open menu fits one tall phone screen, and needs no sideways scroll.
-  const menu = await page.locator("#main_tabs").boundingBox();
-  expect(menu!.height).toBeLessThan(800);
+  const pages = page.locator("#ibpl_pages");
+  for (const name of [
+    "Home",
+    "On/Off",
+    "Lineups",
+    "Teams",
+    "Games",
+    "Players",
+    "Compare",
+  ])
+    await expect(pages.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(
+    pages.getByRole("link", { name: "Compare", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  if (info.project.name === "phone") {
+    // The page links are a tab bar along the bottom of the screen.
+    const box = (await pages.boundingBox())!;
+    expect(box.y + box.height).toBeGreaterThan(page.viewportSize()!.height - 2);
+  }
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     ),
   ).toBe(0);
-  // A view on another tab opens that tab on that view.
-  await tab("Lineup Data")
-    .getByRole("button", { name: "Four Factors", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/il\/lineups\?.*view=/);
-});
-
-test("[CMP-02][league:il] Compare's menu opens the chosen view from another tab", async ({
-  page,
-}, info) => {
-  await stub(page);
-  await page.goto("/il/lineups?season=2026");
-  const compare = page
-    .locator("#main_tabs .nav-item")
-    .filter({ has: page.locator('.nav-link[data-value="compare"]') });
-  if (info.project.name === "phone")
-    await page.getByRole("button", { name: "Toggle navigation" }).click();
-  else await compare.locator(".nav-link").hover();
-  const players = compare.getByRole("button", {
-    name: "Players",
-    exact: true,
-  });
-  await expect(players).toBeVisible();
-  // The desktop menu fades in and takes clicks once it has settled.
-  await page.waitForTimeout(300);
-  await players.click();
-  await expect(page).toHaveURL(/\/il\/compare\?.*view=Players/);
-  await expect(page.locator('.view-tabs-tab[data-state="active"]')).toHaveText(
-    "Players",
-  );
+  await pages.getByRole("link", { name: "Lineups", exact: true }).click();
+  await expect(page).toHaveURL(/\/il\/lineups\?season=2026/);
 });

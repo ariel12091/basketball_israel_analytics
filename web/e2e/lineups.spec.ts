@@ -42,7 +42,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(page).toHaveURL(
       new RegExp(`/${league}/lineups\\?season=${season}.*players_on=`),
     );
-    await expect(page.locator(".nav-link.active")).toContainText("Lineup Data");
+    await expect(page.locator(".ibpl-page.active")).toContainText("Lineups");
     const selectedPlayer = new URL(page.url()).searchParams.get("players_on");
     await expect(
       page.locator(`.lineup-chip[data-id="${selectedPlayer}"]`),

@@ -196,7 +196,7 @@ for (const file of presets)
   });
 
 for (const league of ["il", "euroleague", "eurocup"] as const)
-  test(`On/Off ${league} interactions`, async ({ page }, info) => {
+  test(`On/Off ${league} interactions`, async ({ page }) => {
     const pick = (view: string) => loadGolden(`${league}_${view}_default.json`);
     await page.route("**/api/v1/**", (route) => {
       const url = new URL(route.request().url());
@@ -274,13 +274,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("group", { name: "Go to" })).toHaveCount(0);
-    if (info.project.name === "phone")
-      await page.locator(".navbar-toggle").click();
-    const activeTab = page.locator(".nav-item", {
-      has: page.locator(".nav-link.active"),
-    });
-    if (info.project.name !== "phone") await activeTab.hover();
-    await activeTab.locator('.thm-item[data-value="Four Factors"]').click();
+    await page.getByRole("tab", { name: "Four Factors", exact: true }).click();
     await expect(
       table.locator("td.onoff-factor-cell .sub-text").first(),
     ).toBeVisible();

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openNavMenu } from "./navMenu";
+import { chooseLeague } from "./navMenu";
 for (const [saved, league] of [
   ["E", "euroleague"],
   ["U", "eurocup"],
@@ -55,24 +55,17 @@ for (const next of ["euroleague", "eurocup"] as const)
         exact: true,
       }),
     ).toBeVisible();
-    await openNavMenu(page, /^League:/);
-    await page
-      .locator("#league_menu")
-      .getByRole("link", {
-        name: next === "euroleague" ? "EuroLeague" : "EuroCup",
-        exact: true,
-      })
-      .click();
+    await chooseLeague(page, next === "euroleague" ? "EuroLeague" : "EuroCup");
     await expect(page).toHaveURL(new RegExp(`/${next}/home$`));
     await expect(
       // includeHidden also counts the aria-hidden icon glyph in the name, so
       // match the label at the end rather than the whole name.
       page
-        .locator("#main_tabs")
-        .getByRole("link", { name: /(^|\s)Home$/, includeHidden: true }),
+        .locator("#ibpl_pages")
+        .getByRole("link", { name: "Home", exact: true }),
     ).toHaveAttribute("aria-current", "page");
     await expect(
-      page.locator("#main_tabs").getByRole("link", { name: /Compare/ }),
+      page.locator("#ibpl_pages").getByRole("link", { name: /Compare/ }),
     ).toHaveCount(0);
     await expect(page.locator(".home-nav-card")).toHaveCount(5);
     expect(

@@ -41,15 +41,12 @@ test.describe("theme before first paint", () => {
 test.describe("the toggle", () => {
   test("switches to light, remembers it and offers dark back", async ({
     page,
-  }, info) => {
+  }) => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto(HOME);
-    // Phone: in the header bar, outside the burger menu (user 2026-11-15);
-    // desktop: in the right cluster. Exactly one copy shows at a width.
-    const btn = page.locator(".nav-theme-btn:visible");
-    await expect(btn).toHaveCount(1);
-    if (info.project.name === "phone")
-      await expect(page.locator(".navbar-header .nav-theme-btn")).toBeVisible();
+    // In the top bar at every width (one copy).
+    const btn = page.locator("#theme_toggle");
+    await expect(btn).toBeVisible();
     await expect(btn).toHaveAttribute("aria-label", "Switch to light theme");
     // Retry until hydration has attached the click handler.
     await expect(async () => {
@@ -72,11 +69,6 @@ test.describe("the toggle", () => {
     expect(
       await page.evaluate(() => localStorage.getItem("ibpl_theme")),
     ).toBeNull();
-    if (info.project.name === "phone") {
-      // The open menu holds no second toggle.
-      await page.locator(".navbar-toggle").click();
-      await expect(page.locator(".nav-theme-btn:visible")).toHaveCount(1);
-    }
   });
 
   test("blocked storage still switches for the page", async ({ page }) => {
@@ -103,52 +95,41 @@ test.describe("the toggle", () => {
     }).toPass();
   });
 
-  test("the tab row stays one line at 1440 and 1600 px", async ({
-    browser,
-  }, info) => {
+  test("the top bar stays one row from 1024 px", async ({ browser }, info) => {
     test.skip(info.project.name === "phone", "desktop widths only");
     test.setTimeout(180000);
     // A context WITHOUT the config's x-ibpl-client-data header: sent to the
     // font CDNs too, it fails their CORS check, so no font ever loads and the
-    // tabs measure narrower than in a real browser.
+    // bar measures narrower than in a real browser.
     const ctx = await browser.newContext({
       baseURL: info.project.use.baseURL,
       colorScheme: "dark",
       extraHTTPHeaders: {},
     });
     const page = await ctx.newPage();
-    // Window widths with a 15 px scrollbar: headless Chromium has none, and
-    // a real 1440 px window lost the row to it on the Preview. (1280 and 1366
-    // wrapped before the toggle existed: root CLAUDE.md, navbar width.)
-    for (const width of [1440, 1600]) {
+    // Window widths with a 15 px scrollbar: headless Chromium has none.
+    for (const width of [1024, 1280, 1366, 1440, 1600]) {
       await page.setViewportSize({ width: width - 15, height: 900 });
       await page.goto("/il/onoff?season=2026");
-      await expect(page.locator("#last_updated")).not.toBeEmpty();
-      // Measure with the real fonts: without the icon font every tab is
-      // narrower and a wrapped row goes unseen (it did once, on the Preview).
+      await expect(page.locator("#ibpl_updated")).not.toContainText("n/a");
       await expect
         .poll(() =>
           page.evaluate(async () => {
             await document.fonts.ready;
-            return (
-              document.fonts.check('16px "bootstrap-icons"') &&
-              document.fonts.check('600 14px "DM Sans"')
-            );
+            return document.fonts.check('600 14px "DM Sans"');
           }),
         )
         .toBe(true);
-      // Let Navbar's --navbar-cluster-w padding settle: the row wraps only
-      // once the cluster's width is reserved, so an early read passes falsely.
-      await page.waitForTimeout(2000);
-      // One line: the tab list is no taller than one of its tabs.
-      const extra = await page.evaluate(() => {
-        const ul = document.getElementById("main_tabs")!;
-        const li = ul.querySelector("li")!;
-        return (
-          ul.getBoundingClientRect().height - li.getBoundingClientRect().height
-        );
+      // One row: the bar keeps its height and nothing in it overflows.
+      const fit = await page.evaluate(() => {
+        const row = document.querySelector(".ibpl-topbar-row")!;
+        return {
+          height: row.getBoundingClientRect().height,
+          overflow: row.scrollWidth - row.clientWidth,
+        };
       });
-      expect(extra, `tab row wraps at a ${width}px window`).toBeLessThan(4);
+      expect(fit.height, `bar height at a ${width}px window`).toBeLessThan(57);
+      expect(fit.overflow, `bar overflows at a ${width}px window`).toBe(0);
     }
     await ctx.close();
   });

@@ -1,17 +1,21 @@
 "use client";
-// Shiny's navbarPage header (app.R build_ui) with the tab view-mode menus that
-// app.js builds from its CFG list, and the fixed right cluster: league select,
-// season select, Glossary button, last-updated stamp. Migrated tabs are links
-// (keeping the season); the others keep their place and look but are inert.
+// The site's top bar (navbar redesign, user 2026-11-16; mock-up
+// https://claude.ai/artifact/CoQ1bLn23aSxFVegvRzmhc). One markup for every
+// width; web.css arranges it:
+// - wide screens: one row of page pills, then the settings (league switch,
+//   season menu) set apart by dividers and small labels, then the update
+//   date, Glossary and the theme switch;
+// - narrow screens: the bar keeps the logo, league and season menus, Glossary
+//   and theme; the page pills become a tab bar fixed to the bottom.
+// The views of each page are tabs on the page itself (ViewTabs), so the bar
+// has no view menus.
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { League } from "@/rules/gameLogs";
 import {
   LEAGUE_VALUE,
   leagueName,
   pageHeading,
-  PAGE_LABEL,
   type PagePath,
 } from "@/lib/pageTitle";
 import ThemeToggle from "./ThemeToggle";
@@ -27,93 +31,65 @@ export type TabId =
 type Tab = {
   value: TabId;
   euroValue?: string;
+  /** The bar's short name; the page heading keeps the full one. */
   label: string;
   icon: string;
-  modes?: string[];
-  def?: string;
+  path: PagePath;
   ilOnly?: boolean;
-  path?: PagePath;
 };
-// Tab order: app.R build_ui(); icons: the ui_tab*.R titles; modes: app.js CFG.
+// Tab order: app.R build_ui(); icons: the ui_tab*.R titles.
 const TABS: Tab[] = [
-  { value: "home", label: PAGE_LABEL.home, icon: "bi-house-fill", path: "home" },
+  { value: "home", label: "Home", icon: "bi-house-fill", path: "home" },
   {
     value: "onoff",
     euroValue: "euro",
-    label: PAGE_LABEL.onoff,
+    label: "On/Off",
     icon: "bi-toggles",
-    modes: ["Summary", "Four Factors", "Shot Profile"],
-    def: "Summary",
     path: "onoff",
   },
   {
     value: "lineup_data",
     euroValue: "euro_lineups",
-    label: PAGE_LABEL.lineups,
+    label: "Lineups",
     icon: "bi-people-fill",
-    modes: ["Summary", "Four Factors"],
-    def: "Summary",
     path: "lineups",
   },
   {
     value: "team_ratings",
     euroValue: "euro_team",
-    label: PAGE_LABEL["team-ratings"],
+    label: "Teams",
     icon: "bi-trophy-fill",
-    modes: ["Summary", "Four Factors", "Shot Profile", "Traditional"],
-    def: "Summary",
     path: "team-ratings",
   },
   {
     value: "game_logs",
     euroValue: "euro_game_logs",
-    label: PAGE_LABEL["game-logs"],
+    label: "Games",
     icon: "bi-calendar-event",
-    modes: ["Summary", "Four Factors"],
-    def: "Summary",
     path: "game-logs",
   },
   {
     value: "traditional_stats",
-    path: "player-stats",
-    label: PAGE_LABEL["player-stats"],
+    label: "Players",
     icon: "bi-bar-chart-line",
-    modes: ["Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"],
-    def: "Per Game",
+    path: "player-stats",
   },
   {
     value: "compare",
-    label: PAGE_LABEL.compare,
+    label: "Compare",
     icon: "bi-arrow-left-right",
-    modes: ["Teams", "Lineups", "Players"],
-    def: "Teams",
-    ilOnly: true,
     path: "compare",
+    ilOnly: true,
   },
 ];
-// app.js CFG for the EuroLeague tabs: On/Off has two modes; Team Ratings adds
-// Traditional (web only; Shiny Tab 9 has Summary and Four Factors).
-const EURO_MODES: Record<string, string[]> = {
-  euro: ["Summary", "Four Factors"],
-  euro_team: ["Summary", "Four Factors", "Traditional"],
-};
-const VIEW_PARAM: Record<string, string> = {
-  Totals: "Totals",
-  "Per Game": "Per Game",
-  "Per 60 Possessions": "Per 60 Possessions",
-  "Per 30 Minutes": "Per 30 Minutes",
-  Traditional: "traditional",
-  Summary: "summary",
-  "Four Factors": "four_factors",
-  "Shot Profile": "shot_profile",
-  Lineups: "Lineups",
-  Players: "Players",
-};
 
-// Israel first, each under its full name.
-const LEAGUE_TOGGLE = (["il", "euroleague", "eurocup"] as const).map(
-  (league) => ({ league: league as League, name: leagueName(league) }),
-);
+const LEAGUES: League[] = ["il", "euroleague", "eurocup"];
+/** The league switch's words; the menu and the page title use full names. */
+const LEAGUE_SHORT: Record<League, string> = {
+  il: "Israeli",
+  euroleague: "EuroLeague",
+  eurocup: "EuroCup",
+};
 
 export function seasonLabel(year: string | number, endingYear = true) {
   const y = Number(year) + (endingYear ? 0 : 1);
@@ -140,18 +116,20 @@ export function lastUpdatedShort(txt: string) {
   return m ? `${MONTH_ABB[Number(m[2]) - 1]} ${Number(m[3])}` : "n/a";
 }
 
+function rememberLeague(league: League) {
+  try {
+    window.localStorage.setItem("ibpl_league_select", LEAGUE_VALUE[league]);
+  } catch {}
+}
+
 export default function Navbar({
   league,
   tab,
   season,
   seasons,
-  views,
-  view,
-  onView,
   onSeason,
   onGlossary,
   updated,
-  collapsedNav,
   page,
   children,
 }: {
@@ -159,350 +137,153 @@ export default function Navbar({
   tab: TabId;
   season: string;
   seasons: string[];
-  views: string[];
-  view: string;
-  onView: (v: string) => void;
   onSeason: (s: string) => void;
   onGlossary: () => void;
   updated: string | null;
-  collapsedNav: boolean;
   /** The route, when it is not the tab's own (Gameflow sits under Game Logs). */
   page?: PagePath;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const euro = league !== "il";
-  const [collapsed, setCollapsed] = useState(true);
-  const tabsRef = useRef<HTMLUListElement>(null);
-  const clusterRef = useRef<HTMLDivElement>(null);
-
-  // app.js: reserve the part of the fixed cluster that overhangs the tab row.
-  useEffect(() => {
-    const sync = () => {
-      const c = clusterRef.current?.getBoundingClientRect();
-      const u = tabsRef.current?.getBoundingClientRect();
-      if (!c?.width || !u?.width) return;
-      document.documentElement.style.setProperty(
-        "--navbar-cluster-w",
-        `${Math.max(0, Math.ceil(u.right - c.left) + 8)}px`,
-      );
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    if (clusterRef.current) ro.observe(clusterRef.current);
-    window.addEventListener("resize", sync);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", sync);
-    };
-  }, [updated, collapsedNav]);
-
-  const stamp = updated
-    ? `Last updated: ${updated}`
-    : "Last updated: unavailable";
-  // "Showing <league> . <season>": both plain-text menus. With the collapsed
-  // nav it sits in the header bar beside the burger, so the competition and
-  // season stay visible and changeable without opening the menu (user
-  // 2026-11-06); otherwise it leads the fixed right cluster. Both copies are
-  // always rendered and web.css shows one by the body width class, which the
-  // pre-paint script sets: nothing moves when the client takes over.
-  const showing = (
-    <div className="navbar-showing">
-      <span className="navbar-showing-label">Showing</span>
-      <NavMenu
-        id="league"
-        name="League"
-        current={LEAGUE_TOGGLE.find((l) => l.league === league)!.name}
-        items={LEAGUE_TOGGLE.map((l) => {
-          const currentTab = TABS.find((t) => t.value === tab);
-          // app.js applyValue(): a league-only tab must fall back to Home
-          // when switching away from its league. Euro has no Compare route.
-          const path =
-            l.league !== "il" && currentTab?.ilOnly
-              ? "home"
-              : (currentTab?.path ?? "home");
-          return {
-            key: l.league,
-            label: l.name,
-            active: l.league === league,
-            // EuroLeague and EuroCup share a season convention, so a
-            // switch between them keeps the season.
-            href: `/${l.league}/${path}${euro && l.league !== "il" ? `?season=${season}` : ""}`,
-            onSelect: () => {
-              try {
-                window.localStorage.setItem(
-                  "ibpl_league_select",
-                  LEAGUE_VALUE[l.league],
-                );
-              } catch {}
-            },
-          };
-        })}
-      />
-      <span className="navbar-showing-sep" aria-hidden="true">
-        &middot;
-      </span>
-      <span
-        className={`navbar-season-menu ${euro ? "league-nav-el" : "league-nav-il"}`}
-      >
-        <NavMenu
-          id={euro ? "euro_game_year" : "game_year"}
-          name="Season"
-          current={seasonLabel(season, !euro)}
-          items={seasons.map((s) => ({
-            key: s,
-            label: seasonLabel(s, !euro),
-            active: s === season,
-            onSelect: () => s !== season && onSeason(s),
-          }))}
-        />
-      </span>
-    </div>
-  );
-  // mobile.js relocates the fixed cluster into the collapsed menu.
-  const cluster = (
-    <div
-      id="navbar_right_cluster"
-      ref={clusterRef}
-      style={{
-        position: "fixed",
-        right: 10,
-        top: 8,
-        fontSize: "0.8rem",
-        color: "var(--ibpl-text-muted)",
-        zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        maxWidth: "calc(100vw - 20px)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {showing}
-      <ThemeToggle id="theme_toggle" />
-      <button
-        className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
-        id="open_glossary"
-        type="button"
-        title="Glossary"
-        aria-label="Glossary"
-        onClick={onGlossary}
-      >
-        <span>
-          <i className="bi bi-book" aria-hidden="true"></i>
-          {/* Icon only on desktop below 1600 px, where the theme toggle
-              takes the label's width (light.css). */}
-          <span className="nav-help-label"> Glossary</span>
-        </span>
-      </button>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          minWidth: 0,
-        }}
-      >
-        <span
-          className="nav-updated-dot"
-          style={{
-            width: 6,
-            height: 6,
-            background: "var(--ibpl-pos)",
-            borderRadius: "50%",
-            display: "inline-block",
-          }}
-        ></span>
-        <span
-          style={{
-            display: "inline-block",
-            maxWidth: 210,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span id="last_updated">
-            <span title={stamp}>
-              {updated ? lastUpdatedShort(updated) : "n/a"}
-            </span>
-          </span>
-        </span>
-      </span>
-    </div>
+  const currentTab = TABS.find((t) => t.value === tab);
+  // app.js applyValue(): a league-only page falls back to Home when switching
+  // away from its league. EuroLeague and EuroCup share a season convention,
+  // so a switch between them keeps the season.
+  const leagueHref = (l: League) => {
+    const path =
+      l !== "il" && currentTab?.ilOnly ? "home" : (currentTab?.path ?? "home");
+    return `/${l}/${path}${euro && l !== "il" ? `?season=${season}` : ""}`;
+  };
+  const stamp = updated ? `Data updated ${updated}` : "Update time unavailable";
+  const short = updated ? lastUpdatedShort(updated) : "n/a";
+  const seasonMenu = (
+    <NavMenu
+      id={euro ? "euro_game_year" : "game_year"}
+      name="Season"
+      title={`${LEAGUE_SHORT[league]} season`}
+      current={seasonLabel(season, !euro)}
+      align="end"
+      items={seasons.map((s) => ({
+        key: s,
+        label: seasonLabel(s, !euro),
+        active: s === season,
+        onSelect: () => s !== season && onSeason(s),
+      }))}
+    />
   );
   return (
     <>
-      <nav
-        className="navbar navbar-default navbar-static-top"
-        role="navigation"
-        data-bs-theme="light"
-      >
-        <div className="container-fluid">
-          <div className="navbar-header">
-            <button
-              type="button"
-              className={`navbar-toggle${collapsed ? " collapsed" : ""}`}
-              aria-expanded={!collapsed}
-              aria-controls="navbar-collapse-main"
-              onClick={() => setCollapsed((c) => !c)}
-            >
-              <span className="sr-only visually-hidden">Toggle navigation</span>
-              <span className="icon-bar"></span>
-              <span className="icon-bar"></span>
-              <span className="icon-bar"></span>
-            </button>
-            <Link
-              className="navbar-brand"
-              href={`/${league}/home?season=${season}`}
-              prefetch={false}
-            >
-              <span>
-                <i
-                  className="bi bi-activity"
-                  style={{ marginRight: 6 }}
-                  aria-hidden="true"
-                ></i>
-                IBPL Analytics
-              </span>
-            </Link>
-            {showing}
-            {/* Collapsed nav: the theme switch stays in the bar, outside the
-                burger menu (user 2026-11-15). */}
-            <ThemeToggle id="theme_toggle_bar" />
-          </div>
-          <div
-            className={`navbar-collapse collapse${collapsed ? "" : " show"}`}
-            id="navbar-collapse-main"
+      <header className="ibpl-topbar">
+        <div className="ibpl-topbar-row">
+          <Link
+            className="ibpl-brand"
+            href={`/${league}/home?season=${season}`}
+            prefetch={false}
+            aria-label="IBPL Analytics home"
           >
-            <ul
-              ref={tabsRef}
-              className="nav navbar-nav nav-underline"
-              id="main_tabs"
-              aria-label="Pages"
-            >
+            <i className="bi bi-activity" aria-hidden="true"></i>
+            <span className="ibpl-brand-name">IBPL Analytics</span>
+          </Link>
+          <nav className="ibpl-pages" id="ibpl_pages" aria-label="Pages">
+            <ul>
               {TABS.filter((t) => !(euro && t.ilOnly)).map((t) => {
-                const value = euro ? (t.euroValue ?? t.value) : t.value;
                 const here = t.value === tab;
-                const modes = euro ? (EURO_MODES[value] ?? t.modes) : t.modes;
-                const current = here ? view : t.def;
-                const href = t.path
-                  ? `/${league}/${t.path}?season=${season}`
-                  : undefined;
-                const go = (mode?: string) => {
-                  if (!href) return;
-                  router.push(
-                    mode && VIEW_PARAM[mode] && mode !== t.def
-                      ? `${href}&view=${VIEW_PARAM[mode]}`
-                      : href,
-                  );
-                };
-                const linkProps = {
-                  "data-value": value,
-                  className: `nav-link${here ? " active" : ""}`,
-                };
-                const inner = (
-                  <>
-                    <span>
-                      <i className={`bi ${t.icon}`} aria-hidden="true"></i>{" "}
-                      {t.label}
-                    </span>
-                    {modes && <span className="tab-mode-label">{current}</span>}
-                  </>
-                );
                 return (
-                  <li
-                    key={t.value}
-                    className={`nav-item${modes ? " tab-has-dropdown" : ""}`}
-                  >
-                    {href ? (
-                      <Link
-                        href={href}
-                        {...linkProps}
-                        aria-current={here ? "page" : undefined}
-                        // The current page's link keeps its filters: a
-                        // click on it stays put, as in Shiny.
-                        onClick={here ? (e) => e.preventDefault() : undefined}
-                      >
-                        {inner}
-                      </Link>
-                    ) : here ? (
-                      <a {...linkProps} aria-current="page">
-                        {inner}
-                      </a>
-                    ) : (
-                      <a
-                        {...linkProps}
-                        aria-disabled
-                        title="Not yet available in the new app"
-                      >
-                        {inner}
-                      </a>
-                    )}
-                    {modes && (
-                      <div
-                        className="tab-hover-menu"
-                        role="group"
-                        aria-label={`${t.label} views`}
-                      >
-                        {modes.map((m) => {
-                          const usable = here
-                            ? views.includes(m)
-                            : Boolean(href);
-                          const choose = () => {
-                            if (!usable) return;
-                            if (here) onView(m);
-                            else go(m);
-                            setCollapsed(true);
-                          };
-                          return (
-                            <button
-                              type="button"
-                              key={m}
-                              data-value={m}
-                              className={`ibpl-btn-reset thm-item${m === current ? " active" : ""}`}
-                              aria-pressed={m === current}
-                              disabled={!usable}
-                              onClick={(e) => {
-                                choose();
-                                const menu = e.currentTarget.parentElement;
-                                if (menu) {
-                                  menu.style.display = "none";
-                                  setTimeout(
-                                    () => (menu.style.display = ""),
-                                    50,
-                                  );
-                                }
-                              }}
-                            >
-                              <span className="thm-check" aria-hidden="true">
-                                {m === current ? "✓" : ""}
-                              </span>
-                              {m}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                  <li key={t.value}>
+                    <Link
+                      href={`/${league}/${t.path}?season=${season}`}
+                      prefetch={false}
+                      data-value={euro ? (t.euroValue ?? t.value) : t.value}
+                      className={`ibpl-page${here ? " active" : ""}`}
+                      aria-current={here ? "page" : undefined}
+                      // The current page's link keeps its filters: a click
+                      // on it stays put, as in Shiny.
+                      onClick={here ? (e) => e.preventDefault() : undefined}
+                    >
+                      <i className={`bi ${t.icon}`} aria-hidden="true"></i>
+                      <span className="ibpl-page-label">{t.label}</span>
+                    </Link>
                   </li>
                 );
               })}
             </ul>
-            {collapsedNav && cluster}
+          </nav>
+          <div className="ibpl-settings">
+            <span className="ibpl-sep" aria-hidden="true"></span>
+            <div className="ibpl-setting">
+              <span className="ibpl-setting-label" id="ibpl_league_label">
+                League
+              </span>
+              {/* Wide screens: every league one click away. */}
+              <div
+                className="ibpl-league-switch"
+                role="group"
+                aria-labelledby="ibpl_league_label"
+              >
+                {LEAGUES.map((l) => (
+                  <Link
+                    key={l}
+                    href={leagueHref(l)}
+                    prefetch={false}
+                    className={l === league ? "active" : undefined}
+                    aria-current={l === league ? "page" : undefined}
+                    title={leagueName(l)}
+                    onClick={() => rememberLeague(l)}
+                  >
+                    {LEAGUE_SHORT[l]}
+                  </Link>
+                ))}
+              </div>
+              {/* Narrow screens: the same choice as a menu. */}
+              <NavMenu
+                id="league"
+                name="League"
+                className="ibpl-league-menu"
+                current={LEAGUE_SHORT[league]}
+                items={LEAGUES.map((l) => ({
+                  key: l,
+                  label: leagueName(l),
+                  active: l === league,
+                  href: leagueHref(l),
+                  onSelect: () => rememberLeague(l),
+                }))}
+              />
+            </div>
+            <div className="ibpl-setting">
+              <span className="ibpl-setting-label" aria-hidden="true">
+                Season
+              </span>
+              {seasonMenu}
+            </div>
+            <span className="ibpl-sep" aria-hidden="true"></span>
+            <span className="ibpl-updated" id="ibpl_updated" title={stamp}>
+              <span className="ibpl-updated-dot" aria-hidden="true"></span>
+              <span className="visually-hidden">Data updated </span>
+              {short}
+            </span>
+            <button
+              className="ibpl-icon-btn"
+              id="open_glossary"
+              type="button"
+              title="Glossary"
+              aria-label="Glossary"
+              onClick={onGlossary}
+            >
+              <i className="bi bi-book" aria-hidden="true"></i>
+            </button>
+            <ThemeToggle id="theme_toggle" className="ibpl-icon-btn" />
           </div>
         </div>
-      </nav>
-      {/* Shiny puts the fixed cluster first inside the body container, so
-          bslib's ".navbar + div > .tab-content > .tab-pane" spacing applies. */}
+      </header>
       <div className="container-fluid">
-        {!collapsedNav && cluster}
-        {/* One h1 per page for screen readers and outlines; the navbar's
-            active tab already says it on screen. */}
+        {/* Narrow screens have no room in the bar for the date. */}
+        <p className="ibpl-updated-line" aria-hidden="true" title={stamp}>
+          <span className="ibpl-updated-dot"></span>Updated {short}
+        </p>
+        {/* One h1 per page for screen readers and outlines; the bar's
+            active page already says it on screen. */}
         <h1 className="ibpl-sr-only">
-          {pageHeading(
-            page ?? TABS.find((t) => t.value === tab)?.path ?? "home",
-            league,
-          )}
+          {pageHeading(page ?? currentTab?.path ?? "home", league)}
         </h1>
         {children}
       </div>
@@ -518,18 +299,26 @@ type NavMenuItem = {
   href?: string;
   onSelect?: () => void;
 };
-/** A navbar control shown as plain text with a caret (the current value),
- * opening a small menu of the choices. */
+/** A pill showing the current value with a caret, opening a small menu of
+ * the choices. */
 function NavMenu({
   id,
   name,
+  title,
   current,
   items,
+  className,
+  align = "start",
 }: {
   id: string;
   name: string;
+  /** A heading inside the menu. */
+  title?: string;
   current: string;
   items: NavMenuItem[];
+  className?: string;
+  /** Which edge of the pill the menu lines up with. */
+  align?: "start" | "end";
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -548,7 +337,7 @@ function NavMenu({
   };
   return (
     <div
-      className="navbar-text-menu"
+      className={`ibpl-menu${className ? ` ${className}` : ""}`}
       ref={root}
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
@@ -560,7 +349,7 @@ function NavMenu({
       <button
         ref={button}
         type="button"
-        className="navbar-text-menu-current"
+        className="ibpl-menu-btn"
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls={`${id}_menu`}
@@ -568,34 +357,47 @@ function NavMenu({
       >
         <span className="visually-hidden">{name}: </span>
         {current}
+        <i className="bi bi-chevron-down" aria-hidden="true"></i>
       </button>
       {open && (
-        <ul id={`${id}_menu`} className="navbar-text-menu-options">
-          {items.map((item) => (
-            <li key={item.key}>
-              {item.href ? (
-                <Link
-                  prefetch={false}
-                  href={item.href}
-                  className={item.active ? "active" : undefined}
-                  aria-current={item.active ? "page" : undefined}
-                  onClick={() => choose(item)}
-                >
-                  {item.label}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className={item.active ? "active" : undefined}
-                  aria-pressed={item.active}
-                  onClick={() => choose(item)}
-                >
-                  {item.label}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div
+          id={`${id}_menu`}
+          className={`ibpl-menu-list${align === "end" ? " is-end" : ""}`}
+        >
+          {title && <div className="ibpl-menu-title">{title}</div>}
+          <ul>
+            {items.map((item) => (
+              <li key={item.key}>
+                {item.href ? (
+                  <Link
+                    prefetch={false}
+                    href={item.href}
+                    className={item.active ? "active" : undefined}
+                    aria-current={item.active ? "page" : undefined}
+                    onClick={() => choose(item)}
+                  >
+                    {item.label}
+                    {item.active && (
+                      <i className="bi bi-check2" aria-hidden="true"></i>
+                    )}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className={item.active ? "active" : undefined}
+                    aria-pressed={item.active}
+                    onClick={() => choose(item)}
+                  >
+                    {item.label}
+                    {item.active && (
+                      <i className="bi bi-check2" aria-hidden="true"></i>
+                    )}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

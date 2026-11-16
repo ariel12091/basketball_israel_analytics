@@ -188,7 +188,7 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 /* Wider screens: centred in the window below the navbar; with "See more"
    open it moves up to the top so the extra blocks have room. */
 @media (min-width: 768px) {
-  .home-compact { margin-top: 0; min-height: calc(100dvh - 110px); display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
+  .home-compact { margin-top: 0; min-height: calc(100dvh - 110px - var(--ibpl-tabbar-h, 0px)); display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
   .home-compact.home-more-open { justify-content: flex-start; padding-top: 24px; }
 }
 .home-ask-form { display: flex; align-items: center; gap: 8px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-accent); border-radius: 999px; padding: 4px 4px 4px 14px; color: var(--ibpl-text-dim); }
@@ -225,39 +225,6 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .home-more-toggle:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
 .home-more-sub { display: block; font-size: .75rem; font-weight: 400; color: var(--ibpl-text-dim); }
 .home-euro-note { color: var(--ibpl-text-dim); font-size: .8rem; text-align: center; margin-top: 12px; }
-/* Navbar "Showing <league> . <season>" (Navbar.tsx NavMenu): each value is
-   plain text with a caret that opens a small menu. */
-.navbar-showing { display: inline-flex; align-items: center; gap: 2px; }
-.navbar-showing-label, .navbar-showing-sep { color: var(--ibpl-text-dim); font-size: .78rem; }
-.navbar-showing-label { margin-right: 2px; }
-.navbar-text-menu { position: relative; display: inline-flex; }
-.navbar-text-menu-current { display: inline-flex; align-items: center; gap: 5px; padding: 4px 5px; border: 0; background: transparent; color: var(--ibpl-accent); font-size: .82rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.navbar-text-menu-current::after { content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
-.navbar-text-menu-current:hover, .navbar-text-menu-current[aria-expanded="true"] { color: var(--ibpl-accent-hover); }
-.navbar-text-menu-options { position: absolute; top: calc(100% + 4px); left: 0; z-index: 10003; min-width: 140px; margin: 0; padding: 4px; list-style: none; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
-.navbar-text-menu-options a, .navbar-text-menu-options button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ibpl-text); font-size: .85rem; text-align: left; text-decoration: none; }
-.navbar-text-menu-options a:hover, .navbar-text-menu-options button:hover { background: var(--ibpl-surface-2); color: var(--ibpl-accent); }
-.navbar-text-menu-options .active { color: var(--ibpl-accent); font-weight: 700; }
-/* Collapsed nav: the menus sit in the header bar between the brand and the
-   burger (Navbar.tsx), so they stay visible with the menu closed. */
-.navbar-header .navbar-showing,
-body.ibpl-collapsed-nav #navbar_right_cluster .navbar-showing { display: none; }
-body.ibpl-collapsed-nav .navbar-header .navbar-showing { display: inline-flex; order: 1; margin-left: auto; margin-right: 6px; min-width: 0; }
-body.ibpl-collapsed-nav .navbar-header .navbar-showing-label { display: none; }
-/* Navbar.tsx renders only the current league's season menu, so it needs no
-   body.league-* gate (app.css hides .league-nav-* until that class lands,
-   which left the season missing on a fresh phone load). */
-.navbar-season-menu.league-nav-il, .navbar-season-menu.league-nav-el { display: inline-flex !important; align-items: center; }
-body.ibpl-collapsed-nav .navbar-header .navbar-season-menu { width: auto !important; }
-body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-current { min-height: 44px; padding: 4px 6px; }
-body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-options { left: auto; right: 0; }
-body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Brand + league + season + burger need ~340px of bar; below 420px of
-   viewport the brand keeps only its icon. */
-@media (max-width: 419.98px) {
-  body.ibpl-collapsed-nav .navbar-header .navbar-brand > span { font-size: 0; }
-  body.ibpl-collapsed-nav .navbar-header .navbar-brand .bi { font-size: 1.1rem; margin-right: 0 !important; }
-}
 
 @media (max-width: 767.98px) {
   .cmp-compare-grid { grid-template-columns: minmax(0, 1fr) minmax(64px, .8fr) minmax(0, 1fr); column-gap: 4px; }
@@ -268,7 +235,7 @@ body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: h
 }
 /* Ask chat panel (docs/superpowers/specs/2026-10-24-home-ask-box-design.md):
    phone first, a bottom sheet; a side drawer from 1200px. The page stays usable. */
-.ibpl-ask-fab { position: fixed; right: 16px; bottom: 16px; z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+.ibpl-ask-fab { position: fixed; right: 16px; bottom: calc(16px + var(--ibpl-tabbar-h, 0px)); z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
 /* Above the navbar's fixed right cluster (9999) and its menus (10001-10002). */
 .ibpl-ask-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10050; display: flex; flex-direction: column; max-height: 75vh; max-height: 75dvh; background: var(--ibpl-surface); color: var(--ibpl-text-body); border-top: 1px solid var(--ibpl-border); box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5); }
 .ibpl-ask-head { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--ibpl-border); }
@@ -455,7 +422,7 @@ table.dataTable tr.ibpl-row-detail > td { padding: 0 !important; background: var
 .ibpl-lineup-games-head h4 { margin: 0; font-size: .95rem; font-weight: 700; color: var(--ibpl-accent); }
 /* Room under the page so the floating Ask button never covers a table's
    last controls (pagination), at any width. */
-body { padding-bottom: 76px; }
+body { padding-bottom: calc(76px + var(--ibpl-tabbar-h, 0px)); }
 /* Lineups: team and players above the table. */
 .lineup-bar { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 8px 16px; align-items: start; margin: 6px 0 4px; padding: 10px 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); }
 .lineup-bar .form-group, .lineup-bar .shiny-input-container { margin-bottom: 0; }
@@ -602,7 +569,7 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-menu { border: 1px solid var(--ibpl-border); border-radius: 10px; padding: 10px;
   display: flex; flex-direction: column; gap: 8px; background: var(--ibpl-surface); }
 .gf-m-menu .ibpl-ribbon-inline-hint { margin: 0; }
-.gf-m-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040;
+.gf-m-panel { position: fixed; left: 0; right: 0; bottom: var(--ibpl-tabbar-h, 0px); z-index: 1040;
   background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
   max-height: 62vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -767,28 +734,6 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); }
 }
 
-/* Burger menu: every tab's views, not only the current tab's as mobile.css has
-   it (user 2026-11-05). There is no hover here, so they are pills under each
-   tab's name, compact enough that the whole menu fits a phone screen. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown .tab-hover-menu,
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu {
-  display: flex !important; flex-wrap: wrap; gap: 6px;
-  position: static; transform: none; width: 100%; min-width: 0;
-  margin: 4px 0 0; padding: 0 0 10px 24px;
-  background: transparent; border: 0; box-shadow: none;
-}
-/* Clear of the active tab's underline. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu { margin-top: 10px; }
-/* The caret means "opens a menu", and here the views are already open. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown > .nav-link::after { display: none; }
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item,
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
-  display: inline-flex; align-items: center; width: auto; min-height: 36px; padding: 0 12px;
-  border: 1px solid var(--ibpl-border); border-radius: 18px;
-  font-size: 0.85rem; white-space: nowrap;
-}
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item.active { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
-body.ibpl-collapsed-nav .tab-hover-menu .thm-check { display: none; }
 
 /* Compare settings bar, under the view tabs: the quick preset first and
    largest (the page's most used control), then dates and game numbers. */
@@ -859,26 +804,22 @@ button.filter-chip { font-family: inherit; }
 html:has(dialog[open]:modal) { overflow: hidden; }
 /* mobile.css drops the focus stroke on compact ribbon lanes; keyboard focus keeps one. */
 body .ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus-visible rect { stroke: var(--ibpl-accent); stroke-width: 2; }
-.tab-hover-menu button.thm-item { width: 100%; }
-.tab-hover-menu button.thm-item:disabled { cursor: default; }
 /* Windows high-contrast (forced colours) drops backgrounds and box-shadows,
    which is all that marks these states and focus rings; give each a system
    colour or a border instead. */
 @media (forced-colors: active) {
   .home-ask-form:focus-within,
-  .selectize-input.focus,
-  .navbar-season-select select:focus,
-  .navbar-league-select select:focus { outline: 2px solid Highlight; outline-offset: 2px; }
+  .selectize-input.focus { outline: 2px solid Highlight; outline-offset: 2px; }
   .ibpl-compare-row:hover > td:first-child,
   .ibpl-compare-row:has(.ibpl-cell-btn:focus-visible) > td:first-child { border-left: 3px solid Highlight; }
   .lineup-chip[data-state="on"],
   .paginate_button.current,
-  .tab-hover-menu .thm-item[aria-pressed="true"] {
+  .ibpl-league-switch a.active {
     forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight;
   }
   .lineup-chip[data-state="any"] { border-style: dashed; border-width: 2px; }
   .view-tabs-tab[data-state="active"],
-  #main_tabs .nav-link[aria-current="page"] { text-decoration: underline 2px; text-underline-offset: 4px; }
+  .ibpl-page.active { text-decoration: underline 2px; text-underline-offset: 4px; }
   .ibpl-glossary { border: 1px solid CanvasText; }
 }
 /* Fonts: next/font's self-hosted families (layout.tsx) behind app.css's
@@ -1298,12 +1239,6 @@ button.cmp-back-btn:hover > span[aria-hidden],
   :root { --ibpl-btn-ease: 0s; }
 }
 
-/* Desktop navbar stays put (2026-11-16). Its right cluster (league, season,
-   theme, glossary, updated) is position: fixed with no background, while the
-   bar itself scrolled away, so page content showed through the cluster. A
-   sticky bar keeps the cluster on its own background. Phones are unaffected:
-   there the cluster is static inside the collapsed menu. */
-body:not(.ibpl-collapsed-nav) nav.navbar { position: sticky; top: 0; z-index: 9998; }
 
 /* ---- Gameflow lineup cards (user 2026-11-16) ------------------------------
    The body font instead of the code font; each lineup a card of its own;
@@ -1908,22 +1843,6 @@ input.cmp-grid-check:focus-visible { outline: 2px solid var(--ibpl-accent); outl
 .ibpl-ask-example:hover:not(:disabled),
 .ibpl-ask-example:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1); color: var(--ibpl-text); }
 
-/* Phone menu: Glossary as an outlined pill, the update date as a quiet
-   centred line clear of the floating Ask button. */
-body.ibpl-collapsed-nav #navbar_right_cluster .nav-help-btn {
-  justify-content: center;
-  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45) !important;
-  border-radius: 999px !important;
-  background: rgba(var(--ibpl-accent-rgb), 0.06) !important;
-  color: var(--ibpl-accent) !important;
-  font-weight: 600;
-}
-body.ibpl-collapsed-nav #navbar_right_cluster > span:last-child {
-  justify-content: center;
-  padding: 2px 0 6px;
-  color: var(--ibpl-text-muted);
-  font-size: 0.78rem;
-}
 
 /* ---- Columns menu (ColumnsMenu.tsx, user 2026-11-16): a wide panel of chips */
 div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2041,4 +1960,101 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 .ibpl-columns-chip.is-drop-after::after { right: -4px; }
 @media (max-width: 767.98px) {
   .ibpl-columns-chip { min-height: 32px; padding: 3px 10px; font-size: 0.78rem; }
+}
+
+/* ---- Top bar (Navbar.tsx; navbar redesign, user 2026-11-16) ---------------
+   Narrow first: the bar holds the logo, league and season menus, Glossary
+   and the theme switch; the page links are a tab bar fixed to the bottom.
+   From 1024px: one sticky row of page pills, then the settings set apart by
+   dividers and labels, then the update date and the round buttons.
+   --ibpl-tabbar-h is the bottom bar's height (0 when there is none); the
+   page padding, the Ask button and the Gameflow phone panel stay above it. */
+:root { --ibpl-tabbar-h: calc(62px + env(safe-area-inset-bottom, 0px)); }
+.ibpl-topbar { background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
+.ibpl-topbar-row { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 14px; }
+.ibpl-brand { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ibpl-accent); font-family: var(--ibpl-font-display); font-size: 1.05rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.ibpl-brand:hover { color: var(--ibpl-accent-hover); }
+.ibpl-brand .bi { font-size: 1.3rem; }
+.ibpl-brand-name { display: none; }
+.ibpl-settings { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.ibpl-setting { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ibpl-setting-label { display: none; color: var(--ibpl-text-muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.ibpl-sep { flex: 0 0 auto; width: 1px; height: 24px; background: var(--ibpl-border); }
+.ibpl-sep + .ibpl-setting ~ .ibpl-sep { display: none; }
+.ibpl-league-switch { display: none; }
+.ibpl-updated { display: none; align-items: center; gap: 6px; color: var(--ibpl-text-muted); font-size: 0.75rem; white-space: nowrap; }
+.ibpl-updated-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ibpl-pos); }
+.ibpl-updated-line { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 6px 0 -2px; color: var(--ibpl-text-muted); font-size: 0.72rem; }
+.ibpl-icon-btn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; padding: 0; border: 1px solid var(--ibpl-border); border-radius: 50%; background: transparent; color: var(--ibpl-text-body); font-size: 1rem; transition: border-color 120ms ease, color 120ms ease; }
+.ibpl-icon-btn:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+#open_glossary { margin-left: auto; }
+
+/* League and season menus: a neutral pill (settings, not pages). */
+.ibpl-menu { position: relative; display: inline-flex; min-width: 0; }
+.ibpl-menu-btn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-bg); color: var(--ibpl-text); font-size: 0.875rem; font-weight: 700; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease; }
+.ibpl-menu-btn .bi { color: var(--ibpl-text-muted); font-size: 0.7rem; transition: transform 150ms ease; }
+.ibpl-menu-btn:hover { border-color: var(--ibpl-control-border); }
+.ibpl-menu-btn[aria-expanded="true"] { border-color: var(--ibpl-text-muted); background: var(--ibpl-surface-hover); }
+.ibpl-menu-btn[aria-expanded="true"] .bi { transform: rotate(180deg); }
+.ibpl-menu-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10003; min-width: 180px; padding: 6px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
+.ibpl-menu-list.is-end { left: auto; right: 0; }
+.ibpl-menu-list ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ibpl-menu-title { padding: 6px 10px 4px; color: var(--ibpl-text-muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.ibpl-menu-list a, .ibpl-menu-list button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ibpl-text); font-size: 0.9rem; font-weight: 600; text-align: left; text-decoration: none; white-space: nowrap; }
+.ibpl-menu-list a:hover, .ibpl-menu-list button:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+.ibpl-menu-list .active { background: rgba(var(--ibpl-accent-rgb), 0.16); color: var(--ibpl-accent); font-weight: 700; }
+.ibpl-menu-list .active:hover { background: rgba(var(--ibpl-accent-rgb), 0.22); color: var(--ibpl-accent); }
+
+/* The bottom tab bar. */
+.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 5px 4px env(safe-area-inset-bottom, 0px); box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); }
+.ibpl-pages ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 720px; height: 100%; margin: 0 auto; padding: 0; list-style: none; }
+.ibpl-page { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 52px; border-radius: 12px; color: var(--ibpl-text-muted); font-size: 0.66rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.ibpl-page .bi { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 26px; border-radius: 999px; font-size: 1.1rem; transition: background-color 120ms ease; }
+.ibpl-page:hover { color: var(--ibpl-text); }
+.ibpl-page.active { color: var(--ibpl-accent); font-weight: 700; }
+.ibpl-page.active .bi { background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.ibpl-page-label { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+
+@media (max-width: 359.98px) {
+  .ibpl-topbar-row { gap: 6px; padding: 0 8px 0 10px; }
+  .ibpl-settings { gap: 6px; }
+  .ibpl-menu-btn { padding: 0 10px; }
+}
+
+@media (min-width: 1024px) {
+  :root { --ibpl-tabbar-h: 0px; }
+  .ibpl-topbar { position: sticky; top: 0; z-index: 9998; }
+  .ibpl-topbar-row { gap: 20px; padding: 0 20px; }
+  .ibpl-pages { position: static; height: auto; padding: 0; background: none; border: 0; }
+  .ibpl-pages ul { display: flex; gap: 2px; max-width: none; }
+  .ibpl-page { flex-direction: row; height: auto; padding: 7px 12px; border-radius: 999px; color: var(--ibpl-text-body); font-size: 0.875rem; transition: background-color 120ms ease, color 120ms ease; }
+  .ibpl-page .bi { display: none; }
+  .ibpl-page:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+  .ibpl-page.active { background: rgba(var(--ibpl-accent-rgb), 0.16); color: var(--ibpl-accent); }
+  .ibpl-page.active:hover { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+  .ibpl-settings { flex: 0 0 auto; margin-left: auto; gap: 10px; }
+  .ibpl-sep + .ibpl-setting ~ .ibpl-sep { display: block; }
+  .ibpl-sep { height: 28px; }
+  .ibpl-setting-label { display: inline; }
+  .ibpl-league-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-bg); }
+  .ibpl-league-switch a { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border-radius: 999px; color: var(--ibpl-text-body); font-size: 0.8125rem; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
+  .ibpl-league-switch a:hover { color: var(--ibpl-text); background: var(--ibpl-surface-hover); }
+  .ibpl-league-switch a.active { background: var(--ibpl-surface-hover); color: var(--ibpl-text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ibpl-control-border); }
+  .ibpl-league-menu { display: none; }
+  .ibpl-menu-btn { height: 36px; font-size: 0.8125rem; }
+  .ibpl-updated { display: inline-flex; }
+  .ibpl-updated-line { display: none; }
+  .ibpl-icon-btn { width: 36px; height: 36px; font-size: 0.9rem; }
+  #open_glossary { margin-left: 0; }
+}
+/* Measured 2026-11-16 with the real fonts: the row needs ~1,390px with
+   everything shown. Narrower, it gives up, in order, the brand's name, the
+   setting labels (below 1,250px) and the league switch, which becomes a menu
+   (below 1,200px). Below 1,024px the pages move to the bottom bar. */
+@media (min-width: 1400px) { .ibpl-brand-name { display: inline; } }
+@media (min-width: 1024px) and (max-width: 1249.98px) { .ibpl-setting-label { display: none; } }
+@media (min-width: 1024px) and (max-width: 1199.98px) {
+  .ibpl-topbar-row { gap: 14px; padding: 0 14px; }
+  .ibpl-league-switch { display: none; }
+  .ibpl-league-menu { display: inline-flex; }
 }

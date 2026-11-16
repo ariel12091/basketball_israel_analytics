@@ -304,9 +304,6 @@ export function TabFrame({
   season,
   seasons,
   onSeason,
-  views,
-  view,
-  onView,
   updated,
   filtersId,
   sidebarTop,
@@ -451,13 +448,9 @@ export function TabFrame({
             tab={tab}
             season={season}
             seasons={seasons}
-            views={views}
-            view={view}
-            onView={onView}
             onSeason={onSeason}
             onGlossary={openGlossary}
             updated={updated}
-            collapsedNav={body.collapsedNav}
             page={page}
           >
             <div className="tab-content">
@@ -514,8 +507,8 @@ export function TabFrame({
   );
 }
 
-/** The hidden view-mode radios (.view-mode-container); the navbar menu is the
- * visible control, as in Shiny. */
+/** The hidden view-mode radios (.view-mode-container); ViewTabs is the
+ * visible control. */
 export function ViewRadios({
   name,
   label,

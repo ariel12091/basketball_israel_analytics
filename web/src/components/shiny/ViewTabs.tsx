@@ -1,6 +1,6 @@
 "use client";
 // The tab's display modes as an always-visible row of tabs above the table
-// (design 2026-10-28 § 3). Drives the same state as the navbar menu.
+// (design 2026-10-28 § 3), the one view control since the navbar redesign.
 import * as Tabs from "@radix-ui/react-tabs";
 
 export default function ViewTabs({
