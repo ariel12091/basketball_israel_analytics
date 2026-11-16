@@ -28,7 +28,6 @@
   z-index: 5;
 }
 
-.ibpl-lineup-link { border: 0; padding: 0; background: transparent; color: var(--bs-link-color); text-decoration: underline; cursor: pointer; font: inherit; }
 table.dataTable tr.ibpl-lineup-total { background: var(--ibpl-surface-alt); font-weight: bold; }
 .ibpl-column-filters input { width: 100%; min-width: 48px; }
 .ibpl-column-filters details { min-width: 70px; }
@@ -940,3 +939,359 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
    photo keeps to the first line of the name, clear of that label. */
 .ibpl-name-table.ibpl-names-scrolled td.ibpl-name-has-img .ibpl-name-with-img,
 .ibpl-name-table.ibpl-names-scrolled .ibpl-cell-btn:has(> .ibpl-name-with-img) { align-items: flex-start; }
+
+/* ---- Links, modernised (user 2026-11-16) ----------------------------------
+   Same cue as before -- amber text with a trailing chevron, visible at rest --
+   but a soft underline that firms up on hover and a chevron that nudges
+   forward. Lineups list their players split by middle dots (LineupNames). */
+.lineup-names-name { white-space: nowrap; }
+.lineup-names-sep { color: var(--ibpl-text-dim); font-weight: 700; }
+.ribbon-link,
+.ld-lineup-link {
+  color: var(--ibpl-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+/* Only the names are underlined, so the dots between them stay clean. */
+.ibpl-lineup-link {
+  color: var(--ibpl-accent);
+  transition: color 120ms ease;
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ibpl-lineup-link .lineup-names-name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color 120ms ease;
+}
+.ibpl-lineup-link:hover .lineup-names-name,
+.ibpl-lineup-link:focus-visible .lineup-names-name { text-decoration-color: currentColor; }
+.ibpl-lineup-link .lineup-names-sep { color: var(--ibpl-text-muted); }
+.ibpl-lineup-link::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+.ibpl-lineup-link:hover,
+.ibpl-lineup-link:focus-visible,
+.ld-lineup-link:hover,
+.ribbon-link:hover,
+.ribbon-link:focus-visible {
+  color: var(--ibpl-accent-hover, var(--ibpl-accent));
+  text-decoration-color: currentColor;
+}
+.ibpl-lineup-link:hover::after,
+.ibpl-lineup-link:focus-visible::after,
+.ribbon-link:hover::after,
+.ribbon-link:focus-visible::after,
+.hub-card:hover .hub-card-go::after,
+.hub-card:focus-visible .hub-card-go::after,
+.hub-story-line:hover::after,
+.hub-story-line:focus-visible::after { transform: translateX(3px); }
+.ribbon-link::after,
+.hub-card-go::after,
+.hub-story-line::after { transition: transform 120ms ease; }
+/* Game Logs "View": a small pill, so a column of them reads as buttons. */
+td .ribbon-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px 2px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.08);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+}
+td .ribbon-link:hover,
+td .ribbon-link:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.18);
+}
+.hub-story-line { border-radius: 0 6px 6px 0; transition: background-color 120ms ease, color 120ms ease; }
+.hub-lineup-players .lineup-names-sep { color: var(--ibpl-accent); opacity: 0.6; }
+.ibpl-lineup-games-head h4 .lineup-names-sep { color: rgba(var(--ibpl-accent-rgb), 0.55); }
+
+/* ---- Filters: a sliding sheet (user 2026-11-16) ---------------------------
+   Phones: a bottom sheet with a grab handle and a Done bar. Wider screens:
+   a full-height panel from the right edge. Radix positions popovers with a
+   transform on its wrapper; the sheet takes the wrapper out of that. */
+[data-radix-popper-content-wrapper]:has(> .filter-drawer) {
+  position: fixed !important;
+  inset: auto 0 0 0 !important;
+  transform: none !important;
+  min-width: 0 !important;
+}
+.filter-drawer {
+  --sheet-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  width: 100%;
+  max-width: none;
+  max-height: 88vh;
+  max-height: 88dvh;
+  padding: 0 16px;
+  border: 1px solid var(--ibpl-border);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  overscroll-behavior: contain;
+  translate: 0 0;
+  transition: translate 280ms var(--sheet-ease), display 280ms allow-discrete;
+}
+.filter-drawer[data-state="closed"] { translate: 0 100%; }
+@starting-style {
+  .filter-drawer[data-state="open"] { translate: 0 100%; }
+}
+.filter-drawer-top { flex-shrink: 0; padding-top: 6px; touch-action: none; }
+.filter-drawer-grip {
+  width: 40px;
+  height: 4px;
+  margin: 2px auto 10px;
+  border-radius: 999px;
+  background: var(--ibpl-border);
+}
+.filter-drawer-head { margin-bottom: 10px; }
+.filter-drawer-close { height: 32px; padding: 0 12px; border-width: 1px; border-radius: 999px; }
+.filter-drawer-clear { border-radius: 999px; }
+.filter-drawer-section-trigger { min-height: 44px; }
+.filter-drawer-done-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 8px -16px 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ibpl-border);
+  background: var(--ibpl-surface);
+}
+.filter-drawer-done {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ibpl-accent);
+  color: var(--ibpl-bg);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.filter-drawer-done:hover { background: var(--ibpl-accent-hover, var(--ibpl-accent)); }
+/* The page behind dims; a tap on it closes the sheet (Radix: outside click). */
+body:has(.filter-drawer[data-state="open"])::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  background: rgba(0, 0, 0, 0.45);
+  animation: filter-sheet-scrim 200ms ease;
+}
+@keyframes filter-sheet-scrim { from { opacity: 0; } }
+@media (max-width: 767.98px) {
+  body:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
+}
+@media (min-width: 768px) {
+  [data-radix-popper-content-wrapper]:has(> .filter-drawer) { inset: 0 0 0 auto !important; }
+  .filter-drawer {
+    width: 400px;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-left: 1px solid var(--ibpl-border);
+    border-radius: 0;
+    box-shadow: -16px 0 40px rgba(0, 0, 0, 0.45);
+  }
+  .filter-drawer[data-state="closed"] { translate: 100% 0; }
+  @starting-style {
+    .filter-drawer[data-state="open"] { translate: 100% 0; }
+  }
+  .filter-drawer-top { padding-top: 16px; }
+  .filter-drawer-grip,
+  .filter-drawer-done-bar { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-drawer { transition: none; }
+  body:has(.filter-drawer[data-state="open"])::after { animation: none; }
+}
+
+/* ---- Buttons, modernised (user 2026-11-16) --------------------------------
+   One family with the new links and the filters sheet: rounded pills,
+   amber outline at rest, a soft amber fill on hover, short transitions. */
+:root { --ibpl-btn-ease: 120ms ease; }
+
+/* Plain buttons: Retry, Show all lineups, Move left/right, Close. */
+.btn.btn-default:not(.action-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-weight: 600;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.btn.btn-default:not(.action-button):hover,
+.btn.btn-default:not(.action-button):focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+}
+.btn.btn-default.btn-sm:not(.action-button) { padding: 3px 12px; font-size: 0.8rem; }
+.ibpl-move-btn .bi { font-size: 0.85em; }
+
+/* CSV download, in the table toolbar and On/Off's. */
+div.dt-buttons > .dt-button,
+.chips-row-controls .shiny-download-link.btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.06) !important;
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+div.dt-buttons > .dt-button:hover:not(.disabled),
+.chips-row-controls .shiny-download-link.btn:hover {
+  background: rgba(var(--ibpl-accent-rgb), 0.16) !important;
+}
+
+/* Table pager: rounded page buttons, the current page filled amber. On
+   phones the arrows stand alone. */
+.dataTables_wrapper .dataTables_paginate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate > span { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  min-width: 32px;
+  height: 32px;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
+  line-height: 30px !important;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current):not(:disabled) {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  border-color: var(--ibpl-accent) !important;
+  background: var(--ibpl-accent) !important;
+  color: var(--ibpl-bg) !important;
+  font-weight: 700;
+}
+.dataTables_wrapper .dataTables_paginate .ellipsis { padding: 0 4px; color: var(--ibpl-text-dim); }
+@media (max-width: 767.98px) {
+  .dataTables_wrapper .dataTables_paginate .paginate-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
+/* "Show 50 entries": a rounded menu. */
+.dataTables_wrapper .dataTables_length select {
+  height: 32px;
+  padding: 0 28px 0 12px;
+  border-radius: 999px !important;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Filter chips: the x is a round target with its own hover, the pencil
+   brightens with the chip, and the chip itself eases into its hover. */
+.filter-chip { transition: border-color var(--ibpl-btn-ease), background-color var(--ibpl-btn-ease); }
+.filter-chip .chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -6px -2px 2px;
+  border-radius: 50%;
+  font-size: 1em;
+  transition: background-color var(--ibpl-btn-ease), opacity var(--ibpl-btn-ease);
+}
+.filter-chip .chip-x:hover,
+.filter-chip .chip-x:focus-visible { opacity: 1; background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.filter-chip.chip-focusable:hover { background: rgba(var(--ibpl-accent-rgb), 0.08); }
+.filter-chip-add:hover { background: rgba(var(--ibpl-accent-rgb), 0.08) !important; }
+.chip-clear-all { transition: background-color var(--ibpl-btn-ease); }
+
+/* Min Poss stepper: round - and + inside the pill. */
+.poss-stepper-box button { display: inline-flex; align-items: center; justify-content: center; margin: 2px; width: 28px; border-radius: 50%; transition: background-color var(--ibpl-btn-ease); }
+.poss-stepper-box button:hover:not(:disabled) { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+/* Back: a quiet pill whose arrow steps back on hover. */
+button.cmp-back-btn,
+.ibpl-gameflow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+button.cmp-back-btn:hover,
+button.cmp-back-btn:focus-visible,
+.ibpl-gameflow-back:hover,
+.ibpl-gameflow-back:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+  text-decoration: none;
+}
+button.cmp-back-btn > span[aria-hidden],
+.ibpl-gameflow-back > span[aria-hidden] { display: inline-block; font-weight: 700; transition: transform var(--ibpl-btn-ease); }
+button.cmp-back-btn:hover > span[aria-hidden],
+.ibpl-gameflow-back:hover > span[aria-hidden] { transform: translateX(-3px); }
+
+/* "More", "Glossary" and other in-text actions: the soft underline. */
+.view-intro-more,
+.ibpl-link-btn {
+  color: var(--ibpl-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.view-intro-more:hover,
+.view-intro-more:focus-visible,
+:where(.ibpl-link-btn):hover,
+.ibpl-link-btn:focus-visible { color: var(--ibpl-accent-hover, var(--ibpl-accent)); text-decoration-color: currentColor; }
+
+/* Gameflow phone panel: All runs / Show / Clear as small pills. */
+.gf-m-links { align-items: center; }
+.gf-m-link {
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.gf-m-link:hover,
+.gf-m-link:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --ibpl-btn-ease: 0s; }
+}

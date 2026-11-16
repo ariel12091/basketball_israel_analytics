@@ -8,6 +8,7 @@ import {
 } from "@/rules/home";
 import { homeTabHref, homeStoryHref } from "@/lib/homeQuery";
 import ui from "@/data/homeUi.json";
+import LineupNames from "./LineupNames";
 type Dashboard = ReturnType<typeof homeDashboard>;
 
 /** The always-visible part of the hub: load errors and the team ratings card. */
@@ -164,7 +165,7 @@ export default function HomeHub({
                           {t[key]}
                         </span>
                         <span className="hub-lineup-players">
-                          {row.player_names_str}
+                          <LineupNames value={row.player_names_str} />
                         </span>
                         <span className={color}>
                           {homeFixed(row.net_rtg, true)} net,{" "}

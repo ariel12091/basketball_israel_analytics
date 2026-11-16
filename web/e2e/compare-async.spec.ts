@@ -322,7 +322,7 @@ test("Compare gap stays descending and the whole row opens detail", async ({
     page.getByRole("region", { name: "Entity comparison detail" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "<- Back to league view", exact: true })
+    .getByRole("button", { name: "Back to league view" })
     .click();
   await firstName.focus();
   await firstName.press("Enter");

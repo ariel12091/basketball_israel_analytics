@@ -325,17 +325,17 @@ export default function TeamRatingsTable({
           </label>{" "}
           <button
             type="button"
-            className="btn btn-default btn-sm"
+            className="btn btn-default btn-sm ibpl-move-btn"
             onClick={() => move(-1)}
           >
-            Move left
+            <i className="bi bi-arrow-left" aria-hidden="true"></i> Move left
           </button>{" "}
           <button
             type="button"
-            className="btn btn-default btn-sm"
+            className="btn btn-default btn-sm ibpl-move-btn"
             onClick={() => move(1)}
           >
-            Move right
+            Move right <i className="bi bi-arrow-right" aria-hidden="true"></i>
           </button>
         </details>
       )}
