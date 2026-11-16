@@ -410,15 +410,12 @@ export default function CompareSidesGrid({
       ),
   });
   const fields: Field[] = [
-    ...selfDates,
+    // The player is what the comparison is about, so it comes first.
     ...playerFields,
-    ...(playerMode
-      ? []
-      : [
-          starters("own_starters", "Own lineup starters"),
-          starters("opp_starters", "Opponent lineup starters"),
-          select("teams", "Teams", teams, true),
-        ]),
+    ...selfDates,
+    starters("own_starters", "Own lineup starters"),
+    starters("opp_starters", "Opponent lineup starters"),
+    ...(playerMode ? [] : [select("teams", "Teams", teams, true)]),
     select("home_away", "Home/Away", [
       { value: "home", label: "Home" },
       { value: "away", label: "Away" },
