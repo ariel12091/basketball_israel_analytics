@@ -689,7 +689,7 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
    Phones put each filter's name on its own line above its two controls. */
 .cmp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .cmp-results { min-width: 0; }
-.cmp-grid {
+.cmp-grid, .cmp-heads {
   display: grid; gap: 8px; align-items: center;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   padding: 10px 12px 12px;
@@ -697,6 +697,11 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   border: 1px solid var(--ibpl-border);
   border-radius: 8px;
 }
+/* What A and B are stays on screen while the results scroll (user 2026-11-16).
+   Its own box, a child of .cmp-layout, so it sticks for the whole comparison
+   and not only while the filter grid is in view. Same columns and padding as
+   the grid, so each header still sits over its side's controls. */
+.cmp-heads { position: sticky; top: 0; z-index: 20; padding-bottom: 10px; }
 .cmp-grid-corner { display: none; }
 .cmp-grid-row { display: contents; }
 .cmp-grid-head, .cmp-grid-cell { --cmp-side: var(--ibpl-side-a); min-width: 0; }
@@ -758,18 +763,23 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
 }
 .cmp-grid-toggle:hover, .cmp-grid-toggle:focus-visible { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 @media (max-width: 575.98px) {
-  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-row,
-  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-group,
+  .cmp-layout:not(.is-flipped) .cmp-grid,
   .cmp-layout:not(.is-flipped) .cmp-toggle-hide,
-  .cmp-layout.is-flipped .cmp-toggle-show { display: none; }
+  .cmp-layout.is-flipped .cmp-toggle-show,
+  .cmp-grid-toggle.is-wide { display: none; }
+  /* Under the pinned headers, not pinned itself: phones keep the room. */
+  .cmp-grid-toggle.is-narrow { margin-top: -8px; }
 }
 @media (min-width: 576px) {
-  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-row,
-  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-group,
+  .cmp-layout.is-flipped .cmp-grid,
   .cmp-layout.is-flipped .cmp-toggle-hide,
-  .cmp-layout:not(.is-flipped) .cmp-toggle-show { display: none; }
+  .cmp-layout:not(.is-flipped) .cmp-toggle-show,
+  .cmp-grid-toggle.is-narrow { display: none; }
   /* In the empty cell left of the two headers: it adds no height. */
   .cmp-grid-toggle { grid-row: 1; grid-column: 1; align-self: center; }
+  /* Open filters read as one box with the headers on top. */
+  .cmp-layout:not(.is-flipped) .cmp-heads { border-radius: 8px 8px 0 0; }
+  .cmp-layout:not(.is-flipped) .cmp-grid { margin-top: -16px; border-top: 0; border-radius: 0 0 8px 8px; }
 }
 .cmp-grid-check { display: block; width: 18px; height: 18px; margin: 0; }
 /* What the two sides set differently carries the side's colour. */
@@ -778,12 +788,21 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   border-color: var(--cmp-side) !important;
 }
 @media (min-width: 576px) {
-  .cmp-grid { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
+  .cmp-grid, .cmp-heads { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
   .cmp-grid-corner { display: block; }
   .cmp-grid-label { grid-column: auto; margin-top: 0; }
 }
+@media (min-width: 1024px) {
+  /* Below the sticky top bar (.ibpl-topbar-row, 56px + its border). */
+  .cmp-heads { top: 57px; }
+}
 @media (min-width: 1200px) {
-  .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); }
+  /* Headers and filters on the left, the results beside both. The 1fr row
+     takes the results' extra height, so the filters stay under the headers. */
+  .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .cmp-layout:not(.is-flipped) > .cmp-heads,
+  .cmp-layout:not(.is-flipped) > .cmp-grid { grid-column: 1; }
+  .cmp-layout:not(.is-flipped) > .cmp-results { grid-column: 2; grid-row: 1 / span 2; }
 }
 
 

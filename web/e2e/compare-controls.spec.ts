@@ -67,7 +67,7 @@ async function stub(page: Page) {
 /** Phones fold the Compare filters away. */
 async function openFilters(page: Page) {
   const toggle = page.getByRole("button", { name: "Show filters" });
-  await page.locator(".cmp-grid").waitFor();
+  await page.locator(".cmp-heads").waitFor();
   if (await toggle.isVisible()) await toggle.click();
 }
 async function pick(page: Page, id: string, label: string) {
@@ -240,17 +240,18 @@ test("[CMP-02][league:il] desktop can hide the filters and give the table the wi
   await page.goto("/il/compare?season=2026&preset=starters_bench");
   const firstRow = page.locator(".cmp-grid-row").first(),
     results = page.locator(".cmp-results"),
-    grid = page.locator(".cmp-grid");
+    heads = page.locator(".cmp-heads");
   await expect(firstRow).toBeVisible();
   const opened = (await results.boundingBox())!;
-  expect(opened.x).toBeGreaterThan((await grid.boundingBox())!.x + 500);
+  expect(opened.x).toBeGreaterThan((await heads.boundingBox())!.x + 500);
   await page.getByRole("button", { name: "Hide filters" }).click();
   await expect(firstRow).toBeHidden();
   await expect(page.locator(".cmp-grid-group")).toBeHidden();
   await expect(page.locator(".cmp-grid-head.is-b")).toContainText("Bench");
   const closed = (await results.boundingBox())!;
   expect(closed.width).toBeGreaterThan(opened.width + 400);
-  expect((await grid.boundingBox())!.height).toBeLessThan(110);
+  await expect(page.locator(".cmp-grid")).toBeHidden();
+  expect((await heads.boundingBox())!.height).toBeLessThan(110);
   await page.getByRole("button", { name: "Show filters" }).click();
   await expect(firstRow).toBeVisible();
 });
