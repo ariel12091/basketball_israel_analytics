@@ -229,10 +229,10 @@ export default function ColumnsMenu({
             <span className="ibpl-columns-title">Columns</span>
             <span className="ibpl-columns-hint">
               <span className="ibpl-columns-hint-pointer">
-                Click to hide or show · drag to move
+                Click to hide · drag to move
               </span>
               <span className="ibpl-columns-hint-touch">
-                Tap to hide or show · hold, then drag to move
+                Tap to hide · hold to move
               </span>
             </span>
             <button type="button" className="ibpl-columns-reset" onClick={onReset}>
@@ -275,10 +275,13 @@ export default function ColumnsMenu({
                     }
                   }}
                 >
-                  <i
-                    className={`bi ${fixed ? "bi-lock" : on ? "bi-eye" : "bi-eye-slash"}`}
-                    aria-hidden="true"
-                  ></i>
+                  {/* Only the exceptions carry an icon (user: "smaller"). */}
+                  {(fixed || !on) && (
+                    <i
+                      className={`bi ${fixed ? "bi-lock" : "bi-eye-slash"}`}
+                      aria-hidden="true"
+                    ></i>
+                  )}
                   <span>{c.label}</span>
                 </button>
               );

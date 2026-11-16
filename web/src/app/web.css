@@ -2027,3 +2027,18 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 @media (prefers-reduced-motion: reduce) {
   .ibpl-columns-chip { transition: none; }
 }
+
+/* Columns menu, compact (user 2026-11-16: "smaller"). */
+.ibpl-columns-pop { width: auto; max-width: min(560px, calc(100vw - 16px)); padding: 0 10px 10px; border-radius: 12px; }
+.ibpl-columns-head { margin: 0 -10px 8px; padding: 8px 10px 6px; gap: 2px 8px; }
+.ibpl-columns-title { font-size: 0.7rem; }
+.ibpl-columns-hint { font-size: 0.7rem; }
+.ibpl-columns-reset { padding: 1px 8px; font-size: 0.72rem; }
+.ibpl-columns-grid { gap: 5px; }
+.ibpl-columns-chip { gap: 4px; min-height: 26px; padding: 2px 9px; font-size: 0.74rem; }
+.ibpl-columns-chip .bi { font-size: 0.8em; }
+.ibpl-columns-chip.is-drop-before::before { left: -4px; }
+.ibpl-columns-chip.is-drop-after::after { right: -4px; }
+@media (max-width: 767.98px) {
+  .ibpl-columns-chip { min-height: 32px; padding: 3px 10px; font-size: 0.78rem; }
+}
