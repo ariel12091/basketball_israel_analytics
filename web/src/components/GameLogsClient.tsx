@@ -165,16 +165,12 @@ export default function GameLogsClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "teams",
-      title: euro ? "Dates and teams" : "Team and dates",
-      body: euro ? (
+      // Dates first on every tab (user 2026-11-16), both leagues.
+      title: "Dates and teams",
+      body: (
         <>
           {dates}
           {teamPicker}
-        </>
-      ) : (
-        <>
-          {teamPicker}
-          {dates}
         </>
       ),
     },

@@ -246,12 +246,8 @@ export default function LineupsClient({
   // until the dates move off the season's bounds.
   const activeCount =
     chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+  // Dates (and clutch) first, as on every tab (user 2026-11-16).
   const drawerSections: DrawerSection[] = [
-    {
-      id: "starters",
-      title: "Lineup starters",
-      body: <StarterRows p={p} query={query} set={set} />,
-    },
     {
       id: "dates",
       title: "Dates and clutch",
@@ -331,6 +327,11 @@ export default function LineupsClient({
           )}
         </>
       ),
+    },
+    {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
     },
     {
       id: "game",
