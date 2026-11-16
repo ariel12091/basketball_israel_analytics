@@ -173,14 +173,20 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       page
         .locator(".ibpl-dt-scroll thead th")
         .evaluateAll((ths) => ths.map((th) => th.getAttribute("data-column")));
-    await page.getByText("Column order", { exact: true }).click();
-    await page
-      .getByLabel("Reorder column", { exact: true })
-      .selectOption("pts");
+    // The Columns menu (2026-11-16): arrows move, a switch hides.
+    await page.getByRole("button", { name: "Columns", exact: true }).click();
     const before = await ids(),
       index = before.indexOf("pts");
-    await page.getByRole("button", { name: "Move left", exact: true }).click();
+    // Chips (2026-11-16): Alt + arrow moves, a click hides or shows.
+    const pts = page.getByRole("button", { name: /^PTS:/ });
+    await pts.focus();
+    await page.keyboard.press("Alt+ArrowLeft");
     expect((await ids()).indexOf("pts")).toBe(index - 1);
+    await pts.click();
+    expect(await ids()).not.toContain("pts");
+    await pts.click();
+    expect((await ids()).indexOf("pts")).toBe(index - 1);
+    await page.keyboard.press("Escape");
     await page.reload();
     await expect(page.locator(".dataTables_info")).toContainText("entries");
     expect((await ids()).indexOf("pts")).toBe(index - 1);
