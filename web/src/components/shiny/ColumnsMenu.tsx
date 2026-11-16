@@ -27,6 +27,9 @@ const MOUSE_SLOP = 4;
 /** Touch: hold this long (ms) without moving more than TOUCH_SLOP px. */
 const HOLD_MS = 220;
 const TOUCH_SLOP = 8;
+/** Auto-scroll: the edge band (px) and the top speed (px per frame). */
+const EDGE = 56;
+const MAX_SPEED = 14;
 
 export default function ColumnsMenu({
   columns,
@@ -81,7 +84,8 @@ export default function ColumnsMenu({
       x0 = e.clientX,
       y0 = e.clientY;
     let lastY = y0,
-      timer: number | undefined;
+      timer: number | undefined,
+      frame: number | undefined;
     if (!touch) e.preventDefault(); // no text selection while dragging
     const begin = () => {
       const d: Drag = {
@@ -96,17 +100,37 @@ export default function ColumnsMenu({
       live.current = d;
       update(lastY);
       if (touch) navigator.vibrate?.(10);
+      frame = requestAnimationFrame(autoScroll);
+    };
+    // Held near the top or bottom of the visible list (below the pinned
+    // header), the list keeps scrolling, faster nearer the edge, whether or
+    // not the finger moves (user 2026-11-16: scrolling up did not work and
+    // down was slow).
+    const autoScroll = () => {
+      const box = scroller.current;
+      if (!box || !live.current) return;
+      const r = box.getBoundingClientRect(),
+        head = box.querySelector(".ibpl-columns-head")?.getBoundingClientRect(),
+        top = Math.max(r.top, head?.bottom ?? r.top),
+        zone = Math.min(EDGE, (r.bottom - top) / 3);
+      let speed = 0;
+      if (lastY < top + zone)
+        speed = -Math.ceil(MAX_SPEED * Math.min(1, (top + zone - lastY) / zone));
+      else if (lastY > r.bottom - zone)
+        speed = Math.ceil(
+          MAX_SPEED * Math.min(1, (lastY - (r.bottom - zone)) / zone),
+        );
+      if (speed) {
+        const before = box.scrollTop;
+        box.scrollTop += speed;
+        if (box.scrollTop !== before) update(lastY);
+      }
+      frame = requestAnimationFrame(autoScroll);
     };
     const update = (y: number) => {
       const d = live.current;
       if (!d) return;
-      // Near the menu's edges the list scrolls under the finger.
       const box = scroller.current;
-      if (box) {
-        const r = box.getBoundingClientRect();
-        if (y < r.top + 32) box.scrollTop -= 8;
-        else if (y > r.bottom - 32) box.scrollTop += 8;
-      }
       const dy = y - d.startY + ((box?.scrollTop ?? 0) - d.startScroll);
       live.current = { ...d, dy, over: overIndex(d, d.centre + dy) };
       setDrag(live.current);
@@ -139,6 +163,7 @@ export default function ColumnsMenu({
     };
     stop.current = () => {
       window.clearTimeout(timer);
+      if (frame !== undefined) cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
