@@ -46,6 +46,7 @@ import {
   type StintRatings,
 } from "@/rules/gameflowRatings";
 import { useTabData } from "./TabKit";
+import LineupNames from "./LineupNames";
 import { NARROW } from "./layoutClasses";
 import GameflowChart, { type RunTrigger } from "./GameflowChart";
 import {
@@ -397,23 +398,25 @@ export function GameflowView({
         <span className="ibpl-gameflow-rtg-title">
           Offensive rating (ORtg)
         </span>
-        {(
-          [
-            ["off", "Off"],
-            ["game", "Entire game"],
-            ["window", `Last ${RATING_WINDOW} poss`],
-          ] as const
-        ).map(([mode, label]) => (
-          <button
-            key={mode}
-            type="button"
-            aria-pressed={ratingMode === mode}
-            className={ratingMode === mode ? "is-on" : undefined}
-            onClick={() => setRatingMode(mode)}
-          >
-            {label}
-          </button>
-        ))}
+        <span className="gf-rtg-switch">
+          {(
+            [
+              ["off", "Off"],
+              ["game", "Entire game"],
+              ["window", `Last ${RATING_WINDOW} poss`],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={ratingMode === mode}
+              className={ratingMode === mode ? "is-on" : undefined}
+              onClick={() => setRatingMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
       </div>
       {ratingMode !== "off" && (
         <p className="ibpl-gameflow-rtg-hint">
@@ -873,14 +876,27 @@ function PhonePanel({
             Show on timeline ›
           </button>
         </div>
-        {run.lines.slice(1).map((line, i, rest) => (
-          <p
-            key={line}
-            className={`gf-run-tip-line${i === rest.length - 1 ? " is-cause" : ""}`}
-          >
-            {line}
-          </p>
-        ))}
+        {run.lines.slice(1).map((line, i, rest) => {
+          // "Team: what happened" / "Estimated cause: ...": the part before
+          // the colon is set apart; the text itself is unchanged.
+          const cut = line.indexOf(": "),
+            cause = i === rest.length - 1;
+          return (
+            <p
+              key={line}
+              className={`gf-run-tip-line${cause ? " is-cause" : ""}`}
+            >
+              {cut > 0 ? (
+                <>
+                  <b className="gf-run-tip-lead">{line.slice(0, cut)}</b>
+                  {line.slice(cut)}
+                </>
+              ) : (
+                line
+              )}
+            </p>
+          );
+        })}
         {list}
       </>
     );
@@ -1416,6 +1432,7 @@ function GameflowDetails({
               shown.some((g) => g.side === side) && (
                 <FragmentSide
                   key={side}
+                  side={side}
                   title={side === "own" ? data.meta.ownTeam : data.meta.oppTeam}
                 >
                   {shown
@@ -1437,9 +1454,15 @@ function GameflowDetails({
                         }
                       >
                         <span className="ibpl-ribbon-detail-members">
-                          {data.dict[g.dictIndex]?.members
-                            .split(" | ")
-                            .join(" · ") ?? "Lineup unavailable"}
+                          {data.dict[g.dictIndex] ? (
+                            <LineupNames
+                              value={data.dict[g.dictIndex].members
+                                .split(" | ")
+                                .join(", ")}
+                            />
+                          ) : (
+                            "Lineup unavailable"
+                          )}
                         </span>
                         {top ? (
                           <TopLineupMeta data={data} g={g} />
@@ -1505,15 +1528,21 @@ function TopLineupMeta({
 }
 function FragmentSide({
   title,
+  side,
   children,
 }: {
   title: string;
+  side: string;
   children: ReactNode;
 }) {
   return (
     <>
-      <div className="ibpl-ribbon-detail-head">{title}</div>
-      <div className="ibpl-ribbon-detail-list">{children}</div>
+      <div className="ibpl-ribbon-detail-head gf-side-head" data-side={side}>
+        {title}
+      </div>
+      <div className="ibpl-ribbon-detail-list" data-side={side}>
+        {children}
+      </div>
     </>
   );
 }

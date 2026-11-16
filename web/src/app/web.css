@@ -1304,3 +1304,195 @@ button.cmp-back-btn:hover > span[aria-hidden],
    sticky bar keeps the cluster on its own background. Phones are unaffected:
    there the cluster is static inside the collapsed menu. */
 body:not(.ibpl-collapsed-nav) nav.navbar { position: sticky; top: 0; z-index: 9998; }
+
+/* ---- Gameflow lineup cards (user 2026-11-16) ------------------------------
+   The body font instead of the code font; each lineup a card of its own;
+   names bright with dim dots; the ratings as tinted pills. Same text as
+   before (the e2e specs read it), so only the look changes. */
+.ibpl-react-gameflow .ibpl-ribbon-shared-lineups,
+.ibpl-react-gameflow-panel .ibpl-ribbon-shared-lineups {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-family: var(--ibpl-font-body);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.ibpl-ribbon-shared-lineups > .ibpl-ribbon-detail-head {
+  margin: 0 0 8px;
+  color: var(--ibpl-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+/* Team headings: a small label with the team's colour as a dot. */
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list + .gf-side-head { margin-top: 12px; }
+.ibpl-ribbon-shared-lineups .gf-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--ibpl-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ibpl-ribbon-shared-lineups .gf-side-head::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ibpl-accent);
+}
+/* The page's team in amber, the opponent in grey, as on the chart. */
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="opp"]::before { background: var(--ibpl-text-dim); }
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list[data-side="opp"] .ibpl-ribbon-shared-lineup { --gf-card-edge: var(--ibpl-text-dim); }
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list { gap: 6px; }
+.ibpl-react-gameflow .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup,
+.ibpl-react-gameflow-panel .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--gf-card-edge, var(--ibpl-accent));
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  color: var(--ibpl-text-body);
+  font: inherit;
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup:hover {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.6);
+  background: var(--ibpl-surface-2);
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup.is-active {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.12);
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-members {
+  color: var(--ibpl-text);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-members .lineup-names-name { white-space: normal; }
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-meta {
+  color: var(--ibpl-text-muted);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.ibpl-ribbon-shared-lineup .gf-top-score { color: var(--ibpl-text); font-weight: 700; }
+.ibpl-ribbon-shared-lineup .gf-rtg {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 999px;
+  color: var(--ibpl-text);
+  font-weight: 600;
+  line-height: 1.6;
+}
+.ibpl-ribbon-shared-lineup .gf-rtg[style] { border-color: transparent; }
+/* "Show / Hide" on the top-lineups heading: a small pill. */
+.gf-top-toggle .gf-top-fold {
+  padding: 1px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+.gf-top-toggle:hover .gf-top-fold { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+/* ---- Gameflow chart and controls (user 2026-11-16) ------------------------
+   Player rows read as buttons with a team-coloured edge; bars get rounder
+   ends and a hairline of page colour between stints; Clear players and the
+   ORtg switch join the pill family. Sizes stay the layout's (the fit tests
+   measure them). */
+.ibpl-react-gameflow .ibpl-ribbon-row-btn {
+  fill: rgba(var(--ibpl-accent-rgb), 0.05);
+  stroke: transparent;
+}
+.ibpl-react-gameflow .ibpl-ribbon-row:hover .ibpl-ribbon-row-btn:not(.is-pair-selected) {
+  fill: rgba(var(--ibpl-accent-rgb), 0.14);
+  stroke: rgba(var(--ibpl-accent-rgb), 0.5);
+}
+.ibpl-react-gameflow .ibpl-ribbon-row-btn.is-pair-selected {
+  fill: rgba(var(--ibpl-accent-rgb), 0.28);
+  stroke: var(--ibpl-accent);
+  stroke-width: 1.5;
+}
+.ibpl-react-gameflow .ibpl-ribbon-name { font-weight: 600; letter-spacing: 0.01em; }
+.ibpl-react-gameflow .ibpl-ribbon-name.is-pair-selected { fill: var(--ibpl-accent); font-weight: 700; }
+.ibpl-react-gameflow .ibpl-ribbon-team { font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.ibpl-react-gameflow .ibpl-ribbon-col-head { font-weight: 600; }
+/* Bars: a page-coloured hairline splits back-to-back stints, no drop shadow. */
+.ibpl-react-gameflow .ibpl-ribbon-lane rect {
+  rx: 3px;
+  stroke: var(--ibpl-surface);
+  stroke-width: 1;
+  filter: none;
+}
+.ibpl-react-gameflow .ibpl-ribbon-lane:hover rect { opacity: 1; stroke: var(--ibpl-text); }
+.ibpl-react-gameflow .ibpl-ribbon-lane:focus-visible rect { stroke: var(--ibpl-text); stroke-width: 1.5; }
+.ibpl-react-gameflow .ibpl-ribbon-lane-mark,
+.ibpl-react-gameflow .ibpl-ribbon-lineup-mark { rx: 3px; }
+
+/* Clear players: an outlined pill, quiet until something is selected. */
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear {
+  padding: 4px 14px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear:hover,
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+}
+/* ORtg switch: one rounded track with the choice filled. */
+.gf-rtg-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 999px;
+  background: var(--ibpl-surface);
+}
+.ibpl-gameflow-rtg-toggle button {
+  min-height: 28px;
+  padding: 2px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.ibpl-gameflow-rtg-toggle button:hover:not(.is-on) { background: var(--ibpl-surface-2); color: var(--ibpl-text); }
+.ibpl-gameflow-rtg-toggle button.is-on { border: 0; }
+
+/* Phone run panel: each team's line leads with the team in bold; the
+   estimated cause sits in a box of its own, upright and readable. */
+.gf-run-tip-lead { color: var(--ibpl-text); font-weight: 700; }
+.gf-m-panel-body .gf-run-tip-line { line-height: 1.45; color: var(--ibpl-text-body); }
+.gf-m-panel-body .gf-run-tip-line.is-cause {
+  padding: 8px 10px;
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--ibpl-text-dim);
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  color: var(--ibpl-text-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+.gf-m-panel-body .gf-run-tip-line.is-cause .gf-run-tip-lead {
+  color: var(--ibpl-text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
