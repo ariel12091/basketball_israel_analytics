@@ -9,7 +9,8 @@
 //   and theme; the page pills become a tab bar fixed to the bottom.
 // The views of each page are tabs on the page itself (ViewTabs), so the bar
 // has no view menus.
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
 import Link from "next/link";
 import type { League } from "@/rules/gameLogs";
 import {
@@ -303,8 +304,11 @@ type NavMenuItem = {
   href?: string;
   onSelect?: () => void;
 };
-/** A pill showing the current value with a caret, opening a small menu of
- * the choices. */
+/** A pill showing the current value with a caret, opening a small list of
+ * the choices. It is navigation, not an ARIA menu (modern-web-guidance
+ * "navbar"): links and buttons in the Tab order, no aria-haspopup or menu
+ * roles. Radix Popover gives the light dismiss, Escape, focus return and
+ * edge-aware placement that the hand-written listeners used to. */
 function NavMenu({
   id,
   name,
@@ -328,85 +332,66 @@ function NavMenu({
   align?: "start" | "end";
 }) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", away);
-    return () => document.removeEventListener("pointerdown", away);
-  }, [open]);
   const choose = (item: NavMenuItem) => {
     setOpen(false);
     item.onSelect?.();
   };
   return (
-    <div
-      className={`ibpl-menu${className ? ` ${className}` : ""}`}
-      ref={root}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && open) {
-          setOpen(false);
-          button.current?.focus();
-        }
-      }}
-    >
-      <button
-        ref={button}
-        type="button"
-        className="ibpl-menu-btn"
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-controls={`${id}_menu`}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="visually-hidden">{name}: </span>
-        {current}
-        <i className="bi bi-chevron-down" aria-hidden="true"></i>
-      </button>
-      {open && (
-        <div
-          id={`${id}_menu`}
-          className={`ibpl-menu-list${align === "end" ? " is-end" : ""}`}
-        >
-          {title && <div className="ibpl-menu-title">{title}</div>}
-          <ul>
-            {items.map((item) => (
-              <li key={item.key}>
-                {item.href ? (
-                  <Link
-                    prefetch={false}
-                    href={item.href}
-                    className={item.active ? "active" : undefined}
-                    aria-current={item.active ? "page" : undefined}
-                    onClick={() => choose(item)}
-                  >
-                    {item.label}
-                    {item.active && (
-                      <i className="bi bi-check2" aria-hidden="true"></i>
+    <div className={`ibpl-menu${className ? ` ${className}` : ""}`}>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger className="ibpl-menu-btn" aria-haspopup={undefined}>
+          <span className="visually-hidden">{name}: </span>
+          {current}
+          <i className="bi bi-chevron-down" aria-hidden="true"></i>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            className="ibpl-menu-list"
+            role={undefined}
+            aria-label={name}
+            align={align}
+            sideOffset={6}
+            collisionPadding={8}
+          >
+            <div id={`${id}_menu`}>
+              {title && <div className="ibpl-menu-title">{title}</div>}
+              <ul>
+                {items.map((item) => (
+                  <li key={item.key}>
+                    {item.href ? (
+                      <Link
+                        prefetch={false}
+                        href={item.href}
+                        className={item.active ? "active" : undefined}
+                        aria-current={item.active ? "page" : undefined}
+                        onClick={() => choose(item)}
+                      >
+                        {item.label}
+                        {item.active && (
+                          <i className="bi bi-check2" aria-hidden="true"></i>
+                        )}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className={item.active ? "active" : undefined}
+                        aria-pressed={item.active}
+                        onClick={() => choose(item)}
+                      >
+                        {item.label}
+                        {item.active && (
+                          <i className="bi bi-check2" aria-hidden="true"></i>
+                        )}
+                      </button>
                     )}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    className={item.active ? "active" : undefined}
-                    aria-pressed={item.active}
-                    onClick={() => choose(item)}
-                  >
-                    {item.label}
-                    {item.active && (
-                      <i className="bi bi-check2" aria-hidden="true"></i>
-                    )}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-          {footer && <p className="ibpl-menu-footer">{footer}</p>}
-        </div>
-      )}
+                  </li>
+                ))}
+              </ul>
+              {footer && <p className="ibpl-menu-footer">{footer}</p>}
+            </div>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }
