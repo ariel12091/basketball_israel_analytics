@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_TURNS, useAsk, type AskTurnView } from "../AskProvider";
 import { useAskExample } from "../useAskExample";
+import { askExamples } from "@/ask/examples";
 import type { Evidence as EvidenceRow } from "@/ask/turn";
 
 export default function AskPanel() {
@@ -74,6 +75,29 @@ export default function AskPanel() {
             </button>
           </header>
           <div className="ibpl-ask-body" aria-live="polite">
+            {/* Before the first question: a few to tap (user 2026-11-16). */}
+            {!answered && (
+              <div className="ibpl-ask-start">
+                <p className="ibpl-ask-start-title">Try one of these</p>
+                <ul className="ibpl-ask-examples">
+                  {askExamples(ask.league)
+                    .slice(0, 4)
+                    .map((e) => (
+                      <li key={e.id}>
+                        <button
+                          type="button"
+                          className="ibpl-ask-example"
+                          dir="auto"
+                          disabled={pending}
+                          onClick={() => void ask.ask(e.text)}
+                        >
+                          {e.text}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
             {ask.turns.map((t, i) => (
               <Turn key={i} turn={t} />
             ))}

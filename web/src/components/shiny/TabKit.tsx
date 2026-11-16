@@ -271,6 +271,15 @@ function Glossary({ onClose }: { onClose: () => void }) {
           <h2 className="modal-title h4" id="glossary-title">
             Glossary
           </h2>
+          {/* A close at the top, pinned with the title (user 2026-11-16). */}
+          <button
+            type="button"
+            className="ibpl-glossary-x"
+            aria-label="Close glossary"
+            onClick={onClose}
+          >
+            <i className="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
         </div>
         <div className="modal-body">
           <TextBlocks blocks={ui.glossary as TextBlock[]} />
