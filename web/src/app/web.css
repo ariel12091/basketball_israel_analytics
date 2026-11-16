@@ -1496,3 +1496,182 @@ body:not(.ibpl-collapsed-nav) nav.navbar { position: sticky; top: 0; z-index: 99
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* ---- Inputs, tables and Home, modernised (user 2026-11-16) ----------------
+   Filters panel dropdowns and date range as rounded fields, a calendar with
+   round days, on/off settings as switches, table headers with one amber
+   arrow on the sorted column only, and Home's team picker to match. */
+
+/* Dropdowns in the Filters panel and on Home. */
+:is(.filter-drawer, .home-team-select) .selectize-input {
+  min-height: 38px;
+  padding: 8px 32px 8px 12px !important;
+  border-radius: 10px !important;
+  background: var(--ibpl-surface-2) !important;
+  box-shadow: none !important;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+:is(.filter-drawer, .home-team-select) .selectize-input:hover { border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important; }
+:is(.filter-drawer, .home-team-select) .selectize-input.focus {
+  border-color: var(--ibpl-accent) !important;
+  box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18) !important;
+}
+:is(.filter-drawer, .home-team-select) .selectize-control.single .selectize-input::after {
+  right: 14px !important;
+  border-top-color: var(--ibpl-accent) !important;
+}
+:is(.filter-drawer, .home-team-select) .selectize-control.single .selectize-input.dropdown-active::after { border-bottom-color: var(--ibpl-accent) !important; }
+:is(.filter-drawer, .home-team-select) .selectize-control.multi .selectize-input .item {
+  padding: 1px 9px !important;
+  border-radius: 999px !important;
+  border-color: rgba(var(--ibpl-accent-rgb), 0.45) !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+/* The open list, everywhere: a floating rounded menu. */
+.selectize-dropdown {
+  margin-top: 4px;
+  overflow: hidden;
+  border: 1px solid var(--ibpl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
+}
+.selectize-dropdown .option { padding: 7px 12px !important; }
+.selectize-dropdown .option.active { background: rgba(var(--ibpl-accent-rgb), 0.14) !important; }
+.selectize-dropdown .option.selected { font-weight: 600; }
+
+/* Date range: one rounded field holding both dates. */
+.filter-drawer .input-daterange {
+  flex-wrap: nowrap;
+  overflow: visible;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 10px;
+  background: var(--ibpl-surface-2);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.filter-drawer .input-daterange:hover { border-color: rgba(var(--ibpl-accent-rgb), 0.6); }
+.filter-drawer .input-daterange:focus-within {
+  border-color: var(--ibpl-accent);
+  box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18);
+}
+.filter-drawer .input-daterange .form-control {
+  height: 36px;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.filter-drawer .input-daterange .input-group-addon,
+.filter-drawer .input-daterange .input-group-text {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ibpl-text-dim) !important;
+  font-size: 0.75rem;
+}
+/* The calendar: a floating card with round days. */
+.datepicker.datepicker-dropdown {
+  padding: 8px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 12px;
+  background: var(--ibpl-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.datepicker.datepicker-dropdown::before,
+.datepicker.datepicker-dropdown::after { display: none; }
+.datepicker table tr td,
+.datepicker table tr th { width: 34px; height: 32px; border-radius: 999px; }
+.datepicker table tr td.day:hover:not(.disabled),
+.datepicker table tr th.prev:hover,
+.datepicker table tr th.next:hover,
+.datepicker table tr th.datepicker-switch:hover { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+.datepicker table tr td.range { border-radius: 0; background: rgba(var(--ibpl-accent-rgb), 0.12); }
+.datepicker table tr td.active,
+.datepicker table tr td.active:hover {
+  border-radius: 999px;
+  background: var(--ibpl-accent) !important;
+  color: var(--ibpl-bg) !important;
+  font-weight: 700;
+  text-shadow: none;
+}
+.datepicker table tr th.dow { color: var(--ibpl-text-dim); font-size: 0.7rem; font-weight: 600; }
+
+/* On/off settings (Clutch, OT, Home's default team) as switches. The native
+   checkbox stays underneath, so labels, keyboard and tests are unchanged. */
+.checkbox input[type="checkbox"],
+.home-team-default .form-check-input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0 8px 0 0;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 999px;
+  background: var(--ibpl-surface-2);
+  background-image: none;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.checkbox input[type="checkbox"]::before,
+.home-team-default .form-check-input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ibpl-text-muted);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+.checkbox input[type="checkbox"]:checked,
+.home-team-default .form-check-input:checked {
+  border-color: var(--ibpl-accent);
+  background: var(--ibpl-accent);
+}
+.checkbox input[type="checkbox"]:checked::before,
+.home-team-default .form-check-input:checked::before { transform: translateX(14px); background: var(--ibpl-bg); }
+.checkbox input[type="checkbox"]:focus-visible,
+.home-team-default .form-check-input:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; box-shadow: none; }
+.checkbox input[type="checkbox"]:disabled,
+.home-team-default .form-check-input:disabled { opacity: 0.45; cursor: default; }
+.checkbox > label,
+label.checkbox,
+.home-team-default .form-check { display: inline-flex; align-items: center; gap: 0; padding-left: 0; cursor: pointer; }
+.home-team-default .form-check-input { float: none; margin-left: 0; }
+
+/* Tables: quieter headers, one amber arrow on the sorted column only (both
+   arrows show faintly on hover, as the cue that a header sorts), and a soft
+   row highlight that sits over the heat colours instead of replacing them. */
+table.dataTable thead > tr > th.sorting::before,
+table.dataTable thead > tr > th.sorting::after { opacity: 0 !important; transition: opacity 120ms ease; }
+table.dataTable thead > tr > th.sorting:hover::before,
+table.dataTable thead > tr > th.sorting:hover::after { opacity: 0.35 !important; }
+table.dataTable thead > tr > th.sorting_asc::before,
+table.dataTable thead > tr > th.sorting_desc::after { opacity: 1 !important; color: var(--ibpl-accent); }
+table.dataTable thead > tr > th.sorting_asc::after,
+table.dataTable thead > tr > th.sorting_desc::before,
+table.dataTable thead > tr > th.sorting_asc:hover::after,
+table.dataTable thead > tr > th.sorting_desc:hover::before { opacity: 0 !important; }
+table.dataTable thead > tr > th.sorting_asc,
+table.dataTable thead > tr > th.sorting_desc { color: var(--ibpl-accent) !important; }
+table.dataTable thead > tr > th { font-weight: 600; letter-spacing: 0.01em; }
+table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(--ibpl-accent-rgb), 0.06); }
+/* Footer: the count sits quietly beside the pager. */
+.dataTables_wrapper .dataTables_info { padding-top: 10px; font-size: 0.78rem; }
+.dataTables_wrapper .dataTables_paginate { padding-top: 6px; }
+@media (min-width: 768px) {
+  .dataTables_wrapper .dataTables_info { float: left; }
+  .dataTables_wrapper .dataTables_paginate { float: right; justify-content: flex-end; }
+}
+
+/* Home: the team row, picker and switch on one line. */
+.home-team-row { align-items: center; gap: 12px; }
+.home-team-default { color: var(--ibpl-text-body); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .checkbox input[type="checkbox"], .checkbox input[type="checkbox"]::before,
+  .home-team-default .form-check-input, .home-team-default .form-check-input::before { transition: none; }
+}
