@@ -165,13 +165,9 @@ export default function GameLogsClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "teams",
-      title: euro ? "Dates and teams" : "Team and dates",
-      body: euro ? (
-        <>
-          {dates}
-          {teamPicker}
-        </>
-      ) : (
+      // Team picker, then dates, on every tab that has both (user 2026-11-16).
+      title: euro ? "Teams and dates" : "Team and dates",
+      body: (
         <>
           {teamPicker}
           {dates}

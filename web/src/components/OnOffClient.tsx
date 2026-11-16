@@ -340,9 +340,19 @@ export default function OnOffClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",
-      title: "Dates and teams",
+      // Team picker, then dates (user 2026-11-16).
+      title: "Teams and dates",
       body: (
         <>
+          <Selectize
+            id={euro ? "euro_teams" : "teams"}
+            label="Teams"
+            multiple
+            placeholder="All teams"
+            choices={teams}
+            value={list(query.teams)}
+            onChange={(v) => set({ teams: v.join(",") })}
+          />
           <DateRangeInput
             id={euro ? "euro_date_range" : "date_range"}
             label="Game Date Range"
@@ -354,15 +364,6 @@ export default function OnOffClient({
               const full = s === bounds.start && e === bounds.end;
               set({ start: full ? null : s, end: full ? null : e });
             }}
-          />
-          <Selectize
-            id={euro ? "euro_teams" : "teams"}
-            label="Teams"
-            multiple
-            placeholder="All teams"
-            choices={teams}
-            value={list(query.teams)}
-            onChange={(v) => set({ teams: v.join(",") })}
           />
         </>
       ),

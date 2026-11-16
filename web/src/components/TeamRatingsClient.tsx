@@ -137,18 +137,10 @@ export default function TeamRatingsClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",
-      title: euro ? "Dates and teams" : "Dates",
+      // Team picker (EuroLeague), then dates (user 2026-11-16).
+      title: euro ? "Teams and dates" : "Dates",
       body: (
         <>
-          <DateRangeInput
-            id={`${p}_dates`}
-            label={euro ? "Game Date Range" : "Date range"}
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(start, end) => set({ start, end })}
-          />
           {euro && (
             <Selectize
               id={`${p}_teams`}
@@ -160,6 +152,15 @@ export default function TeamRatingsClient({
               placeholder="All teams"
             />
           )}
+          <DateRangeInput
+            id={`${p}_dates`}
+            label={euro ? "Game Date Range" : "Date range"}
+            start={query.start || bounds.start}
+            end={query.end || bounds.end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(start, end) => set({ start, end })}
+          />
         </>
       ),
     },

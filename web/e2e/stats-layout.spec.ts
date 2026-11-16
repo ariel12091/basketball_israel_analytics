@@ -36,7 +36,7 @@ async function pickTeam(page: Page, name: string) {
   await expect(page).toHaveURL(/teams=/);
 }
 
-test("filters open right under the Filters button and close on Escape", async ({
+test("filters slide in as a sheet and close on Escape", async ({
   page,
 }, info) => {
   await stub(page);
@@ -45,19 +45,26 @@ test("filters open right under the Filters button and close on Escape", async ({
   await filtersButton(page).click();
   await expect(drawer(page)).toBeVisible();
   // Every section opens expanded.
-  for (const title of ["Dates and teams", "Lineup starters", "Game filters"])
+  for (const title of ["Teams and dates", "Lineup starters", "Game filters"])
     await expect(
       drawer(page).getByRole("button", { name: title }),
     ).toHaveAttribute("aria-expanded", "true");
-  const button = (await filtersButton(page).boundingBox())!;
+  // A sheet (user 2026-11-16): full height against the right edge on wide
+  // screens, full width resting on the bottom on phones. Wait for the slide.
+  const view = page.viewportSize()!;
+  await expect
+    .poll(async () => {
+      const r = (await drawer(page).boundingBox())!;
+      return info.project.name === "desktop"
+        ? Math.round(r.x + r.width)
+        : Math.round(r.y + r.height);
+    })
+    .toBe(info.project.name === "desktop" ? view.width : view.height);
   const panel = (await drawer(page).boundingBox())!;
-  expect(panel.y).toBeGreaterThanOrEqual(button.y + button.height);
-  expect(panel.y - (button.y + button.height)).toBeLessThan(20);
-  if (info.project.name === "desktop")
-    expect(
-      Math.abs(panel.x + panel.width - (button.x + button.width)),
-    ).toBeLessThan(4);
-  else expect(panel.width).toBeGreaterThan(page.viewportSize()!.width - 40);
+  if (info.project.name === "desktop") {
+    expect(panel.y).toBeLessThan(2);
+    expect(panel.height).toBeGreaterThan(view.height - 2);
+  } else expect(panel.width).toBeGreaterThan(view.width - 2);
   await page.keyboard.press("Escape");
   await expect(drawer(page)).toBeHidden();
   await expect(filtersButton(page)).toBeFocused();

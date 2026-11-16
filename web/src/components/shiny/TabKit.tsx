@@ -46,6 +46,7 @@ import { useShinyBody } from "./useShinyBody";
 import { ImageScopeContext } from "@/lib/images";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+import * as Popover from "@radix-ui/react-popover";
 export type { DrawerSection } from "./FilterDrawer";
 
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
@@ -1121,21 +1122,6 @@ export function StatFilters({
     setOp("ge");
     setValue("");
   };
-  // Popper keeps the popover inside the viewport; the arrow stays on the chip.
-  const keepInViewport = (el: HTMLDivElement | null) => {
-    if (!el) return;
-    el.style.transform = "translateX(-50%)";
-    const r = el.getBoundingClientRect();
-    const shift =
-      r.right > innerWidth - 8
-        ? innerWidth - 8 - r.right
-        : r.left < 8
-          ? 8 - r.left
-          : 0;
-    el.style.transform = `translateX(calc(-50% + ${shift}px))`;
-    const arrow = el.querySelector<HTMLElement>(".popover-arrow");
-    if (arrow) arrow.style.transform = `translateX(calc(-50% - ${shift}px))`;
-  };
   const choices = groups
     ? groups.flatMap((g) =>
         all
@@ -1164,46 +1150,32 @@ export function StatFilters({
           </button>
         </span>
       ))}
-      <span style={{ position: "relative", display: "inline-block" }}>
-        <button
-          type="button"
-          className="filter-chip filter-chip-add"
-          id={`${p}_stat_filter_add_btn`}
-          aria-expanded={open}
-          aria-controls={`${p}_stat_filter_pop`}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <i className="bi bi-plus" aria-hidden="true"></i> Stat filter
-        </button>
-        {open && (
-          <div
+      {/* Radix Popover (user 2026-11-16): it stays inside the viewport as
+          the page scrolls or resizes, and closes on an outside click or
+          Escape, with focus back on the chip. */}
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className="filter-chip filter-chip-add"
+            id={`${p}_stat_filter_add_btn`}
+          >
+            <i className="bi bi-plus" aria-hidden="true"></i> Stat filter
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
             id={`${p}_stat_filter_pop`}
-            className="popover bs-popover-auto fade show"
+            className="popover bs-popover-auto fade show ibpl-stat-pop"
             role="dialog"
             aria-label="Add stat filter"
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              setOpen(false);
-              document.getElementById(`${p}_stat_filter_add_btn`)?.focus();
-            }}
-            data-popper-placement="bottom"
-            ref={keepInViewport}
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: "50%",
-              transform: "translateX(-50%)",
-              marginTop: 8,
-            }}
+            side="bottom"
+            align="center"
+            sideOffset={8}
+            collisionPadding={8}
+            onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <div
-              className="popover-arrow"
-              style={{
-                position: "absolute",
-                left: "50%",
-                transform: "translateX(-50%)",
-              }}
-            ></div>
+            <Popover.Arrow className="ibpl-stat-pop-arrow" width={14} height={7} />
             <h3 className="popover-header">Add stat filter</h3>
             <div className="popover-body">
               <div className={`${p}-stat-popover`} style={{ minWidth: 220 }}>
@@ -1273,11 +1245,9 @@ export function StatFilters({
                   Add
                 </button>
               </div>
-              <button
-                type="button"
+              <Popover.Close
                 aria-label="Close"
                 className="btn-close"
-                onClick={() => setOpen(false)}
                 style={{
                   position: "absolute",
                   top: "0.6rem",
@@ -1286,11 +1256,11 @@ export function StatFilters({
                   height: "0.55rem",
                   backgroundSize: "0.55rem",
                 }}
-              ></button>
+              />
             </div>
-          </div>
-        )}
-      </span>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
       {extraNote}
     </>
   );
