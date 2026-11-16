@@ -1585,7 +1585,28 @@ body:not(.ibpl-collapsed-nav) nav.navbar { position: sticky; top: 0; z-index: 99
 .datepicker table tr th.prev:hover,
 .datepicker table tr th.next:hover,
 .datepicker table tr th.datepicker-switch:hover { background: rgba(var(--ibpl-accent-rgb), 0.16); }
-.datepicker table tr td.range { border-radius: 0; background: rgba(var(--ibpl-accent-rgb), 0.12); }
+/* Day colours are set here for both themes: the vendor theme's range style
+   left in-range days invisible on the light background (user 2026-11-16).
+   The range is usually the whole season, so it gets no tint; its two ends
+   get an amber ring. */
+.datepicker table tr td.day:not(:hover),
+.datepicker table tr td.day.range:not(:hover) {
+  background: transparent;
+}
+.datepicker table tr td.day,
+.datepicker table tr td.day.range {
+  color: var(--ibpl-text) !important;
+  text-shadow: none;
+}
+.datepicker table tr td.day.old,
+.datepicker table tr td.day.new { color: var(--ibpl-text-dim) !important; }
+.datepicker table tr td.day.disabled { color: var(--ibpl-text-faint, var(--ibpl-text-dim)) !important; opacity: 0.45; }
+.datepicker table tr td.day.range-start:not(.active),
+.datepicker table tr td.day.range-end:not(.active) { box-shadow: inset 0 0 0 1.5px var(--ibpl-accent); }
+.datepicker table tr td.day.today:not(.active) { font-weight: 700; color: var(--ibpl-accent) !important; }
+.datepicker .datepicker-switch,
+.datepicker th.prev,
+.datepicker th.next { color: var(--ibpl-text) !important; }
 .datepicker table tr td.active,
 .datepicker table tr td.active:hover {
   border-radius: 999px;
@@ -1675,3 +1696,9 @@ table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(
   .checkbox input[type="checkbox"], .checkbox input[type="checkbox"]::before,
   .home-team-default .form-check-input, .home-team-default .form-check-input::before { transition: none; }
 }
+
+/* Stat filter popover (Radix, 2026-11-16): Bootstrap's .popover is absolutely
+   placed; inside Radix's positioned wrapper it sits in normal flow. */
+.popover.ibpl-stat-pop { position: relative; z-index: 1070; max-width: min(320px, calc(100vw - 16px)); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.popover.ibpl-stat-pop[data-state="closed"] { display: none; }
+.ibpl-stat-pop-arrow { fill: var(--ibpl-surface); stroke: var(--ibpl-border); }

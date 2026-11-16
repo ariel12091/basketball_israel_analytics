@@ -14,6 +14,27 @@ export function lineupDotted(value: unknown): string {
   return lineupNameList(value).join(" · ");
 }
 
+/** "JIMMY CLARK III, GABRIEL "IFFE" LUNDBERG" -> "CLARK III · LUNDBERG": the
+ * family names only, for the label that floats over a row scrolled sideways
+ * (user 2026-11-16). A quoted nickname is dropped; two players of one lineup
+ * with the same family name keep their first initial. */
+export function lineupSurnames(value: unknown): string {
+  const split = lineupNameList(value).map((name) => {
+    const words = name.split(/\s+/).filter((w) => !/^["“'].*["”']$/.test(w));
+    return {
+      given: words.length > 1 ? words[0] : "",
+      family: (words.length > 1 ? words.slice(1) : words).join(" "),
+    };
+  });
+  return split
+    .map((s) =>
+      s.given && split.filter((t) => t.family === s.family).length > 1
+        ? `${s.given[0]}. ${s.family}`
+        : s.family,
+    )
+    .join(" · ");
+}
+
 export default function LineupNames({ value }: { value: unknown }) {
   const names = lineupNameList(value);
   return (

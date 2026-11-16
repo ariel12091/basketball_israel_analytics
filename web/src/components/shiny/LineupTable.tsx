@@ -12,7 +12,7 @@ import { rate, zero } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
 import ui from "@/data/shinyUi.json";
 import MoreInfo from "./MoreInfo";
-import LineupNames from "./LineupNames";
+import LineupNames, { lineupSurnames } from "./LineupNames";
 export default function LineupTable({
   rows,
   view,
@@ -47,6 +47,10 @@ export default function LineupTable({
           ),
         text: String(r.Players ?? ""),
       }),
+      // The label floating over a scrolled row: surnames only (user
+      // 2026-11-16); the TOTAL row keeps its own text.
+      rowName: (r) =>
+        r.is_total === 0 ? String(r.Players ?? "") : lineupSurnames(r.Players),
     },
   ];
   const number = (

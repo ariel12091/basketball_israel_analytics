@@ -64,6 +64,9 @@ export type Column = {
   descOnly?: boolean;
   /** Extra attributes on the column's cells (createdRow in Shiny). */
   tdProps?: (row: Row) => Record<string, string | number>;
+  /** A shorter text for the name label that floats over a row scrolled
+   * sideways; defaults to the cell's text. */
+  rowName?: (row: Row) => string;
   /** Click, Enter or Space on the cell (the On/Off pivot menu). */
   onActivate?: (
     row: Row,
@@ -818,7 +821,9 @@ export default function DataTable({
                                       k ? "ibpl-row-name-team" : undefined
                                     }
                                   >
-                                    {cellOf(row, n).text}
+                                    {n.rowName
+                                      ? n.rowName(row)
+                                      : cellOf(row, n).text}
                                   </span>
                                 </Fragment>
                               ))}
