@@ -306,6 +306,7 @@ export function GameflowView({
     active: hover ?? active,
     stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
+    previewing: preview != null,
     layout,
     ratingMode,
     runs,

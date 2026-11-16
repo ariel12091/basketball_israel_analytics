@@ -940,3 +940,16 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
    photo keeps to the first line of the name, clear of that label. */
 .ibpl-name-table.ibpl-names-scrolled td.ibpl-name-has-img .ibpl-name-with-img,
 .ibpl-name-table.ibpl-names-scrolled .ibpl-cell-btn:has(> .ibpl-name-with-img) { align-items: flex-start; }
+/* Gameflow's tied line (user 2026-11-16: much more prominent, but not to be
+   read as the score line). Heavier and darker than the faint gridlines, kept
+   dashed and muted so the solid score line, drawn over it, stays the chart. */
+.ibpl-react-gameflow .ibpl-ribbon-zero {
+  stroke: var(--ibpl-text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.85;
+}
+.ibpl-react-gameflow .ibpl-ribbon-zero-label {
+  fill: var(--ibpl-text);
+  font-weight: 600;
+}

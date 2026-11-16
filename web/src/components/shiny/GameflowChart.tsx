@@ -42,6 +42,7 @@ export default function GameflowChart({
   active,
   stintBar,
   lineupIndex,
+  previewing = false,
   crop,
   layout,
   ratingMode = "off",
@@ -80,6 +81,8 @@ export default function GameflowChart({
   /** Set when one stint was clicked: only that bar reads as selected. */
   stintBar?: Bar;
   lineupIndex?: number;
+  /** A lineup row is under the pointer: `highlight` holds its windows. */
+  previewing?: boolean;
 }) {
   const id = useId().replace(/:/g, ""),
     L = compact ? geometry.compact : (layout ?? geometry.desktop),
@@ -209,8 +212,15 @@ export default function GameflowChart({
         : [],
     );
   // A clicked run counts too: its stretch (or a lineup's part of it) is
-  // picked out of the score line (user 2026-11-11).
-  const focused = selected.length > 0 || active != null || selectedRun != null;
+  // picked out of the score line (user 2026-11-11). So does a lineup picked
+  // or previewed in the list, a top-five one included: with nothing else
+  // selected the line was left unclipped and marked the whole game.
+  const focused =
+    selected.length > 0 ||
+    active != null ||
+    selectedRun != null ||
+    lineupIndex != null ||
+    previewing;
   const pinned = compact && !range;
   const gutter = (
     <>
