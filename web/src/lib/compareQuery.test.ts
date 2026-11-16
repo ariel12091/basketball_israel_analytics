@@ -87,6 +87,25 @@ it("does not send an incomplete starter selection to the API", () => {
     ).has("own_starters"),
   ).toBe(false);
 });
+it("Players mode sends its side's starters but never Teams or Last N", () => {
+  const s = compareSideParams(
+    {
+      ...defaults(),
+      view: "Players",
+      player_compare: "self",
+      a_own_starters: "gte:3",
+      a_opp_starters: "lte:2",
+      a_teams: "5",
+      a_last_n: "4",
+    },
+    "a",
+    "players",
+  );
+  expect(s.get("own_starters")).toBe("gte:3");
+  expect(s.get("opp_starters")).toBe("lte:2");
+  expect(s.has("teams")).toBe(false);
+  expect(s.has("last_n")).toBe(false);
+});
 it("clears automatic players only for the original default-reset filters", () => {
   const q = { ...defaults(), view: "Players", player_a: "1", player_b: "2" };
   expect(editCompareSide(q, "a", "home_away", "home")).toMatchObject({
