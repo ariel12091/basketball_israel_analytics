@@ -4,7 +4,7 @@
 // touch, on pointer events: the browser's own drag-and-drop does not work on
 // phones), and arrows for the keyboard. Dragging a header still reorders on
 // desktop too.
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
 
 export type MenuColumn = { id: string; label: string };
@@ -42,6 +42,15 @@ export default function ColumnsMenu({
   const list = useRef<HTMLUListElement>(null),
     scroller = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  // The drag lives in a ref and listens on the window, not on the grip: a
+  // drag must not depend on pointer capture, which some browsers drop once
+  // the row moves in the page, and must survive the list re-rendering
+  // (user 2026-11-16: "able to drag once but not after it").
+  const live = useRef<Drag | null>(null),
+    latest = useRef({ columns, onMove });
+  latest.current = { columns, onMove };
+  const stop = useRef<(() => void) | null>(null);
+  useEffect(() => () => stop.current?.(), []);
 
   const rows = () =>
     [...(list.current?.children ?? [])] as HTMLElement[];
@@ -60,12 +69,12 @@ export default function ColumnsMenu({
   };
   const grip = (i: number) => ({
     onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || live.current) return;
       const el = rows()[i];
       if (!el) return;
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setDrag({
+      const id = e.pointerId;
+      const start: Drag = {
         index: i,
         startY: e.clientY,
         startScroll: scroller.current?.scrollTop ?? 0,
@@ -73,28 +82,46 @@ export default function ColumnsMenu({
         height: el.offsetHeight,
         dy: 0,
         over: i,
-      });
+      };
+      live.current = start;
+      setDrag(start);
+      const move = (ev: globalThis.PointerEvent) => {
+        const d = live.current;
+        if (!d || ev.pointerId !== id) return;
+        ev.preventDefault();
+        // Near the menu's edges the list scrolls under the finger.
+        const box = scroller.current;
+        if (box) {
+          const r = box.getBoundingClientRect();
+          if (ev.clientY < r.top + 32) box.scrollTop -= 8;
+          else if (ev.clientY > r.bottom - 32) box.scrollTop += 8;
+        }
+        const dy =
+          ev.clientY - d.startY + ((box?.scrollTop ?? 0) - d.startScroll);
+        live.current = { ...d, dy, over: overIndex(d, d.centre + dy) };
+        setDrag(live.current);
+      };
+      const end = (ev: globalThis.PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        const d = live.current;
+        stop.current?.();
+        if (ev.type === "pointerup" && d && d.over !== d.index) {
+          const { columns: cols, onMove: moveTo } = latest.current;
+          moveTo(cols[d.index].id, cols[d.over].id);
+        }
+      };
+      stop.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        live.current = null;
+        stop.current = null;
+        setDrag(null);
+      };
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
     },
-    onPointerMove: (e: PointerEvent<HTMLSpanElement>) => {
-      if (!drag) return;
-      // Near the menu's edges the list scrolls under the finger.
-      const box = scroller.current;
-      if (box) {
-        const r = box.getBoundingClientRect();
-        if (e.clientY < r.top + 32) box.scrollTop -= 8;
-        else if (e.clientY > r.bottom - 32) box.scrollTop += 8;
-      }
-      const dy =
-        e.clientY - drag.startY + ((box?.scrollTop ?? 0) - drag.startScroll);
-      setDrag({ ...drag, dy, over: overIndex(drag, drag.centre + dy) });
-    },
-    onPointerUp: () => {
-      if (!drag) return;
-      if (drag.over !== drag.index)
-        onMove(columns[drag.index].id, columns[drag.over].id);
-      setDrag(null);
-    },
-    onPointerCancel: () => setDrag(null),
   });
   // While dragging, the rows between the old and new place step aside.
   const shift = (i: number) => {
@@ -107,7 +134,7 @@ export default function ColumnsMenu({
   };
 
   return (
-    <Popover.Root onOpenChange={(open) => !open && setDrag(null)}>
+    <Popover.Root onOpenChange={(open) => !open && stop.current?.()}>
       <Popover.Trigger asChild>
         <button type="button" className="btn btn-default btn-sm ibpl-columns-btn">
           <i className="bi bi-layout-three-columns" aria-hidden="true"></i>{" "}
