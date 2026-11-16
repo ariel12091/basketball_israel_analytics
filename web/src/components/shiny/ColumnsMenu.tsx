@@ -1,9 +1,11 @@
 "use client";
 // The "Columns" menu (user 2026-11-16): every column of the table with a
-// switch to show or hide it, a grip to drag it to a new place (mouse and
-// touch, on pointer events: the browser's own drag-and-drop does not work on
-// phones), and arrows for the keyboard. Dragging a header still reorders on
-// desktop too.
+// switch to show or hide it, drag to reorder, and arrows for the keyboard.
+// The whole row is the handle ("make the drag easier"): with a mouse the
+// drag starts once the pointer moves a few pixels; by touch after a short
+// press-and-hold, so a quick swipe still scrolls the list. Built on pointer
+// events on the window (the browser's own drag-and-drop does not work on
+// phones, and pointer capture is dropped by some browsers once a row moves).
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
 
@@ -19,6 +21,12 @@ type Drag = {
   dy: number;
   over: number;
 };
+
+/** Mouse: pixels to move before a press becomes a drag. */
+const MOUSE_SLOP = 4;
+/** Touch: hold this long (ms) without moving more than TOUCH_SLOP px. */
+const HOLD_MS = 220;
+const TOUCH_SLOP = 8;
 
 export default function ColumnsMenu({
   columns,
@@ -42,87 +50,110 @@ export default function ColumnsMenu({
   const list = useRef<HTMLUListElement>(null),
     scroller = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  // The drag lives in a ref and listens on the window, not on the grip: a
-  // drag must not depend on pointer capture, which some browsers drop once
-  // the row moves in the page, and must survive the list re-rendering
-  // (user 2026-11-16: "able to drag once but not after it").
   const live = useRef<Drag | null>(null),
     latest = useRef({ columns, onMove });
   latest.current = { columns, onMove };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
 
-  const rows = () =>
-    [...(list.current?.children ?? [])] as HTMLElement[];
-  // Where the dragged row's centre now sits among the others' centres.
+  const rows = () => [...(list.current?.children ?? [])] as HTMLElement[];
+  // Where the dragged row's centre now sits among the others' centres. On a
+  // row's middle counts as past it: dropping onto a row takes its place.
   const overIndex = (d: Drag, centre: number) => {
-    const els = rows();
     let over = d.index;
-    els.forEach((el, i) => {
+    rows().forEach((el, i) => {
       if (i === d.index) return;
       const mid = el.offsetTop + el.offsetHeight / 2;
-      // On a row's middle counts as past it: dropping onto a row takes its place.
       if (i < d.index && centre <= mid) over = Math.min(over, i);
       if (i > d.index && centre >= mid) over = Math.max(over, i);
     });
     return over;
   };
-  const grip = (i: number) => ({
-    onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
-      if (e.button !== 0 || live.current) return;
-      const el = rows()[i];
-      if (!el) return;
-      e.preventDefault();
-      const id = e.pointerId;
-      const start: Drag = {
+
+  const press = (i: number) => (e: PointerEvent<HTMLLIElement>) => {
+    if (e.button !== 0 || live.current || stop.current) return;
+    // The switch and the arrows keep their own clicks.
+    if ((e.target as HTMLElement).closest("input, button")) return;
+    const el = rows()[i];
+    if (!el) return;
+    const id = e.pointerId,
+      touch = e.pointerType !== "mouse",
+      x0 = e.clientX,
+      y0 = e.clientY;
+    let lastY = y0,
+      timer: number | undefined;
+    if (!touch) e.preventDefault(); // no text selection while dragging
+    const begin = () => {
+      const d: Drag = {
         index: i,
-        startY: e.clientY,
+        startY: y0,
         startScroll: scroller.current?.scrollTop ?? 0,
         centre: el.offsetTop + el.offsetHeight / 2,
         height: el.offsetHeight,
         dy: 0,
         over: i,
       };
-      live.current = start;
-      setDrag(start);
-      const move = (ev: globalThis.PointerEvent) => {
-        const d = live.current;
-        if (!d || ev.pointerId !== id) return;
+      live.current = d;
+      update(lastY);
+      if (touch) navigator.vibrate?.(10);
+    };
+    const update = (y: number) => {
+      const d = live.current;
+      if (!d) return;
+      // Near the menu's edges the list scrolls under the finger.
+      const box = scroller.current;
+      if (box) {
+        const r = box.getBoundingClientRect();
+        if (y < r.top + 32) box.scrollTop -= 8;
+        else if (y > r.bottom - 32) box.scrollTop += 8;
+      }
+      const dy = y - d.startY + ((box?.scrollTop ?? 0) - d.startScroll);
+      live.current = { ...d, dy, over: overIndex(d, d.centre + dy) };
+      setDrag(live.current);
+    };
+    const move = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      lastY = ev.clientY;
+      if (live.current) {
         ev.preventDefault();
-        // Near the menu's edges the list scrolls under the finger.
-        const box = scroller.current;
-        if (box) {
-          const r = box.getBoundingClientRect();
-          if (ev.clientY < r.top + 32) box.scrollTop -= 8;
-          else if (ev.clientY > r.bottom - 32) box.scrollTop += 8;
-        }
-        const dy =
-          ev.clientY - d.startY + ((box?.scrollTop ?? 0) - d.startScroll);
-        live.current = { ...d, dy, over: overIndex(d, d.centre + dy) };
-        setDrag(live.current);
-      };
-      const end = (ev: globalThis.PointerEvent) => {
-        if (ev.pointerId !== id) return;
-        const d = live.current;
-        stop.current?.();
-        if (ev.type === "pointerup" && d && d.over !== d.index) {
-          const { columns: cols, onMove: moveTo } = latest.current;
-          moveTo(cols[d.index].id, cols[d.over].id);
-        }
-      };
-      stop.current = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", end);
-        window.removeEventListener("pointercancel", end);
-        live.current = null;
-        stop.current = null;
-        setDrag(null);
-      };
-      window.addEventListener("pointermove", move, { passive: false });
-      window.addEventListener("pointerup", end);
-      window.addEventListener("pointercancel", end);
-    },
-  });
+        update(ev.clientY);
+        return;
+      }
+      const moved = Math.hypot(ev.clientX - x0, ev.clientY - y0);
+      if (!touch && moved >= MOUSE_SLOP) begin();
+      // Moving before the hold ends is a scroll, not a drag.
+      else if (touch && moved > TOUCH_SLOP) stop.current?.();
+    };
+    // Once a touch drag has begun, the list must not scroll under it.
+    const noScroll = (ev: TouchEvent) => {
+      if (live.current) ev.preventDefault();
+    };
+    const end = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      const d = live.current;
+      stop.current?.();
+      if (ev.type === "pointerup" && d && d.over !== d.index) {
+        const { columns: cols, onMove: moveTo } = latest.current;
+        moveTo(cols[d.index].id, cols[d.over].id);
+      }
+    };
+    stop.current = () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("touchmove", noScroll);
+      live.current = null;
+      stop.current = null;
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("touchmove", noScroll, { passive: false });
+    if (touch) timer = window.setTimeout(begin, HOLD_MS);
+  };
+
   // While dragging, the rows between the old and new place step aside.
   const shift = (i: number) => {
     if (!drag || i === drag.index) return 0;
@@ -159,7 +190,10 @@ export default function ColumnsMenu({
         >
           <div className="ibpl-columns-head">
             <span className="ibpl-columns-title">Columns</span>
-            <span className="ibpl-columns-hint">Drag to reorder</span>
+            <span className="ibpl-columns-hint">
+              <span className="ibpl-columns-hint-pointer">Drag a row to move it</span>
+              <span className="ibpl-columns-hint-touch">Hold a row, then drag</span>
+            </span>
             <button type="button" className="ibpl-columns-reset" onClick={onReset}>
               Reset
             </button>
@@ -183,32 +217,26 @@ export default function ColumnsMenu({
                         ? `translateY(${shift(i)}px)`
                         : undefined,
                   }}
+                  onPointerDown={press(i)}
                 >
-                  <span
-                    className="ibpl-columns-grip"
-                    aria-hidden="true"
-                    title="Drag to move"
-                    {...grip(i)}
-                  >
+                  <span className="ibpl-columns-grip" aria-hidden="true">
                     <i className="bi bi-grip-vertical"></i>
                   </span>
-                  <label className="ibpl-columns-name">
-                    <input
-                      type="checkbox"
-                      className="ibpl-columns-switch"
-                      checked={on}
-                      disabled={fixed}
-                      aria-label={`Show ${c.label}`}
-                      onChange={(e) =>
-                        onHidden(
-                          e.target.checked
-                            ? hidden.filter((h) => h !== c.id)
-                            : [...hidden, c.id],
-                        )
-                      }
-                    />
-                    <span>{c.label}</span>
-                  </label>
+                  <input
+                    type="checkbox"
+                    className="ibpl-columns-switch"
+                    checked={on}
+                    disabled={fixed}
+                    aria-label={`Show ${c.label}`}
+                    onChange={(e) =>
+                      onHidden(
+                        e.target.checked
+                          ? hidden.filter((h) => h !== c.id)
+                          : [...hidden, c.id],
+                      )
+                    }
+                  />
+                  <span className="ibpl-columns-name">{c.label}</span>
                   <span className="ibpl-columns-moves">
                     <button
                       type="button"
