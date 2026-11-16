@@ -13,6 +13,10 @@ the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 - Work on a short branch off `main` (`react/<name>`). Each push gets a Vercel
   Preview and the live checks (`.github/workflows/web-preview-live.yml`).
   Merge into `main` only after those passed on the branch's head commit.
+- Changing visible wording (a label, a prompt, an idle state)? Grep `e2e/`
+  for the old text before pushing: the live specs pin it, and the Preview
+  check fails otherwise (PR #61: `gameflow-live.spec.ts` expected "Nothing
+  selected").
 - Load test: push the feature branch head to `load-test/<name>`, delete it
   afterwards (`web-preview-load.yml`). Never during the nightly ETL; each run
   costs about 0.35 GB of Fast Origin Transfer (Hobby: 10 GB/month).
@@ -39,6 +43,12 @@ credits a free throw to the lineup that drew the foul too since migration 062
 - Phones (`GameflowView` compact): sticky header (strip + quarter tabs +
   Runs + menu), one quarter at a time (tabs or swipe), one bottom panel
   (`PhonePanel`) every tap reports to. Desktop keeps the old layout.
+- Before any click (PR #61, 2026-11-15), each team's 5 most-played lineups
+  (`gameLineups()`) fill the lineups area: wide behind a Hide/Show heading
+  (folded, the chart is fitted as if nothing were open), on phones as the
+  collapsed panel's default. A player, stint or run replaces them. Every
+  lineup row's Net/ORtg/DRtg is tinted against the game's own rating
+  (`ratingTone()`, `gameRating()`; no league constant).
 - Fixtures with events: `src/rules/__fixtures__/gameflow-{673,440,1147}.json`
   from `scripts/save_gameflow_fixture.R` (the real reader as app_readonly);
   e2e loads them with `loadFixture()`.
