@@ -2108,3 +2108,10 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
   body .ibpl-drawer-layout .ps-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ibpl-drawer-layout .lineup-bar .control-label { margin-bottom: 4px; font-size: 0.75rem; }
 }
+
+/* Bottom-pinned pieces follow the visual viewport where the browser leaves
+   them behind (Navbar.tsx useBottomPin sets --ibpl-vv-shift; 0 elsewhere). */
+.ibpl-pages, .ibpl-ask-fab, .gf-m-panel { translate: 0 var(--ibpl-vv-shift, 0px); }
+@media (max-width: 1023.98px) {
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle { translate: 0 var(--ibpl-vv-shift, 0px); }
+}
