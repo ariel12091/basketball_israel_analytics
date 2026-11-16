@@ -1,12 +1,14 @@
 "use client";
 import layout from "@/data/layoutUi.json";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import DataTable, {
   formatNumber,
   heat,
   type Column,
   type Group,
 } from "./DataTable";
+import ColumnsMenu from "./ColumnsMenu";
+import { useStoredList } from "@/lib/storedList";
 import type { Row, League } from "@/rules/gameLogs";
 import { rankRamp, type TeamView } from "@/rules/teamRatings";
 import { SP_SUFFIX, SP_LABELS } from "@/rules/onoff";
@@ -113,7 +115,7 @@ export default function TeamRatingsTable({
     readOrder,
     () => EMPTY_ORDER,
   );
-  const [moving, setMoving] = useState("team_name");
+  const [hidden, setHidden] = useStoredList(`${ORDER_KEY}.hidden`);
   const columns = useMemo(() => {
     const cols: Column[] = [];
     const plain = (id: string, label: string, digits = 0) =>
@@ -265,14 +267,6 @@ export default function TeamRatingsTable({
           ...columns.filter((c) => !saved.includes(c.id)),
         ]
       : columns;
-  const move = (step: number) => {
-    const ids = ordered.map((c) => c.id),
-      i = ids.indexOf(moving),
-      next = i + step;
-    if (i < 0 || next < 0 || next >= ids.length) return;
-    [ids[i], ids[next]] = [ids[next], ids[i]];
-    saveOrder(ids);
-  };
   const moveTo = (from: string, to: string) => {
     const ids = ordered.map((c) => c.id),
       source = ids.indexOf(from),
@@ -305,44 +299,29 @@ export default function TeamRatingsTable({
       : `${league === "il" ? "team_ratings" : "euroleague_team"}_${view}${view === "traditional" ? `_${side === "defense" ? "opponent" : "team"}_${display === "per75" ? "per_75_possessions" : display === "per40" ? "per_40_minutes" : "per_game"}` : ""}`;
   return (
     <>
-      {view === "traditional" && (
-        <details className="ibpl-column-order">
-          <summary>Column order</summary>
-          <label>
-            Column{" "}
-            <select
-              className="form-control"
-              aria-label="Reorder column"
-              value={moving}
-              onChange={(e) => setMoving(e.target.value)}
-            >
-              {ordered.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>{" "}
-          <button
-            type="button"
-            className="btn btn-default btn-sm"
-            onClick={() => move(-1)}
-          >
-            Move left
-          </button>{" "}
-          <button
-            type="button"
-            className="btn btn-default btn-sm"
-            onClick={() => move(1)}
-          >
-            Move right
-          </button>
-        </details>
-      )}
       <DataTable
         rows={rows}
-        columns={ordered}
+        columns={
+          view === "traditional"
+            ? ordered.filter((c) => !hidden.includes(c.id))
+            : ordered
+        }
         onColumnMove={view === "traditional" ? moveTo : undefined}
+        tools={
+          view === "traditional" ? (
+            <ColumnsMenu
+              columns={ordered}
+              hidden={hidden}
+              locked={["team_name"]}
+              onMove={moveTo}
+              onHidden={setHidden}
+              onReset={() => {
+                saveOrder([]);
+                setHidden([]);
+              }}
+            />
+          ) : undefined
+        }
         groups={groups}
         defaultOrder={
           view === "four_factors"

@@ -11,6 +11,7 @@
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
 import MoreInfo, { HoverTip } from "./MoreInfo";
+import EmptyState from "./EmptyState";
 import {
   Fragment,
   useContext,
@@ -42,6 +43,7 @@ import { defuseCsvCell } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
 import { NameImage, nameCellImage } from "./NameImage";
 import { useImageScope } from "@/lib/images";
+import { InToolsSlot } from "./toolsSlot";
 
 export type Cell = {
   node: ReactNode;
@@ -64,6 +66,9 @@ export type Column = {
   descOnly?: boolean;
   /** Extra attributes on the column's cells (createdRow in Shiny). */
   tdProps?: (row: Row) => Record<string, string | number>;
+  /** A shorter text for the name label that floats over a row scrolled
+   * sideways; defaults to the cell's text. */
+  rowName?: (row: Row) => string;
   /** Click, Enter or Space on the cell (the On/Off pivot menu). */
   onActivate?: (
     row: Row,
@@ -290,6 +295,7 @@ export default function DataTable({
   lengthMenu,
   columnFilters = false,
   csvLabel = "Download CSV",
+  tools,
   onColumnMove,
   moreInfo = false,
   onRowActivate,
@@ -321,6 +327,8 @@ export default function DataTable({
   lengthMenu?: number[];
   columnFilters?: boolean;
   csvLabel?: string;
+  /** More buttons beside Download CSV (the Columns menu). */
+  tools?: ReactNode;
   onColumnMove?: (from: string, to: string) => void;
   /** Header definitions in the stats-tab popover, shown when the mouse
    * rests on the header (HoverTip), instead of the native title. Either
@@ -498,16 +506,23 @@ export default function DataTable({
         </div>
       )}
       {csvName && (
-        <div className="dt-buttons">
-          <button
-            className="dt-button buttons-csv buttons-html5"
-            tabIndex={0}
-            type="button"
-            onClick={() => downloadCsv(csvName, columns, sortedRows)}
-          >
-            <span>{csvLabel}</span>
-          </button>{" "}
-        </div>
+        // In the legend's row above the table when the page has the slot.
+        <InToolsSlot>
+          <div className="dt-buttons">
+            <button
+              className="dt-button buttons-csv buttons-html5"
+              tabIndex={0}
+              type="button"
+              aria-label={csvLabel}
+              title={csvLabel}
+              onClick={() => downloadCsv(csvName, columns, sortedRows)}
+            >
+              <i className="bi bi-download" aria-hidden="true"></i>{" "}
+              <span>{csvLabel.replace(/^Download /, "")}</span>
+            </button>{" "}
+            {tools}
+          </div>
+        </InToolsSlot>
       )}
       <div className="dataTables_scroll">
         {touchTips && (
@@ -817,7 +832,9 @@ export default function DataTable({
                                       k ? "ibpl-row-name-team" : undefined
                                     }
                                   >
-                                    {cellOf(row, n).text}
+                                    {n.rowName
+                                      ? n.rowName(row)
+                                      : cellOf(row, n).text}
                                   </span>
                                 </Fragment>
                               ))}
@@ -841,6 +858,13 @@ export default function DataTable({
                   })()}
                 </Fragment>
               ))}
+              {sortedRows.length === 0 && (
+                <tr className="ibpl-empty-row">
+                  <td colSpan={columns.length}>
+                    <EmptyState />
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -875,7 +899,8 @@ export default function DataTable({
               disabled={pageIndex === 0}
               onClick={() => setPageIndex(pageIndex - 1)}
             >
-              Previous
+              <span aria-hidden="true">‹</span>{" "}
+              <span className="paginate-label">Previous</span>
             </button>
             <span>
               {pageNumbers(pageIndex, pages).map((n, i) =>
@@ -902,7 +927,8 @@ export default function DataTable({
               disabled={pageIndex >= pages - 1}
               onClick={() => setPageIndex(pageIndex + 1)}
             >
-              Next
+              <span className="paginate-label">Next</span>{" "}
+              <span aria-hidden="true">›</span>
             </button>
           </div>
         </>

@@ -15,6 +15,7 @@ import DateRangeInput from "./shiny/DateRangeInput";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
@@ -137,18 +138,10 @@ export default function TeamRatingsClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",
-      title: euro ? "Dates and teams" : "Dates",
+      // Team picker (EuroLeague), then dates (user 2026-11-16).
+      title: euro ? "Teams and dates" : "Dates",
       body: (
         <>
-          <DateRangeInput
-            id={`${p}_dates`}
-            label={euro ? "Game Date Range" : "Date range"}
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(start, end) => set({ start, end })}
-          />
           {euro && (
             <Selectize
               id={`${p}_teams`}
@@ -160,6 +153,15 @@ export default function TeamRatingsClient({
               placeholder="All teams"
             />
           )}
+          <DateRangeInput
+            id={`${p}_dates`}
+            label={euro ? "Game Date Range" : "Date range"}
+            start={query.start || bounds.start}
+            end={query.end || bounds.end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(start, end) => set({ start, end })}
+          />
         </>
       ),
     },
@@ -228,6 +230,11 @@ export default function TeamRatingsClient({
       }}
       main={
         <>
+          <ViewTabs
+            views={views.map((v) => LABELS[v])}
+            view={LABELS[view]}
+            onView={changeView}
+          />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
@@ -286,11 +293,6 @@ export default function TeamRatingsClient({
               </div>
             }
           />
-          <ViewTabs
-            views={views.map((v) => LABELS[v])}
-            view={LABELS[view]}
-            onView={changeView}
-          />
           <div className="table-top">
             <ViewIntro
               blocks={frag.views[view] as Block[]}
@@ -300,17 +302,15 @@ export default function TeamRatingsClient({
                 ]
               }
             />
-            <TableLegend
-              league={league}
-              shots={viewKey.shots}
-              rank={viewKey.rank}
-            />
+            <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+            <ToolsSlot />
           </div>
           <OutputArea
             id={euro ? "euroteam_table" : "tr_table"}
             loading={loading}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             {data ? (
               <TeamRatingsTable

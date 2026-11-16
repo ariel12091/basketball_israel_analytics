@@ -1,4 +1,5 @@
 "use client";
+import EmptyState from "./shiny/EmptyState";
 import { useEffect, useRef, useState } from "react";
 import GameflowPanel from "./shiny/GameflowPanel";
 // The Game Logs tab as Shiny draws it: ui_tab4_gamelogs.R (Israeli League) and
@@ -33,6 +34,7 @@ import {
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 
 export { seasonBounds };
@@ -165,13 +167,9 @@ export default function GameLogsClient({
   const drawerSections: DrawerSection[] = [
     {
       id: "teams",
-      title: euro ? "Dates and teams" : "Team and dates",
-      body: euro ? (
-        <>
-          {dates}
-          {teamPicker}
-        </>
-      ) : (
+      // Team picker, then dates, on every tab that has both (user 2026-11-16).
+      title: euro ? "Teams and dates" : "Team and dates",
+      body: (
         <>
           {teamPicker}
           {dates}
@@ -234,6 +232,15 @@ export default function GameLogsClient({
       }}
       main={
         <>
+          <ViewTabs
+            views={VIEWS}
+            view={view === "four_factors" ? "Four Factors" : "Summary"}
+            onView={changeView}
+            tips={{
+              Summary: FILTER_TIPS.view_summary,
+              "Four Factors": FILTER_TIPS.view_ff,
+            }}
+          />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
@@ -254,15 +261,6 @@ export default function GameLogsClient({
             active={activeCount > 0 || stats.length > 0}
             onClearAll={reset}
           />
-          <ViewTabs
-            views={VIEWS}
-            view={view === "four_factors" ? "Four Factors" : "Summary"}
-            onView={changeView}
-            tips={{
-              Summary: FILTER_TIPS.view_summary,
-              "Four Factors": FILTER_TIPS.view_ff,
-            }}
-          />
           {/* Gameflow takes over the table's area (user 2026-10-28: no modal
               windows); the table stays mounted beneath, so Back returns to
               the same sort, page and scroll. */}
@@ -281,17 +279,15 @@ export default function GameLogsClient({
                 blocks={viewBlocks}
                 summary={layout.intro.gameLogs[view]}
               />
-              <TableLegend
-                league={league}
-                shots={viewKey.shots}
-                rank={viewKey.rank}
-              />
+              <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+              <ToolsSlot />
             </div>
             <OutputArea
               id={`${p}_table`}
               loading={loading}
               error={error}
               retry={retry}
+              onClear={reset}
             >
               {!data ? null : rows.length ? (
                 <GameLogsTable
@@ -302,26 +298,11 @@ export default function GameLogsClient({
                   shotAverages={data.meta.shot_averages}
                   onGameflow={openGameflow}
                 />
-              ) : euro ? (
-                // empty_game_log() in server_tab11_euro_gamelogs.R
-                <div className="dataTables_wrapper no-footer">
-                  <table
-                    className="display dataTable no-footer"
-                    style={{ width: "100%" }}
-                  >
-                    <thead>
-                      <tr>
-                        <th className="sorting_disabled">Info</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="odd">
-                        <td>No games match the current filters</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
+              ) : (
+                // Both leagues (EuroLeague had empty_game_log()'s Info table;
+                // the Israeli tab showed nothing): user 2026-11-16.
+                <EmptyState text="No games match the current filters" />
+              )}
             </OutputArea>
           </div>
         </>

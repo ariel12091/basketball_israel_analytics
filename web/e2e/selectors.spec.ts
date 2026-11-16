@@ -64,10 +64,8 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
     await expect(page.locator(".dataTables_info")).toHaveText(
       "Showing 1 to 1 of 1 entries",
     );
-    await expect(page.locator(".navbar .nav-link.active")).toContainText(
-      "Game Logs",
-    );
-    await expect(page.locator("#last_updated")).toHaveText("Oct 20");
+    await expect(page.locator(".ibpl-page.active")).toContainText("Games");
+    await expect(page.locator("#ibpl_updated")).toContainText("Oct 20");
 
     const phone = info.project.name === "phone";
     if (phone)
@@ -187,13 +185,10 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
       .toBe(null);
     await expect(page.locator(".filter-chip.chip-stat")).toHaveCount(0);
 
-    // The navbar view menu (app.js CFG) switches to Four Factors.
-    if (phone) await page.locator(".navbar-toggle").click();
-    const gl = page.locator(".nav-item", {
-      has: page.locator(".nav-link.active"),
-    });
-    if (!phone) await gl.hover();
-    await gl.locator('.thm-item[data-value="Four Factors"]').click();
+    // The view tabs switch to Four Factors.
+    await page
+      .getByRole("button", { name: "Four Factors", exact: true })
+      .click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get("view"))
       .toBe("four_factors");
@@ -215,8 +210,6 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
     // The explainer's Show/Hide also opens the example box after it (app.js).
     if (league === "il")
       await expect(page.locator(".example-wrapper.show")).toBeVisible();
-    if (phone && !(await page.locator("#open_glossary").isVisible()))
-      await page.locator(".navbar-toggle").click();
     await page.locator("#open_glossary").click();
     await expect(page.getByRole("dialog", { name: "Glossary" })).toBeVisible();
     await page.keyboard.press("Escape");

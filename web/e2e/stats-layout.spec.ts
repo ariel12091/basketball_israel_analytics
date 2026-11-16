@@ -36,7 +36,7 @@ async function pickTeam(page: Page, name: string) {
   await expect(page).toHaveURL(/teams=/);
 }
 
-test("filters open right under the Filters button and close on Escape", async ({
+test("filters slide in as a sheet and close on Escape", async ({
   page,
 }, info) => {
   await stub(page);
@@ -45,19 +45,26 @@ test("filters open right under the Filters button and close on Escape", async ({
   await filtersButton(page).click();
   await expect(drawer(page)).toBeVisible();
   // Every section opens expanded.
-  for (const title of ["Dates and teams", "Lineup starters", "Game filters"])
+  for (const title of ["Teams and dates", "Lineup starters", "Game filters"])
     await expect(
       drawer(page).getByRole("button", { name: title }),
     ).toHaveAttribute("aria-expanded", "true");
-  const button = (await filtersButton(page).boundingBox())!;
+  // A sheet (user 2026-11-16): full height against the right edge on wide
+  // screens, full width resting on the bottom on phones. Wait for the slide.
+  const view = page.viewportSize()!;
+  await expect
+    .poll(async () => {
+      const r = (await drawer(page).boundingBox())!;
+      return info.project.name === "desktop"
+        ? Math.round(r.x + r.width)
+        : Math.round(r.y + r.height);
+    })
+    .toBe(info.project.name === "desktop" ? view.width : view.height);
   const panel = (await drawer(page).boundingBox())!;
-  expect(panel.y).toBeGreaterThanOrEqual(button.y + button.height);
-  expect(panel.y - (button.y + button.height)).toBeLessThan(20);
-  if (info.project.name === "desktop")
-    expect(
-      Math.abs(panel.x + panel.width - (button.x + button.width)),
-    ).toBeLessThan(4);
-  else expect(panel.width).toBeGreaterThan(page.viewportSize()!.width - 40);
+  if (info.project.name === "desktop") {
+    expect(panel.y).toBeLessThan(2);
+    expect(panel.height).toBeGreaterThan(view.height - 2);
+  } else expect(panel.width).toBeGreaterThan(view.width - 2);
   await page.keyboard.press("Escape");
   await expect(drawer(page)).toBeHidden();
   await expect(filtersButton(page)).toBeFocused();
@@ -109,22 +116,25 @@ test("the legend is a compact key at the table's top right", async ({
   for (const word of ["worse", "better", "2P%", "3P%", "shot mix"])
     await expect(legend).toContainText(word);
   await expect(page.locator(".legend-box")).toHaveCount(0);
-  // A tag pill explains itself in one sentence.
-  await legend.getByRole("button", { name: "3PT luck" }).click();
+  // The row tags sit on the left of the same row, apart from the key
+  // (user 2026-11-16); a tag pill explains itself in one sentence.
+  const tags = page.locator(".table-top .tl-tags");
+  await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
+  await tags.getByRole("button", { name: "3PT luck" }).click();
   await expect(page.locator(".ibpl-more-pop")).toContainText(
     layout.tags.luck.text,
   );
   // With Shiny's worked example.
   await expect(page.locator(".ibpl-more-pop")).toContainText("Example:");
   await page.keyboard.press("Escape");
-  await page.getByRole("tab", { name: "Four Factors" }).click();
+  await page.getByRole("button", { name: "Four Factors", exact: true }).click();
   await expect(page).toHaveURL(/view=four_factors/);
   await expect(legend).toContainText("worse");
   await expect(legend).not.toContainText("shot mix");
-  await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
+  await expect(tags).toHaveCount(0);
 });
 
-test("the view intro is one visible line; More opens the rest", async ({
+test("the view question is a ? button that opens the explainer", async ({
   page,
 }) => {
   await stub(page);
@@ -134,17 +144,21 @@ test("the view intro is one visible line; More opens the rest", async ({
     bullets?: { t?: string }[][];
   }[];
   const explainer = blocks.find((b) => b.kind === "explainer")!;
-  const intro = page.locator(".view-intro");
-  await expect(intro).toContainText(layout.intro.onoff.summary);
-  await expect(intro).not.toContainText(
+  // The question is the "?" button's name (user 2026-11-16); a click opens
+  // the explainer in a popover.
+  const button = page.getByRole("button", {
+    name: layout.intro.onoff.summary,
+    exact: true,
+  });
+  await expect(button).toBeVisible();
+  const pop = page.locator(".view-intro-pop");
+  await expect(pop).toHaveCount(0);
+  await button.click();
+  await expect(pop).toContainText(layout.intro.onoff.summary);
+  await expect(pop).toContainText(
     String(explainer.intro![0].t ?? "").slice(0, 30),
   );
-  await expect(intro).not.toContainText("3PT luck");
-  await intro.getByRole("button", { name: "More" }).click();
-  await expect(intro).toContainText(
-    String(explainer.intro![0].t ?? "").slice(0, 30),
-  );
-  await expect(intro).toContainText(
+  await expect(pop).toContainText(
     String(explainer.bullets![0][0].t ?? "").slice(0, 20),
   );
 });
@@ -209,7 +223,9 @@ for (const [league, teamName] of [
 
     await page.getByRole("button", { name: "Increase Min ON Poss" }).click();
     await expect(minOn).toHaveValue("10");
-    await page.getByRole("tab", { name: "Four Factors" }).click();
+    await page
+      .getByRole("button", { name: "Four Factors", exact: true })
+      .click();
     await expect(minOn).toHaveValue("0");
     await expect(minAll).toHaveValue("0");
   });
@@ -220,7 +236,7 @@ test("possession columns are on screen without scrolling sideways", async ({
 }) => {
   await stub(page);
   for (const view of ["Summary", "Four Factors", "Shot Profile"]) {
-    await page.getByRole("tab", { name: view }).click();
+    await page.getByRole("button", { name: view, exact: true }).click();
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toBeVisible();

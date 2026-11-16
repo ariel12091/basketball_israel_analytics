@@ -144,17 +144,13 @@ for (const preset of presets) {
     await page.goto(`/${g.params.league}/game-logs?${urlParams(g.params)}`);
 
     if (!expected.length) {
-      // Tab 4 renders nothing; Tab 11 renders empty_game_log().
-      if (euro)
-        await expect(
-          page.getByText("No games match the current filters"),
-        ).toBeVisible();
-      else {
-        await expect(page.locator("#gl_table")).not.toHaveClass(
-          /recalculating/,
-        );
-        await expect(page.locator("#gl_table table")).toHaveCount(0);
-      }
+      // Both leagues say so, with Clear filters (user 2026-11-16; Tab 4 used
+      // to render nothing).
+      await expect(
+        page.getByText("No games match the current filters"),
+      ).toBeVisible();
+      await expect(page.locator("#gl_table")).not.toHaveClass(/recalculating/);
+      await expect(page.locator("#gl_table table")).toHaveCount(0);
       expect(errors).toEqual([]);
       return;
     }

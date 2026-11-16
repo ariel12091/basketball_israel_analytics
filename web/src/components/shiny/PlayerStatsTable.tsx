@@ -1,5 +1,5 @@
 "use client";
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { Row, League } from "@/rules/gameLogs";
 import {
   PLAYER_LABELS,
@@ -7,6 +7,8 @@ import {
   type PlayerMode,
 } from "@/rules/playerStatsTable";
 import DataTable, { formatNumber, heat, type Column } from "./DataTable";
+import ColumnsMenu from "./ColumnsMenu";
+import { useStoredList } from "@/lib/storedList";
 const EMPTY: string[] = [];
 const snapshots = new Map<string, { raw: string | null; value: string[] }>();
 function read(key: string) {
@@ -50,7 +52,7 @@ export default function PlayerStatsTable({
       () => read(key),
       () => EMPTY,
     ),
-    [moving, setMoving] = useState("team_name");
+    [hidden, setHidden] = useStoredList(`${key}.hidden`);
   const columns: Column[] = [
     { id: "team_name", label: "Team" },
     { id: "Player", label: "Player" },
@@ -112,55 +114,27 @@ export default function PlayerStatsTable({
   };
   return (
     <>
-      <details className="ibpl-column-order">
-        <summary>Column order</summary>
-        <label>
-          Column{" "}
-          <select
-            className="form-control"
-            aria-label="Reorder column"
-            value={moving}
-            onChange={(e) => setMoving(e.target.value)}
-          >
-            {ordered.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>{" "}
-        <button
-          type="button"
-          className="btn btn-default btn-sm"
-          onClick={() =>
-            move(
-              moving,
-              ordered[ordered.findIndex((c) => c.id === moving) - 1]?.id ??
-                moving,
-            )
-          }
-        >
-          Move left
-        </button>{" "}
-        <button
-          type="button"
-          className="btn btn-default btn-sm"
-          onClick={() =>
-            move(
-              moving,
-              ordered[ordered.findIndex((c) => c.id === moving) + 1]?.id ??
-                moving,
-            )
-          }
-        >
-          Move right
-        </button>
-      </details>
       <DataTable
         rows={rows}
-        columns={ordered}
+        columns={ordered.filter((c) => !hidden.includes(c.id))}
         defaultOrder={[]}
         onColumnMove={move}
+        tools={
+          <ColumnsMenu
+            columns={ordered}
+            hidden={hidden}
+            locked={["team_name", "Player"]}
+            onMove={move}
+            onHidden={setHidden}
+            onReset={() => {
+              try {
+                localStorage.removeItem(key);
+              } catch {}
+              window.dispatchEvent(new Event("ibpl-player-columns"));
+              setHidden([]);
+            }}
+          />
+        }
         pageLength={50}
         csvName={`${league === "il" ? "israeli_league" : "euroleague"}_player_stats`}
         nameColumns={["Player", "team_name"]}

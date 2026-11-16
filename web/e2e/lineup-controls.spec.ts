@@ -46,16 +46,8 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(page.locator(".dataTables_info")).toContainText("Showing 1");
     await clearAll(page);
     await page.keyboard.press("Escape");
-    // Reset may re-arm the auto minimum, whose recalculation redraws the
-    // table a beat later; pick the page size until it holds.
-    await expect(async () => {
-      await page
-        .getByLabel("Entries per page", { exact: true })
-        .selectOption("1000");
-      expect(
-        await page.locator(".ibpl-dt-scroll tbody tr").count(),
-      ).toBeGreaterThan(50);
-    }).toPass();
+    // No page-size menu (user 2026-11-16): pages of 50 and the pager.
+    await expect(page.getByLabel("Entries per page")).toHaveCount(0);
     // No search box and no per-column filter row (user 2026-10-28).
     await expect(
       page.getByRole("textbox", { name: "Search table" }),

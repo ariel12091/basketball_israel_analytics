@@ -1,7 +1,8 @@
 "use client";
 // The stats tabs' legend, a compact visual key at the table's top right
-// (user 2026-10-28), and the view's intro as a compact visible panel.
-import { useState, type ReactNode } from "react";
+// (user 2026-10-28), and the view's intro as a "?" popover at its end.
+import { useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
 import ui from "@/data/shinyUi.json";
 import text from "@/data/layoutUi.json";
 import { Runs, type Block } from "./Blocks";
@@ -14,19 +15,14 @@ import { useFrame } from "./TabKit";
 const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
 
 /** A compact visual key for the table's top right: the shading scale, a
- * miniature shot cell, the on/off markers and the row tags, each only when
- * the view has them. Captions are one or two words; tags explain themselves
- * in one sentence on hover or tap. */
+ * miniature shot cell and the on/off markers, each only when the view has
+ * them. Captions are one or two words. */
 export default function TableLegend({
-  league,
   shots = false,
   rank = false,
-  tags = false,
 }: {
-  league: League;
   shots?: boolean;
   rank?: boolean;
-  tags?: boolean;
 }) {
   const t = text.legend;
   return (
@@ -81,36 +77,40 @@ export default function TableLegend({
           </span>
         </span>
       )}
-      {tags && (
-        <span className="tl-tags">
-          {(["luck", "sample"] as const).map((k) => (
-            <MoreInfo
-              key={k}
-              label={text.tags[k].label}
-              className="onoff-luck-tag tl-tag"
-            >
-              <TagWhy league={league} kind={k} />
-            </MoreInfo>
-          ))}
-        </span>
-      )}
     </div>
   );
 }
 
-/** The view's "What this tab answers" explainer as one visible line (title
- * and question); More opens the bullets, the worked example and the
- * glossary link in place. `extra` sits at the end of the line. */
+/** On/Off's row tags ("3PT luck", "small sample"), each explained in one
+ * sentence on hover or tap. They sit with the "?" and CSV at the start of
+ * the row, apart from the colour key at the top right (user 2026-11-16). */
+export function TableTags({ league }: { league: League }) {
+  return (
+    <span className="tl-tags">
+      {(["luck", "sample"] as const).map((k) => (
+        <MoreInfo
+          key={k}
+          label={text.tags[k].label}
+          className="onoff-luck-tag tl-tag"
+        >
+          <TagWhy league={league} kind={k} />
+        </MoreInfo>
+      ))}
+    </span>
+  );
+}
+
+/** The view's "What this tab answers" explainer as a small "?" button at
+ * the end of the legend (user 2026-11-16: the visible question line took
+ * a row few people used). Its name and tooltip are the question; a click
+ * opens the explainer, the worked example and the glossary link. */
 export function ViewIntro({
   blocks,
   summary,
-  extra,
 }: {
   blocks: Block[];
-  /** The short question shown on the line (user 2026-10-28: nobody reads
-   * the long one); the explainer's own intro moves under More. */
+  /** The short question (user 2026-10-28: nobody reads the long one). */
   summary?: string;
-  extra?: ReactNode;
 }) {
   const { openGlossary } = useFrame();
   const [open, setOpen] = useState(false);
@@ -120,66 +120,63 @@ export function ViewIntro({
   const example = blocks.find(
     (b): b is Extract<Block, { kind: "example" }> => b.kind === "example",
   );
-  if (!explainer)
-    return extra ? <div className="view-intro">{extra}</div> : null;
+  if (!explainer) return null;
+  const question = summary ?? explainer.title;
   return (
     <div className="view-intro">
-      <div className="view-intro-line">
-        {summary ? (
-          <b>{summary}</b>
-        ) : (
-          <>
-            <b>{explainer.title}:</b>{" "}
-            <Runs runs={explainer.intro} onGlossary={openGlossary} />
-          </>
-        )}{" "}
-        <button
-          type="button"
-          className="view-intro-more"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger
+          className="view-intro-btn"
+          aria-label={question}
+          title={question}
         >
-          {open ? text.intro.less : text.intro.more}
-        </button>
-        {extra}
-      </div>
-      {open && (
-        <div className="view-intro-body">
-          {summary && (
+          <i className="bi bi-question-lg" aria-hidden="true"></i>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            className="ibpl-more-pop view-intro-pop"
+            align="end"
+            sideOffset={6}
+            collisionPadding={12}
+          >
+            <p className="view-intro-question">{question}</p>
             <p>
               <Runs runs={explainer.intro} onGlossary={openGlossary} />
             </p>
-          )}
-          <ul>
-            {explainer.bullets.map((r, i) => (
-              <li key={i}>
-                <Runs runs={r} onGlossary={openGlossary} />
-              </li>
-            ))}
-          </ul>
-          {example && (
-            <div className="view-intro-example">
-              <div className="view-intro-example-text">
-                <b>{example.title}</b>
-                {example.paragraphs.map((p, i) => (
-                  <p key={i}>
-                    <Runs runs={p} onGlossary={openGlossary} />
-                  </p>
-                ))}
+            <ul>
+              {explainer.bullets.map((r, i) => (
+                <li key={i}>
+                  <Runs runs={r} onGlossary={openGlossary} />
+                </li>
+              ))}
+            </ul>
+            {example && (
+              <div className="view-intro-example">
+                <div className="view-intro-example-text">
+                  <b>{example.title}</b>
+                  {example.paragraphs.map((p, i) => (
+                    <p key={i}>
+                      <Runs runs={p} onGlossary={openGlossary} />
+                    </p>
+                  ))}
+                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a static snippet, as in Shiny */}
+                <img src={example.image} alt={example.alt} />
               </div>
-              {/* eslint-disable-next-line @next/next/no-img-element -- a static snippet, as in Shiny */}
-              <img src={example.image} alt={example.alt} />
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn btn-link p-0 view-intro-glossary"
-            onClick={openGlossary}
-          >
-            Open glossary
-          </button>
-        </div>
-      )}
+            )}
+            <button
+              type="button"
+              className="btn btn-link p-0 view-intro-glossary"
+              onClick={() => {
+                setOpen(false);
+                openGlossary();
+              }}
+            >
+              Open glossary
+            </button>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }

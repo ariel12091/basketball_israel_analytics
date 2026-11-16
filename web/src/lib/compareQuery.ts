@@ -244,8 +244,7 @@ export function compareSideParams(
       v &&
       (!["own_starters", "opp_starters"].includes(k) ||
         /^(gte|lte):[0-5]$/.test(v)) &&
-      (q.view !== "Players" ||
-        !["own_starters", "opp_starters", "teams", "last_n"].includes(k))
+      (q.view !== "Players" || !["teams", "last_n"].includes(k))
     )
       s.set(k, v);
   }

@@ -246,12 +246,8 @@ export default function LineupsClient({
   // until the dates move off the season's bounds.
   const activeCount =
     chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+  // Dates (and clutch) first, as on every tab (user 2026-11-16).
   const drawerSections: DrawerSection[] = [
-    {
-      id: "starters",
-      title: "Lineup starters",
-      body: <StarterRows p={p} query={query} set={set} />,
-    },
     {
       id: "dates",
       title: "Dates and clutch",
@@ -333,6 +329,11 @@ export default function LineupsClient({
       ),
     },
     {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
+    },
+    {
       id: "game",
       title: "Game filters",
       body: (
@@ -394,49 +395,6 @@ export default function LineupsClient({
       }}
       main={
         <>
-          <ChipsRow
-            p={p}
-            seasonChip={seasonChipLabel(league, query.season)}
-            chips={chips}
-            activeCount={activeCount}
-            active={activeCount > 0 || filters.length > 0}
-            onClearAll={reset}
-            extra={
-              <>
-                <StatFilters
-                  p={p}
-                  cols={ui.lineupStatFilterCols[view]}
-                  filters={filters}
-                  onChange={(fs) =>
-                    set({ stats: fs.length ? JSON.stringify(fs) : null })
-                  }
-                />
-                {euro && (
-                  <span className="filter-chip">
-                    {query.size}-player units / {data?.meta.shown ?? 0} shown
-                    {min > 0
-                      ? ` / min ${min} poss${auto ? " (auto)" : ""}`
-                      : ""}
-                  </span>
-                )}
-              </>
-            }
-            controls={
-              <PossStepper
-                id={`${p}_minposs`}
-                label={tt("Min Poss", "min_poss_lineup")}
-                name="Min Poss"
-                min={0}
-                max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
-                step={10}
-                value={min}
-                onChange={(v) => {
-                  setAuto(false);
-                  set({ min_poss: String(v) });
-                }}
-              />
-            }
-          />
           {/* Team and players sit above the table, always in reach (user
               2026-10-28); the rest of the filters are in the panel. */}
           <div className="lineup-bar">
@@ -493,22 +451,54 @@ export default function LineupsClient({
             view={LABELS[view]}
             onView={changeView}
           />
+          <ChipsRow
+            p={p}
+            seasonChip={seasonChipLabel(league, query.season)}
+            chips={chips}
+            activeCount={activeCount}
+            active={activeCount > 0 || filters.length > 0}
+            onClearAll={reset}
+            extra={
+              <>
+                <StatFilters
+                  p={p}
+                  cols={ui.lineupStatFilterCols[view]}
+                  filters={filters}
+                  onChange={(fs) =>
+                    set({ stats: fs.length ? JSON.stringify(fs) : null })
+                  }
+                />
+              </>
+            }
+            controls={
+              <PossStepper
+                id={`${p}_minposs`}
+                label={tt("Min Poss", "min_poss_lineup")}
+                name="Min Poss"
+                min={0}
+                max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
+                step={10}
+                value={min}
+                onChange={(v) => {
+                  setAuto(false);
+                  set({ min_poss: String(v) });
+                }}
+              />
+            }
+          />
           <div className="table-top">
             <ViewIntro
               blocks={frag.views[view] as Block[]}
               summary={layout.intro.lineups[view]}
             />
-            <TableLegend
-              league={league}
-              shots={viewKey.shots}
-              rank={viewKey.rank}
-            />
+            <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
           </div>
           <OutputArea
             id={euro ? "euro_ld_dt" : "ld_table"}
             loading={loading}
             error={error}
             retry={retry}
+            onClear={reset}
           >
             <LineupTable
               key={JSON.stringify([

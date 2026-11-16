@@ -10,6 +10,7 @@ import { rate, zero } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
 import DataTable, { formatNumber, shotCell, type Column } from "./DataTable";
 import { useTabData } from "./TabKit";
+import LineupNames from "./LineupNames";
 export default function LineupGameLog({
   league,
   season,
@@ -142,7 +143,7 @@ export default function LineupGameLog({
     >
       <header className="ibpl-lineup-games-head">
         <h4 id="lineup-games-title">
-          {euro ? "Lineup game log" : String(row.Players)}
+          {euro ? "Lineup game log" : <LineupNames value={row.Players} />}
         </h4>
         <button
           type="button"

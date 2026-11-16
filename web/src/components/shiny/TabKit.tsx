@@ -46,6 +46,9 @@ import { useShinyBody } from "./useShinyBody";
 import { ImageScopeContext } from "@/lib/images";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+import { ClearFiltersContext } from "./EmptyState";
+import * as Popover from "@radix-ui/react-popover";
+import { ToolsSlotProvider } from "./toolsSlot";
 export type { DrawerSection } from "./FilterDrawer";
 
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
@@ -269,6 +272,15 @@ function Glossary({ onClose }: { onClose: () => void }) {
           <h2 className="modal-title h4" id="glossary-title">
             Glossary
           </h2>
+          {/* A close at the top, pinned with the title (user 2026-11-16). */}
+          <button
+            type="button"
+            className="ibpl-glossary-x"
+            aria-label="Close glossary"
+            onClick={onClose}
+          >
+            <i className="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
         </div>
         <div className="modal-body">
           <TextBlocks blocks={ui.glossary as TextBlock[]} />
@@ -293,9 +305,6 @@ export function TabFrame({
   season,
   seasons,
   onSeason,
-  views,
-  view,
-  onView,
   updated,
   filtersId,
   sidebarTop,
@@ -433,6 +442,7 @@ export function TabFrame({
   };
   return (
     <ImageScopeContext.Provider value={imageScope}>
+      <ToolsSlotProvider>
       <TouchTipsContext.Provider value={body.touchTips}>
         <FrameContext.Provider value={frame}>
           <Navbar
@@ -440,13 +450,9 @@ export function TabFrame({
             tab={tab}
             season={season}
             seasons={seasons}
-            views={views}
-            view={view}
-            onView={onView}
             onSeason={onSeason}
             onGlossary={openGlossary}
             updated={updated}
-            collapsedNav={body.collapsedNav}
             page={page}
           >
             <div className="tab-content">
@@ -499,12 +505,13 @@ export function TabFrame({
           {glossary && <Glossary onClose={() => setGlossary(false)} />}
         </FrameContext.Provider>
       </TouchTipsContext.Provider>
+      </ToolsSlotProvider>
     </ImageScopeContext.Provider>
   );
 }
 
-/** The hidden view-mode radios (.view-mode-container); the navbar menu is the
- * visible control, as in Shiny. */
+/** The hidden view-mode radios (.view-mode-container); ViewTabs is the
+ * visible control. */
 export function ViewRadios({
   name,
   label,
@@ -1121,21 +1128,6 @@ export function StatFilters({
     setOp("ge");
     setValue("");
   };
-  // Popper keeps the popover inside the viewport; the arrow stays on the chip.
-  const keepInViewport = (el: HTMLDivElement | null) => {
-    if (!el) return;
-    el.style.transform = "translateX(-50%)";
-    const r = el.getBoundingClientRect();
-    const shift =
-      r.right > innerWidth - 8
-        ? innerWidth - 8 - r.right
-        : r.left < 8
-          ? 8 - r.left
-          : 0;
-    el.style.transform = `translateX(calc(-50% + ${shift}px))`;
-    const arrow = el.querySelector<HTMLElement>(".popover-arrow");
-    if (arrow) arrow.style.transform = `translateX(calc(-50% - ${shift}px))`;
-  };
   const choices = groups
     ? groups.flatMap((g) =>
         all
@@ -1164,46 +1156,32 @@ export function StatFilters({
           </button>
         </span>
       ))}
-      <span style={{ position: "relative", display: "inline-block" }}>
-        <button
-          type="button"
-          className="filter-chip filter-chip-add"
-          id={`${p}_stat_filter_add_btn`}
-          aria-expanded={open}
-          aria-controls={`${p}_stat_filter_pop`}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <i className="bi bi-plus" aria-hidden="true"></i> Stat filter
-        </button>
-        {open && (
-          <div
+      {/* Radix Popover (user 2026-11-16): it stays inside the viewport as
+          the page scrolls or resizes, and closes on an outside click or
+          Escape, with focus back on the chip. */}
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className="filter-chip filter-chip-add"
+            id={`${p}_stat_filter_add_btn`}
+          >
+            <i className="bi bi-plus" aria-hidden="true"></i> Stat filter
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
             id={`${p}_stat_filter_pop`}
-            className="popover bs-popover-auto fade show"
+            className="popover bs-popover-auto fade show ibpl-stat-pop"
             role="dialog"
             aria-label="Add stat filter"
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              setOpen(false);
-              document.getElementById(`${p}_stat_filter_add_btn`)?.focus();
-            }}
-            data-popper-placement="bottom"
-            ref={keepInViewport}
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: "50%",
-              transform: "translateX(-50%)",
-              marginTop: 8,
-            }}
+            side="bottom"
+            align="center"
+            sideOffset={8}
+            collisionPadding={8}
+            onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <div
-              className="popover-arrow"
-              style={{
-                position: "absolute",
-                left: "50%",
-                transform: "translateX(-50%)",
-              }}
-            ></div>
+            <Popover.Arrow className="ibpl-stat-pop-arrow" width={14} height={7} />
             <h3 className="popover-header">Add stat filter</h3>
             <div className="popover-body">
               <div className={`${p}-stat-popover`} style={{ minWidth: 220 }}>
@@ -1273,11 +1251,9 @@ export function StatFilters({
                   Add
                 </button>
               </div>
-              <button
-                type="button"
+              <Popover.Close
                 aria-label="Close"
                 className="btn-close"
-                onClick={() => setOpen(false)}
                 style={{
                   position: "absolute",
                   top: "0.6rem",
@@ -1286,11 +1262,11 @@ export function StatFilters({
                   height: "0.55rem",
                   backgroundSize: "0.55rem",
                 }}
-              ></button>
+              />
             </div>
-          </div>
-        )}
-      </span>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
       {extraNote}
     </>
   );
@@ -1378,31 +1354,50 @@ export function seasonChipLabel(league: League, season: string) {
     : `${ui.euroCompetitionLabels[league === "euroleague" ? "E" : "U"]} ${seasonLabel(season, false)}`;
 }
 
-/** Output area states: the error with a retry, or the busy dimming. */
+/** Output area states: the error card with a retry, or the busy dimming
+ * with a progress bar along the top (user 2026-11-16). `onClear` is the
+ * tab's Clear all, offered by an empty table (EmptyState). */
 export function OutputArea({
   id,
   loading,
   error,
   retry,
+  onClear,
   children,
 }: {
   id: string;
   loading: boolean;
   error: string;
   retry: () => void;
+  onClear?: () => void;
   children: ReactNode;
 }) {
   return (
+    <>
+    {/* Outside the dimmed area, so the bar stays at full strength. */}
+    <div
+      className={`ibpl-loading-bar${loading ? " is-on" : ""}`}
+      aria-hidden="true"
+    />
     <div
       id={id}
-      className={`datatables html-widget html-widget-output${loading ? " recalculating" : ""}`}
+      className={`datatables html-widget html-widget-output ibpl-output${loading ? " recalculating" : ""}`}
       style={{ width: "100%", height: "auto" }}
       aria-busy={loading}
       aria-live="polite"
     >
       {error ? (
-        <div className="shiny-output-error" role="alert">
-          <span>{error}</span>{" "}
+        <div className="shiny-output-error ibpl-error-card" role="alert">
+          <i
+            className="bi bi-exclamation-triangle ibpl-error-card-icon"
+            aria-hidden="true"
+          ></i>
+          <div className="ibpl-error-card-body">
+            <p className="ibpl-error-card-title">
+              The data couldn&apos;t be loaded.
+            </p>
+            <p className="ibpl-error-card-detail">{error}</p>
+          </div>
           <button
             type="button"
             className="btn btn-default btn-sm"
@@ -1412,8 +1407,11 @@ export function OutputArea({
           </button>
         </div>
       ) : (
-        children
+        <ClearFiltersContext.Provider value={onClear ?? null}>
+          {children}
+        </ClearFiltersContext.Provider>
       )}
     </div>
+    </>
   );
 }

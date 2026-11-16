@@ -410,15 +410,12 @@ export default function CompareSidesGrid({
       ),
   });
   const fields: Field[] = [
-    ...selfDates,
+    // The player is what the comparison is about, so it comes first.
     ...playerFields,
-    ...(playerMode
-      ? []
-      : [
-          starters("own_starters", "Own lineup starters"),
-          starters("opp_starters", "Opponent lineup starters"),
-          select("teams", "Teams", teams, true),
-        ]),
+    ...selfDates,
+    starters("own_starters", "Own lineup starters"),
+    starters("opp_starters", "Opponent lineup starters"),
+    ...(playerMode ? [] : [select("teams", "Teams", teams, true)]),
     select("home_away", "Home/Away", [
       { value: "home", label: "Home" },
       { value: "away", label: "Away" },
@@ -519,52 +516,67 @@ export default function CompareSidesGrid({
       ))}
     </div>
   );
+  // The headers say what is compared, so the rows can fold away. Which label
+  // shows is width-dependent, so web.css picks it (see cmp-layout). Phones
+  // show the button under the pinned headers, wider screens beside them.
+  const toggle = (where: "narrow" | "wide") => (
+    <button
+      type="button"
+      className={`cmp-grid-toggle is-${where}`}
+      onClick={onToggle}
+    >
+      <span className="cmp-toggle-show">{TEXT.showFilters}</span>
+      <span className="cmp-toggle-hide">{TEXT.hideFilters}</span>
+    </button>
+  );
   return (
-    <div className="cmp-grid">
-      {SIDES.map((side) => {
-        const { heading, detail } = sideHeading(q, side, teams, players);
-        return (
-          <div key={side} className={`cmp-grid-head is-${side}`}>
-            <div className="cmp-grid-title">
-              <span className="cmp-grid-letter">{side.toUpperCase()}</span>
-              {heading || `Side ${side.toUpperCase()}`}
+    <>
+      {/* What A and B are stays pinned while the results scroll (user
+          2026-11-16), so it is the layout's child, not the filter grid's. */}
+      <div className="cmp-heads" role="group" aria-label="Sides A and B">
+        {toggle("wide")}
+        {SIDES.map((side) => {
+          const { heading, detail } = sideHeading(q, side, teams, players);
+          return (
+            <div key={side} className={`cmp-grid-head is-${side}`}>
+              <div className="cmp-grid-title">
+                <span className="cmp-grid-letter">{side.toUpperCase()}</span>
+                {heading || `Side ${side.toUpperCase()}`}
+              </div>
+              <small className="cmp-grid-detail">
+                {detail || (heading ? "" : "No filters on this side")}
+              </small>
             </div>
-            <small className="cmp-grid-detail">
-              {detail || (heading ? "" : "No filters on this side")}
-            </small>
-          </div>
-        );
-      })}
-      {/* The headers say what is compared, so the rows can fold away. Which
-          label shows is width-dependent, so web.css picks it (see cmp-layout). */}
-      <button type="button" className="cmp-grid-toggle" onClick={onToggle}>
-        <span className="cmp-toggle-show">{TEXT.showFilters}</span>
-        <span className="cmp-toggle-hide">{TEXT.hideFilters}</span>
-      </button>
-      {fields.map(row)}
-      <div role="group" aria-label={TEXT.rankName} className="cmp-grid-group">
-        <div className="cmp-grid-group-head">
-          <span className="cmp-grid-name">{TEXT.rankName}</span>
-          <small className="cmp-grid-hint">{TEXT.rankHint}</small>
-        </div>
-        {rankFields.map(row)}
-        {/* The readers ignore a half-set rank, so say so instead of showing
-            numbers that look filtered. */}
-        {SIDES.some((s) => oppRankMissing(q, s).length > 0) && (
-          <>
-            <div className="cmp-grid-corner" aria-hidden="true" />
-            {SIDES.map((s) => {
-              const missing = oppRankMissing(q, s);
-              return (
-                <div key={s} className="cmp-grid-warning" role="status">
-                  {missing.length > 0 &&
-                    `${TEXT.rankNotApplied} ${missing.join(" and ")}`}
-                </div>
-              );
-            })}
-          </>
-        )}
+          );
+        })}
       </div>
-    </div>
+      {toggle("narrow")}
+      <div className="cmp-grid">
+        {fields.map(row)}
+        <div role="group" aria-label={TEXT.rankName} className="cmp-grid-group">
+          <div className="cmp-grid-group-head">
+            <span className="cmp-grid-name">{TEXT.rankName}</span>
+            <small className="cmp-grid-hint">{TEXT.rankHint}</small>
+          </div>
+          {rankFields.map(row)}
+          {/* The readers ignore a half-set rank, so say so instead of showing
+            numbers that look filtered. */}
+          {SIDES.some((s) => oppRankMissing(q, s).length > 0) && (
+            <>
+              <div className="cmp-grid-corner" aria-hidden="true" />
+              {SIDES.map((s) => {
+                const missing = oppRankMissing(q, s);
+                return (
+                  <div key={s} className="cmp-grid-warning" role="status">
+                    {missing.length > 0 &&
+                      `${TEXT.rankNotApplied} ${missing.join(" and ")}`}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

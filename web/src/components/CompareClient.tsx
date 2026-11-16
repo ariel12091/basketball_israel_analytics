@@ -62,6 +62,7 @@ import {
 import data from "@/data/compareUi.json";
 import ui from "@/data/shinyUi.json";
 import { comparePairReady, compareDefaultPlayers } from "@/lib/compareAsync";
+import LineupNames from "./shiny/LineupNames";
 import { seasonLabel } from "./shiny/Navbar";
 const EMPTY_ROWS: Row[] = [];
 export default function CompareClient({
@@ -319,6 +320,14 @@ function CompareTab({
       id: "entity_name",
       label: lineup ? "Lineup" : "Team",
       onActivate: (r) => open(r),
+      ...(lineup
+        ? {
+            render: (r: Row) => ({
+              node: <LineupNames value={r.entity_name} />,
+              text: String(r.entity_name ?? ""),
+            }),
+          }
+        : {}),
     },
     ...(lineup ? [{ id: "team_name", label: "Team" }] : []),
     // Straight to a team's players, A vs B, without the team detail first
@@ -607,6 +616,14 @@ function CompareTab({
   );
   const main = (
     <>
+      <ViewTabs
+        views={["Teams", "Lineups", "Players"]}
+        view={q.view}
+        onView={mode}
+      />
+      <div className="cmp-settings" role="group" aria-label="Compare settings">
+        {shared}
+      </div>
       <ChipsRow
         p="cmp"
         seasonChip={seasonLabel(q.season)}
@@ -659,14 +676,6 @@ function CompareTab({
           )
         }
       />
-      <ViewTabs
-        views={["Teams", "Lineups", "Players"]}
-        view={q.view}
-        onView={mode}
-      />
-      <div className="cmp-settings" role="group" aria-label="Compare settings">
-        {shared}
-      </div>
       <div className="table-top">
         <ViewIntro
           blocks={ui.compare.blocks as Block[]}
@@ -674,9 +683,7 @@ function CompareTab({
         />
       </div>
       <div className={`cmp-layout${filtersFlipped ? " is-flipped" : ""}`}>
-        <section className="cmp-sides" aria-label="Sides A and B">
-          {sides}
-        </section>
+        {sides}
         <div className="cmp-results">
           {!playerMode && q.preset === "date_split" && !q.split_date && (
             <p role="alert">
@@ -800,7 +807,7 @@ function CompareTab({
                     className="cmp-back-btn"
                     onClick={() => set({ cmp_view: "league", entity: null })}
                   >
-                    &lt;- Back to league view
+                    <span aria-hidden="true">‹</span> Back to league view
                   </button>
                   {/* The team's players, A vs B: easy to miss as a third pill
                       beside League and Detail (user 2026-10-29). */}
@@ -855,7 +862,8 @@ function CompareTab({
                   )
                 }
               >
-                &lt;- Back to {selectedPlayer ? "players" : "team detail"}
+                <span aria-hidden="true">‹</span> Back to{" "}
+                {selectedPlayer ? "players" : "team detail"}
               </button>
               {selectedPlayer ? (
                 <TeamPlayerDetail row={selectedPlayer} q={q} labels={labels} />

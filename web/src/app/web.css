@@ -28,7 +28,6 @@
   z-index: 5;
 }
 
-.ibpl-lineup-link { border: 0; padding: 0; background: transparent; color: var(--bs-link-color); text-decoration: underline; cursor: pointer; font: inherit; }
 table.dataTable tr.ibpl-lineup-total { background: var(--ibpl-surface-alt); font-weight: bold; }
 .ibpl-column-filters input { width: 100%; min-width: 48px; }
 .ibpl-column-filters details { min-width: 70px; }
@@ -189,7 +188,7 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 /* Wider screens: centred in the window below the navbar; with "See more"
    open it moves up to the top so the extra blocks have room. */
 @media (min-width: 768px) {
-  .home-compact { margin-top: 0; min-height: calc(100dvh - 110px); display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
+  .home-compact { margin-top: 0; min-height: calc(100dvh - 110px - var(--ibpl-tabbar-h, 0px)); display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
   .home-compact.home-more-open { justify-content: flex-start; padding-top: 24px; }
 }
 .home-ask-form { display: flex; align-items: center; gap: 8px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-accent); border-radius: 999px; padding: 4px 4px 4px 14px; color: var(--ibpl-text-dim); }
@@ -226,39 +225,6 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .home-more-toggle:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
 .home-more-sub { display: block; font-size: .75rem; font-weight: 400; color: var(--ibpl-text-dim); }
 .home-euro-note { color: var(--ibpl-text-dim); font-size: .8rem; text-align: center; margin-top: 12px; }
-/* Navbar "Showing <league> . <season>" (Navbar.tsx NavMenu): each value is
-   plain text with a caret that opens a small menu. */
-.navbar-showing { display: inline-flex; align-items: center; gap: 2px; }
-.navbar-showing-label, .navbar-showing-sep { color: var(--ibpl-text-dim); font-size: .78rem; }
-.navbar-showing-label { margin-right: 2px; }
-.navbar-text-menu { position: relative; display: inline-flex; }
-.navbar-text-menu-current { display: inline-flex; align-items: center; gap: 5px; padding: 4px 5px; border: 0; background: transparent; color: var(--ibpl-accent); font-size: .82rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.navbar-text-menu-current::after { content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
-.navbar-text-menu-current:hover, .navbar-text-menu-current[aria-expanded="true"] { color: var(--ibpl-accent-hover); }
-.navbar-text-menu-options { position: absolute; top: calc(100% + 4px); left: 0; z-index: 10003; min-width: 140px; margin: 0; padding: 4px; list-style: none; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
-.navbar-text-menu-options a, .navbar-text-menu-options button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ibpl-text); font-size: .85rem; text-align: left; text-decoration: none; }
-.navbar-text-menu-options a:hover, .navbar-text-menu-options button:hover { background: var(--ibpl-surface-2); color: var(--ibpl-accent); }
-.navbar-text-menu-options .active { color: var(--ibpl-accent); font-weight: 700; }
-/* Collapsed nav: the menus sit in the header bar between the brand and the
-   burger (Navbar.tsx), so they stay visible with the menu closed. */
-.navbar-header .navbar-showing,
-body.ibpl-collapsed-nav #navbar_right_cluster .navbar-showing { display: none; }
-body.ibpl-collapsed-nav .navbar-header .navbar-showing { display: inline-flex; order: 1; margin-left: auto; margin-right: 6px; min-width: 0; }
-body.ibpl-collapsed-nav .navbar-header .navbar-showing-label { display: none; }
-/* Navbar.tsx renders only the current league's season menu, so it needs no
-   body.league-* gate (app.css hides .league-nav-* until that class lands,
-   which left the season missing on a fresh phone load). */
-.navbar-season-menu.league-nav-il, .navbar-season-menu.league-nav-el { display: inline-flex !important; align-items: center; }
-body.ibpl-collapsed-nav .navbar-header .navbar-season-menu { width: auto !important; }
-body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-current { min-height: 44px; padding: 4px 6px; }
-body.ibpl-collapsed-nav .navbar-header .navbar-text-menu-options { left: auto; right: 0; }
-body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Brand + league + season + burger need ~340px of bar; below 420px of
-   viewport the brand keeps only its icon. */
-@media (max-width: 419.98px) {
-  body.ibpl-collapsed-nav .navbar-header .navbar-brand > span { font-size: 0; }
-  body.ibpl-collapsed-nav .navbar-header .navbar-brand .bi { font-size: 1.1rem; margin-right: 0 !important; }
-}
 
 @media (max-width: 767.98px) {
   .cmp-compare-grid { grid-template-columns: minmax(0, 1fr) minmax(64px, .8fr) minmax(0, 1fr); column-gap: 4px; }
@@ -269,7 +235,7 @@ body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: h
 }
 /* Ask chat panel (docs/superpowers/specs/2026-10-24-home-ask-box-design.md):
    phone first, a bottom sheet; a side drawer from 1200px. The page stays usable. */
-.ibpl-ask-fab { position: fixed; right: 16px; bottom: 16px; z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+.ibpl-ask-fab { position: fixed; right: 16px; bottom: calc(16px + var(--ibpl-tabbar-h, 0px)); z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
 /* Above the navbar's fixed right cluster (9999) and its menus (10001-10002). */
 .ibpl-ask-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10050; display: flex; flex-direction: column; max-height: 75vh; max-height: 75dvh; background: var(--ibpl-surface); color: var(--ibpl-text-body); border-top: 1px solid var(--ibpl-border); box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5); }
 .ibpl-ask-head { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--ibpl-border); }
@@ -318,10 +284,39 @@ body.ibpl-collapsed-nav .navbar-header .navbar-brand { min-width: 0; overflow: h
 .poss-stepper-box input:focus { background: var(--ibpl-surface-2); }
 /* The box clips its children's outlines, so the ring goes on the box. */
 .poss-stepper-box:has(:focus-visible) { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
-.view-tabs-list { display: flex; gap: 2px; margin: 8px 0; border-bottom: 1px solid var(--ibpl-border); overflow-x: auto; }
-.view-tabs-tab { padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ibpl-text-dim); font-size: .88rem; font-weight: 600; white-space: nowrap; }
-.view-tabs-tab:hover { color: var(--ibpl-text); }
-.view-tabs-tab[data-state="active"] { color: var(--ibpl-accent); border-bottom-color: var(--ibpl-accent); }
+/* The page's views (user 2026-11-16: the navbar no longer has view menus,
+   so these are the one way to switch and must read as a primary control):
+   tabs rounded on top, standing on an amber line, the active one filled
+   amber. */
+.view-tabs-list { position: relative; display: flex; gap: 4px; margin: 8px 0; border-bottom: 2px solid var(--ibpl-accent); overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 3rem; }
+.view-tabs-list::-webkit-scrollbar { display: none; }
+.view-tabs-tab { flex: 0 0 auto; height: 38px; padding: 0 20px; border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--ibpl-surface); color: var(--ibpl-text-body); font-size: .95rem; font-weight: 700; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
+.view-tabs-tab:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+.view-tabs-tab[data-state="active"] { border-color: var(--ibpl-accent); background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.view-tabs-tab:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+@media (max-width: 767.98px) {
+  .view-tabs-tab { height: 36px; padding: 0 14px; font-size: .9rem; }
+}
+/* When the views overflow (Player Stats on a phone), each edge with more
+   views beyond it fades (modern-web-guidance "tabs", fading the edges): a
+   scroll timeline only runs on a row that scrolls, so a row that fits never
+   fades. The sizes are registered so they animate smoothly. */
+@property --vt-fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --vt-fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@supports (animation-timeline: scroll()) {
+  .view-tabs-list {
+    --vt-fade: 3rem;
+    mask:
+      linear-gradient(black, black) no-clip subtract,
+      linear-gradient(to right, black, transparent) 0 0 / var(--vt-fade-start) 100% no-repeat no-clip,
+      linear-gradient(to right, transparent, black) 100% 0 / var(--vt-fade-end) 100% no-repeat no-clip;
+    animation: view-tabs-fade-start linear both, view-tabs-fade-end linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 var(--vt-fade), calc(100% - var(--vt-fade)) 100%;
+  }
+  @keyframes view-tabs-fade-start { to { --vt-fade-start: var(--vt-fade); } }
+  @keyframes view-tabs-fade-end { from { --vt-fade-end: var(--vt-fade); } }
+}
 .ibpl-more { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; text-decoration: underline dashed; text-decoration-color: var(--ibpl-text-dim); text-underline-offset: 3px; cursor: help; }
 .ibpl-more:hover, .ibpl-more[data-state="open"] { text-decoration-color: var(--ibpl-accent); }
 .ibpl-more-pop { z-index: 10050; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); color: var(--ibpl-text); font-size: .82rem; line-height: 1.4; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
@@ -409,12 +404,7 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 .tl-dot-off { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 2px solid var(--ibpl-text-muted); background: var(--ibpl-bg); }
 .tl-rank .rank-bar-container.tl-rank-bar { display: block; width: 100% !important; height: 10px; margin: 2px 0 0; }
 .tl-tag.ibpl-more { display: inline-block; margin: 0; }
-.view-intro { margin: 6px 0 4px; padding: 6px 10px; border-left: 3px solid var(--ibpl-accent); border-radius: 4px; background: var(--ibpl-surface); font-size: .8rem; color: var(--ibpl-text-body); }
-.view-intro-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
-.view-intro-line b { color: var(--ibpl-accent); font-weight: 600; }
-.view-intro-more { padding: 0; border: 0; background: transparent; color: var(--ibpl-accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.view-intro-body { margin-top: 6px; }
-.view-intro-body ul { margin: 0 0 6px; padding-left: 18px; }
+.view-intro { display: inline-flex; }
 .view-intro-example { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
 .view-intro-example-text { flex: 1 1 260px; }
 .view-intro-example-text p { margin: 2px 0 0; }
@@ -431,9 +421,37 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .onoff-tip-why p { margin: 0 0 6px; }
 .onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
 .ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-/* The view's question shares the legend's row: question left, key right. */
-.table-top { align-items: flex-start; }
-.table-top .view-intro { flex: 1 1 320px; margin: 0; align-self: center; }
+/* Above the table (user 2026-11-16): the row tags, the view's "?" and the
+   table tools (CSV as an arrow, Columns) on the left; the colour key at the
+   top right. Two rows when one is too crowded. */
+.table-top { align-items: center; justify-content: flex-start; }
+.table-top .tl-tags { order: 0; }
+.table-top .view-intro { order: 1; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; }
+.table-top .table-legend { order: 4; margin-left: auto; }
+.view-intro-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55); border-radius: 50%; background: transparent; color: var(--ibpl-accent); font-size: .9rem; transition: background-color 120ms ease; }
+.view-intro-btn:hover, .view-intro-btn[data-state="open"] { background: rgba(var(--ibpl-accent-rgb), 0.14); }
+.view-intro-pop { max-width: min(380px, calc(100vw - 24px)); max-height: min(70vh, var(--radix-popover-content-available-height, 70vh)); overflow-y: auto; font-size: .82rem; }
+.view-intro-pop .view-intro-question { margin: 0 0 6px; color: var(--ibpl-accent); font-weight: 700; }
+.view-intro-pop ul { margin: 0 0 8px; padding-left: 18px; }
+/* CSV and Columns (toolsSlot.tsx) end the row, after the "?". */
+.table-top .table-tools { order: 2; display: inline-flex; align-items: center; gap: 8px; }
+.table-top .table-tools:empty { display: none; }
+.table-tools div.dt-buttons { margin: 0; gap: 8px; flex-wrap: nowrap; }
+body .table-tools div.dt-buttons > .dt-button,
+body .table-tools .shiny-download-link.btn { height: 28px; padding: 0 10px !important; font-size: .75rem; line-height: 1; white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .table-top { gap: 6px; }
+  .table-top .table-legend { gap: 6px; }
+  .table-top .tl-tags { gap: 4px; }
+  .table-top .tl-shot { padding-left: 4px; padding-right: 4px; }
+  body .table-top .tl-tag { padding: 0 4px; }
+}
+/* CSV is a round download arrow like the "?" (its name says "Download CSV"). */
+body .table-tools div.dt-buttons > .buttons-csv,
+body .table-tools .shiny-download-link.btn { width: 28px; padding: 0 !important; justify-content: center; font-size: 0; gap: 0; border-radius: 50% !important; }
+.table-tools div.dt-buttons > .buttons-csv span { display: none; }
+.table-tools div.dt-buttons > .buttons-csv .bi,
+.table-tools .shiny-download-link.btn .bi { font-size: .85rem; }
 /* The panel's title, Close and Clear all stay pinned while it scrolls. */
 .filter-drawer { padding-top: 0; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
@@ -456,7 +474,7 @@ table.dataTable tr.ibpl-row-detail > td { padding: 0 !important; background: var
 .ibpl-lineup-games-head h4 { margin: 0; font-size: .95rem; font-weight: 700; color: var(--ibpl-accent); }
 /* Room under the page so the floating Ask button never covers a table's
    last controls (pagination), at any width. */
-body { padding-bottom: 76px; }
+body { padding-bottom: calc(76px + var(--ibpl-tabbar-h, 0px)); }
 /* Lineups: team and players above the table. */
 .lineup-bar { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 8px 16px; align-items: start; margin: 6px 0 4px; padding: 10px 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); }
 .lineup-bar .form-group, .lineup-bar .shiny-input-container { margin-bottom: 0; }
@@ -603,10 +621,10 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-menu { border: 1px solid var(--ibpl-border); border-radius: 10px; padding: 10px;
   display: flex; flex-direction: column; gap: 8px; background: var(--ibpl-surface); }
 .gf-m-menu .ibpl-ribbon-inline-hint { margin: 0; }
-.gf-m-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040;
+.gf-m-panel { position: fixed; left: 0; right: 0; bottom: var(--ibpl-tabbar-h, 0px); z-index: 1040;
   background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
-  max-height: 62vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  max-height: 62vh; }
 .gf-m-panel-bar { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   background: none; border: 0; color: var(--ibpl-text); padding: 10px 16px; }
 .gf-m-sum { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 0.84375rem; }
@@ -636,7 +654,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-runrow.is-defining.is-opp .gf-m-dot { background: var(--ibpl-text-muted); }
 /* Why the card's ratings can differ from its +/- (credit vs floor, R6). */
 .gf-ratings-note { margin: 0; font-size: 0.75rem; line-height: 1.4; }
-.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; }
+.ibpl-react-gameflow-panel .gf-details .ibpl-ribbon-shared-lineups { flex: 1 1 0; min-width: 0; align-self: flex-start; max-height: inherit; }
+/* The row's max-height is the room the chart gave up (set inline); without
+   inheriting it a long lineup list spilled over the chart below. */
 /* Several cards (Together first): a wider column with each card's numbers
    on one line, so all of them fit without scrolling (user 2026-11-11). */
 .gf-details .gf-player-cards.is-multi { flex-basis: 470px; width: 470px; }
@@ -669,7 +689,7 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
    Phones put each filter's name on its own line above its two controls. */
 .cmp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .cmp-results { min-width: 0; }
-.cmp-grid {
+.cmp-grid, .cmp-heads {
   display: grid; gap: 8px; align-items: center;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   padding: 10px 12px 12px;
@@ -677,6 +697,11 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   border: 1px solid var(--ibpl-border);
   border-radius: 8px;
 }
+/* What A and B are stays on screen while the results scroll (user 2026-11-16).
+   Its own box, a child of .cmp-layout, so it sticks for the whole comparison
+   and not only while the filter grid is in view. Same columns and padding as
+   the grid, so each header still sits over its side's controls. */
+.cmp-heads { position: sticky; top: 0; z-index: 20; padding-bottom: 10px; }
 .cmp-grid-corner { display: none; }
 .cmp-grid-row { display: contents; }
 .cmp-grid-head, .cmp-grid-cell { --cmp-side: var(--ibpl-side-a); min-width: 0; }
@@ -738,18 +763,23 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
 }
 .cmp-grid-toggle:hover, .cmp-grid-toggle:focus-visible { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 @media (max-width: 575.98px) {
-  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-row,
-  .cmp-layout:not(.is-flipped) .cmp-grid > .cmp-grid-group,
+  .cmp-layout:not(.is-flipped) .cmp-grid,
   .cmp-layout:not(.is-flipped) .cmp-toggle-hide,
-  .cmp-layout.is-flipped .cmp-toggle-show { display: none; }
+  .cmp-layout.is-flipped .cmp-toggle-show,
+  .cmp-grid-toggle.is-wide { display: none; }
+  /* Under the pinned headers, not pinned itself: phones keep the room. */
+  .cmp-grid-toggle.is-narrow { margin-top: -8px; }
 }
 @media (min-width: 576px) {
-  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-row,
-  .cmp-layout.is-flipped .cmp-grid > .cmp-grid-group,
+  .cmp-layout.is-flipped .cmp-grid,
   .cmp-layout.is-flipped .cmp-toggle-hide,
-  .cmp-layout:not(.is-flipped) .cmp-toggle-show { display: none; }
+  .cmp-layout:not(.is-flipped) .cmp-toggle-show,
+  .cmp-grid-toggle.is-narrow { display: none; }
   /* In the empty cell left of the two headers: it adds no height. */
   .cmp-grid-toggle { grid-row: 1; grid-column: 1; align-self: center; }
+  /* Open filters read as one box with the headers on top. */
+  .cmp-layout:not(.is-flipped) .cmp-heads { border-radius: 8px 8px 0 0; }
+  .cmp-layout:not(.is-flipped) .cmp-grid { margin-top: -16px; border-top: 0; border-radius: 0 0 8px 8px; }
 }
 .cmp-grid-check { display: block; width: 18px; height: 18px; margin: 0; }
 /* What the two sides set differently carries the side's colour. */
@@ -758,36 +788,23 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   border-color: var(--cmp-side) !important;
 }
 @media (min-width: 576px) {
-  .cmp-grid { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
+  .cmp-grid, .cmp-heads { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
   .cmp-grid-corner { display: block; }
   .cmp-grid-label { grid-column: auto; margin-top: 0; }
 }
+@media (min-width: 1024px) {
+  /* Below the sticky top bar (.ibpl-topbar-row, 56px + its border). */
+  .cmp-heads { top: 57px; }
+}
 @media (min-width: 1200px) {
-  .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); }
+  /* Headers and filters on the left, the results beside both. The 1fr row
+     takes the results' extra height, so the filters stay under the headers. */
+  .cmp-layout:not(.is-flipped) { grid-template-columns: 520px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .cmp-layout:not(.is-flipped) > .cmp-heads,
+  .cmp-layout:not(.is-flipped) > .cmp-grid { grid-column: 1; }
+  .cmp-layout:not(.is-flipped) > .cmp-results { grid-column: 2; grid-row: 1 / span 2; }
 }
 
-/* Burger menu: every tab's views, not only the current tab's as mobile.css has
-   it (user 2026-11-05). There is no hover here, so they are pills under each
-   tab's name, compact enough that the whole menu fits a phone screen. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown .tab-hover-menu,
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu {
-  display: flex !important; flex-wrap: wrap; gap: 6px;
-  position: static; transform: none; width: 100%; min-width: 0;
-  margin: 4px 0 0; padding: 0 0 10px 24px;
-  background: transparent; border: 0; box-shadow: none;
-}
-/* Clear of the active tab's underline. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu { margin-top: 10px; }
-/* The caret means "opens a menu", and here the views are already open. */
-body.ibpl-collapsed-nav .nav-item.tab-has-dropdown > .nav-link::after { display: none; }
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item,
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
-  display: inline-flex; align-items: center; width: auto; min-height: 36px; padding: 0 12px;
-  border: 1px solid var(--ibpl-border); border-radius: 18px;
-  font-size: 0.85rem; white-space: nowrap;
-}
-body.ibpl-collapsed-nav .tab-hover-menu .thm-item.active { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
-body.ibpl-collapsed-nav .tab-hover-menu .thm-check { display: none; }
 
 /* Compare settings bar, under the view tabs: the quick preset first and
    largest (the page's most used control), then dates and game numbers. */
@@ -858,26 +875,22 @@ button.filter-chip { font-family: inherit; }
 html:has(dialog[open]:modal) { overflow: hidden; }
 /* mobile.css drops the focus stroke on compact ribbon lanes; keyboard focus keeps one. */
 body .ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus-visible rect { stroke: var(--ibpl-accent); stroke-width: 2; }
-.tab-hover-menu button.thm-item { width: 100%; }
-.tab-hover-menu button.thm-item:disabled { cursor: default; }
 /* Windows high-contrast (forced colours) drops backgrounds and box-shadows,
    which is all that marks these states and focus rings; give each a system
    colour or a border instead. */
 @media (forced-colors: active) {
   .home-ask-form:focus-within,
-  .selectize-input.focus,
-  .navbar-season-select select:focus,
-  .navbar-league-select select:focus { outline: 2px solid Highlight; outline-offset: 2px; }
+  .selectize-input.focus { outline: 2px solid Highlight; outline-offset: 2px; }
   .ibpl-compare-row:hover > td:first-child,
   .ibpl-compare-row:has(.ibpl-cell-btn:focus-visible) > td:first-child { border-left: 3px solid Highlight; }
   .lineup-chip[data-state="on"],
   .paginate_button.current,
-  .tab-hover-menu .thm-item[aria-pressed="true"] {
+  .ibpl-league-switch a.active {
     forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight;
   }
   .lineup-chip[data-state="any"] { border-style: dashed; border-width: 2px; }
   .view-tabs-tab[data-state="active"],
-  #main_tabs .nav-link[aria-current="page"] { text-decoration: underline 2px; text-underline-offset: 4px; }
+  .ibpl-page.active { text-decoration: underline 2px; text-underline-offset: 4px; }
   .ibpl-glossary { border: 1px solid CanvasText; }
 }
 /* Fonts: next/font's self-hosted families (layout.tsx) behind app.css's
@@ -940,6 +953,1260 @@ html[data-theme="light"] .ibpl-react-gameflow { --gf-good-rgb: 15, 140, 80; --gf
    photo keeps to the first line of the name, clear of that label. */
 .ibpl-name-table.ibpl-names-scrolled td.ibpl-name-has-img .ibpl-name-with-img,
 .ibpl-name-table.ibpl-names-scrolled .ibpl-cell-btn:has(> .ibpl-name-with-img) { align-items: flex-start; }
+
+/* ---- Links, modernised (user 2026-11-16) ----------------------------------
+   Same cue as before -- amber text with a trailing chevron, visible at rest --
+   but a soft underline that firms up on hover and a chevron that nudges
+   forward. Lineups list their players split by middle dots (LineupNames). */
+.lineup-names-name { white-space: nowrap; }
+.lineup-names-sep { color: var(--ibpl-text-dim); font-weight: 700; }
+.ribbon-link,
+.ld-lineup-link {
+  color: var(--ibpl-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+/* Only the names are underlined, so the dots between them stay clean. */
+.ibpl-lineup-link {
+  color: var(--ibpl-accent);
+  transition: color 120ms ease;
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ibpl-lineup-link .lineup-names-name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color 120ms ease;
+}
+.ibpl-lineup-link:hover .lineup-names-name,
+.ibpl-lineup-link:focus-visible .lineup-names-name { text-decoration-color: currentColor; }
+.ibpl-lineup-link .lineup-names-sep { color: var(--ibpl-text-muted); }
+.ibpl-lineup-link::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+.ibpl-lineup-link:hover,
+.ibpl-lineup-link:focus-visible,
+.ld-lineup-link:hover,
+.ribbon-link:hover,
+.ribbon-link:focus-visible {
+  color: var(--ibpl-accent-hover, var(--ibpl-accent));
+  text-decoration-color: currentColor;
+}
+.ibpl-lineup-link:hover::after,
+.ibpl-lineup-link:focus-visible::after,
+.ribbon-link:hover::after,
+.ribbon-link:focus-visible::after,
+.hub-card:hover .hub-card-go::after,
+.hub-card:focus-visible .hub-card-go::after,
+.hub-story-line:hover::after,
+.hub-story-line:focus-visible::after { transform: translateX(3px); }
+.ribbon-link::after,
+.hub-card-go::after,
+.hub-story-line::after { transition: transform 120ms ease; }
+/* Game Logs "View": a small pill, so a column of them reads as buttons. */
+td .ribbon-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px 2px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.08);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+}
+td .ribbon-link:hover,
+td .ribbon-link:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.18);
+}
+.hub-story-line { border-radius: 0 6px 6px 0; transition: background-color 120ms ease, color 120ms ease; }
+.hub-lineup-players .lineup-names-sep { color: var(--ibpl-accent); opacity: 0.6; }
+.ibpl-lineup-games-head h4 .lineup-names-sep { color: rgba(var(--ibpl-accent-rgb), 0.55); }
+
+/* ---- Filters: a sliding sheet (user 2026-11-16) ---------------------------
+   Phones: a bottom sheet with a grab handle and a Done bar. Wider screens:
+   a full-height panel from the right edge. Radix positions popovers with a
+   transform on its wrapper; the sheet takes the wrapper out of that. */
+[data-radix-popper-content-wrapper]:has(> .filter-drawer) {
+  position: fixed !important;
+  inset: auto 0 0 0 !important;
+  transform: none !important;
+  min-width: 0 !important;
+}
+.filter-drawer {
+  --sheet-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  width: 100%;
+  max-width: none;
+  max-height: 88vh;
+  max-height: 88dvh;
+  padding: 0 16px;
+  border: 1px solid var(--ibpl-border);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  overscroll-behavior: contain;
+  translate: 0 0;
+  transition: translate 280ms var(--sheet-ease), display 280ms allow-discrete;
+}
+.filter-drawer[data-state="closed"] { translate: 0 100%; }
+@starting-style {
+  .filter-drawer[data-state="open"] { translate: 0 100%; }
+}
+.filter-drawer-top { flex-shrink: 0; padding-top: 6px; touch-action: none; }
+.filter-drawer-grip {
+  width: 40px;
+  height: 4px;
+  margin: 2px auto 10px;
+  border-radius: 999px;
+  background: var(--ibpl-border);
+}
+.filter-drawer-head { margin-bottom: 10px; }
+.filter-drawer-close { height: 32px; padding: 0 12px; border-width: 1px; border-radius: 999px; }
+.filter-drawer-clear { border-radius: 999px; }
+.filter-drawer-section-trigger { min-height: 44px; }
+.filter-drawer-done-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 8px -16px 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--ibpl-border);
+  background: var(--ibpl-surface);
+}
+.filter-drawer-done {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ibpl-accent);
+  color: var(--ibpl-bg);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+.filter-drawer-done:hover { background: var(--ibpl-accent-hover, var(--ibpl-accent)); }
+/* The page behind dims; a tap on it closes the sheet (Radix: outside click). */
+body:has(.filter-drawer[data-state="open"])::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  background: rgba(0, 0, 0, 0.45);
+  animation: filter-sheet-scrim 200ms ease;
+}
+@keyframes filter-sheet-scrim { from { opacity: 0; } }
+@media (max-width: 767.98px) {
+  body:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
+}
+@media (min-width: 768px) {
+  [data-radix-popper-content-wrapper]:has(> .filter-drawer) { inset: 0 0 0 auto !important; }
+  .filter-drawer {
+    width: 400px;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-left: 1px solid var(--ibpl-border);
+    border-radius: 0;
+    box-shadow: -16px 0 40px rgba(0, 0, 0, 0.45);
+  }
+  .filter-drawer[data-state="closed"] { translate: 100% 0; }
+  @starting-style {
+    .filter-drawer[data-state="open"] { translate: 100% 0; }
+  }
+  .filter-drawer-top { padding-top: 16px; }
+  .filter-drawer-grip,
+  .filter-drawer-done-bar { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-drawer { transition: none; }
+  body:has(.filter-drawer[data-state="open"])::after { animation: none; }
+}
+
+/* ---- Buttons, modernised (user 2026-11-16) --------------------------------
+   One family with the new links and the filters sheet: rounded pills,
+   amber outline at rest, a soft amber fill on hover, short transitions. */
+:root { --ibpl-btn-ease: 120ms ease; }
+
+/* Plain buttons: Retry, Show all lineups, Move left/right, Close. */
+.btn.btn-default:not(.action-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-weight: 600;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.btn.btn-default:not(.action-button):hover,
+.btn.btn-default:not(.action-button):focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+}
+.btn.btn-default.btn-sm:not(.action-button) { padding: 3px 12px; font-size: 0.8rem; }
+.ibpl-move-btn .bi { font-size: 0.85em; }
+
+/* CSV download, in the table toolbar and On/Off's. */
+div.dt-buttons > .dt-button,
+.chips-row-controls .shiny-download-link.btn,
+.table-tools .shiny-download-link.btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.06) !important;
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+div.dt-buttons > .dt-button:hover:not(.disabled),
+.chips-row-controls .shiny-download-link.btn:hover,
+.table-tools .shiny-download-link.btn:hover {
+  background: rgba(var(--ibpl-accent-rgb), 0.16) !important;
+}
+
+/* Table pager: rounded page buttons, the current page filled amber. On
+   phones the arrows stand alone. */
+.dataTables_wrapper .dataTables_paginate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate > span { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  min-width: 32px;
+  height: 32px;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
+  line-height: 30px !important;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current):not(:disabled) {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  border-color: var(--ibpl-accent) !important;
+  background: var(--ibpl-accent) !important;
+  color: var(--ibpl-bg) !important;
+  font-weight: 700;
+}
+.dataTables_wrapper .dataTables_paginate .ellipsis { padding: 0 4px; color: var(--ibpl-text-dim); }
+@media (max-width: 767.98px) {
+  .dataTables_wrapper .dataTables_paginate .paginate-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
+/* "Show 50 entries": a rounded menu. */
+.dataTables_wrapper .dataTables_length select {
+  height: 32px;
+  padding: 0 28px 0 12px;
+  border-radius: 999px !important;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Filter chips: the x is a round target with its own hover, the pencil
+   brightens with the chip, and the chip itself eases into its hover. */
+.filter-chip { transition: border-color var(--ibpl-btn-ease), background-color var(--ibpl-btn-ease); }
+.filter-chip .chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -6px -2px 2px;
+  border-radius: 50%;
+  font-size: 1em;
+  transition: background-color var(--ibpl-btn-ease), opacity var(--ibpl-btn-ease);
+}
+.filter-chip .chip-x:hover,
+.filter-chip .chip-x:focus-visible { opacity: 1; background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.filter-chip.chip-focusable:hover { background: rgba(var(--ibpl-accent-rgb), 0.08); }
+.filter-chip-add:hover { background: rgba(var(--ibpl-accent-rgb), 0.08) !important; }
+.chip-clear-all { transition: background-color var(--ibpl-btn-ease); }
+
+/* Min Poss stepper: round - and + inside the pill. */
+.poss-stepper-box button { display: inline-flex; align-items: center; justify-content: center; margin: 2px; width: 28px; border-radius: 50%; transition: background-color var(--ibpl-btn-ease); }
+.poss-stepper-box button:hover:not(:disabled) { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+/* Back: a quiet pill whose arrow steps back on hover. */
+button.cmp-back-btn,
+.ibpl-gameflow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+button.cmp-back-btn:hover,
+button.cmp-back-btn:focus-visible,
+.ibpl-gameflow-back:hover,
+.ibpl-gameflow-back:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+  color: var(--ibpl-accent);
+  text-decoration: none;
+}
+button.cmp-back-btn > span[aria-hidden],
+.ibpl-gameflow-back > span[aria-hidden] { display: inline-block; font-weight: 700; transition: transform var(--ibpl-btn-ease); }
+button.cmp-back-btn:hover > span[aria-hidden],
+.ibpl-gameflow-back:hover > span[aria-hidden] { transform: translateX(-3px); }
+
+/* "More", "Glossary" and other in-text actions: the soft underline. */
+.ibpl-link-btn {
+  color: var(--ibpl-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.35);
+  transition: text-decoration-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+:where(.ibpl-link-btn):hover,
+.ibpl-link-btn:focus-visible { color: var(--ibpl-accent-hover, var(--ibpl-accent)); text-decoration-color: currentColor; }
+
+/* Gameflow phone panel: All runs / Show / Clear as small pills. */
+.gf-m-links { align-items: center; }
+.gf-m-link {
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  font-size: 0.8rem;
+  transition: background-color var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease);
+}
+.gf-m-link:hover,
+.gf-m-link:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --ibpl-btn-ease: 0s; }
+}
+
+
+/* ---- Gameflow lineup cards (user 2026-11-16) ------------------------------
+   The body font instead of the code font; each lineup a card of its own;
+   names bright with dim dots; the ratings as tinted pills. Same text as
+   before (the e2e specs read it), so only the look changes. */
+.ibpl-react-gameflow .ibpl-ribbon-shared-lineups,
+.ibpl-react-gameflow-panel .ibpl-ribbon-shared-lineups {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-family: var(--ibpl-font-body);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.ibpl-ribbon-shared-lineups > .ibpl-ribbon-detail-head {
+  margin: 0 0 8px;
+  color: var(--ibpl-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+/* Team headings: a small label with the team's colour as a dot. */
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list + .gf-side-head { margin-top: 12px; }
+.ibpl-ribbon-shared-lineups .gf-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--ibpl-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ibpl-ribbon-shared-lineups .gf-side-head::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ibpl-accent);
+}
+/* The page's team in amber, the opponent in grey, as on the chart. */
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="opp"]::before { background: var(--ibpl-text-dim); }
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list[data-side="opp"] .ibpl-ribbon-shared-lineup { --gf-card-edge: var(--ibpl-text-dim); }
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-detail-list { gap: 6px; }
+.ibpl-react-gameflow .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup,
+.ibpl-react-gameflow-panel .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--gf-card-edge, var(--ibpl-accent));
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  color: var(--ibpl-text-body);
+  font: inherit;
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup:hover {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.6);
+  background: var(--ibpl-surface-2);
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup.is-active {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.12);
+}
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-members {
+  color: var(--ibpl-text);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-members .lineup-names-name { white-space: normal; }
+.ibpl-ribbon-shared-lineup .ibpl-ribbon-detail-meta {
+  color: var(--ibpl-text-muted);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.ibpl-ribbon-shared-lineup .gf-top-score { color: var(--ibpl-text); font-weight: 700; }
+.ibpl-ribbon-shared-lineup .gf-rtg {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 999px;
+  color: var(--ibpl-text);
+  font-weight: 600;
+  line-height: 1.6;
+}
+.ibpl-ribbon-shared-lineup .gf-rtg[style] { border-color: transparent; }
+/* "Show / Hide" on the top-lineups heading: a small pill. */
+.gf-top-toggle .gf-top-fold {
+  padding: 1px 10px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+.gf-top-toggle:hover .gf-top-fold { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.16); }
+
+/* ---- Gameflow chart and controls (user 2026-11-16) ------------------------
+   Player rows read as buttons with a team-coloured edge; bars get rounder
+   ends and a hairline of page colour between stints; Clear players and the
+   ORtg switch join the pill family. Sizes stay the layout's (the fit tests
+   measure them). */
+.ibpl-react-gameflow .ibpl-ribbon-row-btn {
+  fill: rgba(var(--ibpl-accent-rgb), 0.05);
+  stroke: transparent;
+}
+.ibpl-react-gameflow .ibpl-ribbon-row:hover .ibpl-ribbon-row-btn:not(.is-pair-selected) {
+  fill: rgba(var(--ibpl-accent-rgb), 0.14);
+  stroke: rgba(var(--ibpl-accent-rgb), 0.5);
+}
+.ibpl-react-gameflow .ibpl-ribbon-row-btn.is-pair-selected {
+  fill: rgba(var(--ibpl-accent-rgb), 0.28);
+  stroke: var(--ibpl-accent);
+  stroke-width: 1.5;
+}
+.ibpl-react-gameflow .ibpl-ribbon-name { font-weight: 600; letter-spacing: 0.01em; }
+.ibpl-react-gameflow .ibpl-ribbon-name.is-pair-selected { fill: var(--ibpl-accent); font-weight: 700; }
+.ibpl-react-gameflow .ibpl-ribbon-team { font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.ibpl-react-gameflow .ibpl-ribbon-col-head { font-weight: 600; }
+/* Bars: a page-coloured hairline splits back-to-back stints, no drop shadow. */
+.ibpl-react-gameflow .ibpl-ribbon-lane rect {
+  rx: 3px;
+  stroke: var(--ibpl-surface);
+  stroke-width: 1;
+  filter: none;
+}
+.ibpl-react-gameflow .ibpl-ribbon-lane:hover rect { opacity: 1; stroke: var(--ibpl-text); }
+.ibpl-react-gameflow .ibpl-ribbon-lane:focus-visible rect { stroke: var(--ibpl-text); stroke-width: 1.5; }
+.ibpl-react-gameflow .ibpl-ribbon-lane-mark,
+.ibpl-react-gameflow .ibpl-ribbon-lineup-mark { rx: 3px; }
+
+/* Clear players: an outlined pill, quiet until something is selected. */
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear {
+  padding: 4px 14px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.06);
+  color: var(--ibpl-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear:hover,
+.ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear:focus-visible {
+  border-color: var(--ibpl-accent);
+  background: rgba(var(--ibpl-accent-rgb), 0.16);
+}
+/* ORtg switch: one rounded track with the choice filled. */
+.gf-rtg-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 999px;
+  background: var(--ibpl-surface);
+}
+.ibpl-gameflow-rtg-toggle button {
+  min-height: 28px;
+  padding: 2px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.ibpl-gameflow-rtg-toggle button:hover:not(.is-on) { background: var(--ibpl-surface-2); color: var(--ibpl-text); }
+.ibpl-gameflow-rtg-toggle button.is-on { border: 0; }
+
+/* Phone run panel: each team's line leads with the team in bold; the
+   estimated cause sits in a box of its own, upright and readable. */
+.gf-run-tip-lead { color: var(--ibpl-text); font-weight: 700; }
+.gf-m-panel-body .gf-run-tip-line { line-height: 1.45; color: var(--ibpl-text-body); }
+.gf-m-panel-body .gf-run-tip-line.is-cause {
+  padding: 8px 10px;
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--ibpl-text-dim);
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  color: var(--ibpl-text-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+.gf-m-panel-body .gf-run-tip-line.is-cause .gf-run-tip-lead {
+  color: var(--ibpl-text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- Inputs, tables and Home, modernised (user 2026-11-16) ----------------
+   Filters panel dropdowns and date range as rounded fields, a calendar with
+   round days, on/off settings as switches, table headers with one amber
+   arrow on the sorted column only, and Home's team picker to match. */
+
+/* Dropdowns in the Filters panel and on Home. */
+:is(.filter-drawer, .home-team-select) .selectize-input {
+  min-height: 38px;
+  padding: 8px 32px 8px 12px !important;
+  border-radius: 10px !important;
+  background: var(--ibpl-surface-2) !important;
+  box-shadow: none !important;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+:is(.filter-drawer, .home-team-select) .selectize-input:hover { border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important; }
+:is(.filter-drawer, .home-team-select) .selectize-input.focus {
+  border-color: var(--ibpl-accent) !important;
+  box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18) !important;
+}
+:is(.filter-drawer, .home-team-select) .selectize-control.single .selectize-input::after {
+  right: 14px !important;
+  border-top-color: var(--ibpl-accent) !important;
+}
+:is(.filter-drawer, .home-team-select) .selectize-control.single .selectize-input.dropdown-active::after { border-bottom-color: var(--ibpl-accent) !important; }
+:is(.filter-drawer, .home-team-select) .selectize-control.multi .selectize-input .item {
+  padding: 1px 9px !important;
+  border-radius: 999px !important;
+  border-color: rgba(var(--ibpl-accent-rgb), 0.45) !important;
+  background: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+/* The open list, everywhere: a floating rounded menu. */
+.selectize-dropdown {
+  margin-top: 4px;
+  overflow: hidden;
+  border: 1px solid var(--ibpl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
+}
+.selectize-dropdown .option { padding: 7px 12px !important; }
+.selectize-dropdown .option.active { background: rgba(var(--ibpl-accent-rgb), 0.14) !important; }
+.selectize-dropdown .option.selected { font-weight: 600; }
+
+/* Date range: one rounded field holding both dates. */
+.filter-drawer .input-daterange {
+  flex-wrap: nowrap;
+  overflow: visible;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 10px;
+  background: var(--ibpl-surface-2);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.filter-drawer .input-daterange:hover { border-color: rgba(var(--ibpl-accent-rgb), 0.6); }
+.filter-drawer .input-daterange:focus-within {
+  border-color: var(--ibpl-accent);
+  box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18);
+}
+.filter-drawer .input-daterange .form-control {
+  height: 36px;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.filter-drawer .input-daterange .input-group-addon,
+.filter-drawer .input-daterange .input-group-text {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ibpl-text-dim) !important;
+  font-size: 0.75rem;
+}
+/* The calendar: a floating card with round days. */
+.datepicker.datepicker-dropdown {
+  padding: 8px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 12px;
+  background: var(--ibpl-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.datepicker.datepicker-dropdown::before,
+.datepicker.datepicker-dropdown::after { display: none; }
+.datepicker table tr td,
+.datepicker table tr th { width: 34px; height: 32px; border-radius: 999px; }
+.datepicker table tr td.day:hover:not(.disabled),
+.datepicker table tr th.prev:hover,
+.datepicker table tr th.next:hover,
+.datepicker table tr th.datepicker-switch:hover { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+/* Day colours are set here for both themes: the vendor theme's range style
+   left in-range days invisible on the light background (user 2026-11-16).
+   The range is usually the whole season, so it gets no tint; its two ends
+   get an amber ring. */
+.datepicker table tr td.day:not(:hover),
+.datepicker table tr td.day.range:not(:hover) {
+  background: transparent;
+}
+.datepicker table tr td.day,
+.datepicker table tr td.day.range {
+  color: var(--ibpl-text) !important;
+  text-shadow: none;
+}
+.datepicker table tr td.day.old,
+.datepicker table tr td.day.new { color: var(--ibpl-text-dim) !important; }
+.datepicker table tr td.day.disabled { color: var(--ibpl-text-faint, var(--ibpl-text-dim)) !important; opacity: 0.45; }
+.datepicker table tr td.day.range-start:not(.active),
+.datepicker table tr td.day.range-end:not(.active) { box-shadow: inset 0 0 0 1.5px var(--ibpl-accent); }
+.datepicker table tr td.day.today:not(.active) { font-weight: 700; color: var(--ibpl-accent) !important; }
+.datepicker .datepicker-switch,
+.datepicker th.prev,
+.datepicker th.next { color: var(--ibpl-text) !important; }
+.datepicker table tr td.active,
+.datepicker table tr td.active:hover {
+  border-radius: 999px;
+  background: var(--ibpl-accent) !important;
+  color: var(--ibpl-bg) !important;
+  font-weight: 700;
+  text-shadow: none;
+}
+.datepicker table tr th.dow { color: var(--ibpl-text-dim); font-size: 0.7rem; font-weight: 600; }
+
+/* On/off settings (Clutch, OT, Home's default team) as switches. The native
+   checkbox stays underneath, so labels, keyboard and tests are unchanged. */
+.checkbox input[type="checkbox"],
+.home-team-default .form-check-input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0 8px 0 0;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 999px;
+  background: var(--ibpl-surface-2);
+  background-image: none;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.checkbox input[type="checkbox"]::before,
+.home-team-default .form-check-input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ibpl-text-muted);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+.checkbox input[type="checkbox"]:checked,
+.home-team-default .form-check-input:checked {
+  border-color: var(--ibpl-accent);
+  background: var(--ibpl-accent);
+}
+.checkbox input[type="checkbox"]:checked::before,
+.home-team-default .form-check-input:checked::before { transform: translateX(14px); background: var(--ibpl-bg); }
+.checkbox input[type="checkbox"]:focus-visible,
+.home-team-default .form-check-input:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; box-shadow: none; }
+.checkbox input[type="checkbox"]:disabled,
+.home-team-default .form-check-input:disabled { opacity: 0.45; cursor: default; }
+.checkbox > label,
+label.checkbox,
+.home-team-default .form-check { display: inline-flex; align-items: center; gap: 0; padding-left: 0; cursor: pointer; }
+.home-team-default .form-check-input { float: none; margin-left: 0; }
+
+/* Tables: quieter headers, one amber arrow on the sorted column only (both
+   arrows show faintly on hover, as the cue that a header sorts), and a soft
+   row highlight that sits over the heat colours instead of replacing them. */
+table.dataTable thead > tr > th.sorting::before,
+table.dataTable thead > tr > th.sorting::after { opacity: 0 !important; transition: opacity 120ms ease; }
+table.dataTable thead > tr > th.sorting:hover::before,
+table.dataTable thead > tr > th.sorting:hover::after { opacity: 0.35 !important; }
+table.dataTable thead > tr > th.sorting_asc::before,
+table.dataTable thead > tr > th.sorting_desc::after { opacity: 1 !important; color: var(--ibpl-accent); }
+table.dataTable thead > tr > th.sorting_asc::after,
+table.dataTable thead > tr > th.sorting_desc::before,
+table.dataTable thead > tr > th.sorting_asc:hover::after,
+table.dataTable thead > tr > th.sorting_desc:hover::before { opacity: 0 !important; }
+table.dataTable thead > tr > th.sorting_asc,
+table.dataTable thead > tr > th.sorting_desc { color: var(--ibpl-accent) !important; }
+table.dataTable thead > tr > th { font-weight: 600; letter-spacing: 0.01em; }
+table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(--ibpl-accent-rgb), 0.06); }
+/* Footer: the count sits quietly beside the pager. */
+.dataTables_wrapper .dataTables_info { padding-top: 10px; font-size: 0.78rem; }
+.dataTables_wrapper .dataTables_paginate { padding-top: 6px; }
+@media (min-width: 768px) {
+  .dataTables_wrapper .dataTables_info { float: left; }
+  .dataTables_wrapper .dataTables_paginate { float: right; justify-content: flex-end; }
+}
+
+/* Home: the team row, picker and switch on one line. */
+.home-team-row { align-items: center; gap: 12px; }
+.home-team-default { color: var(--ibpl-text-body); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .checkbox input[type="checkbox"], .checkbox input[type="checkbox"]::before,
+  .home-team-default .form-check-input, .home-team-default .form-check-input::before { transition: none; }
+}
+
+/* Stat filter popover (Radix, 2026-11-16): Bootstrap's .popover is absolutely
+   placed; inside Radix's positioned wrapper it sits in normal flow. */
+.popover.ibpl-stat-pop { position: relative; z-index: 1070; max-width: min(320px, calc(100vw - 16px)); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.popover.ibpl-stat-pop[data-state="closed"] { display: none; }
+.ibpl-stat-pop-arrow { fill: var(--ibpl-surface); stroke: var(--ibpl-border); }
+
+/* ---- Empty, loading and error states (user 2026-11-16) -------------------- */
+/* No rows: a short card where the table would be. */
+.ibpl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 12px auto;
+  padding: 28px 20px;
+  max-width: 420px;
+  border: 1px dashed var(--ibpl-border);
+  border-radius: 12px;
+  background: var(--ibpl-surface);
+  text-align: center;
+}
+.ibpl-empty-state-icon { color: var(--ibpl-accent); font-size: 1.4rem; line-height: 1; }
+.ibpl-empty-state-text { margin: 0; color: var(--ibpl-text-body); font-size: 0.9rem; font-weight: 600; }
+table.dataTable tbody tr.ibpl-empty-row > td { padding: 0 8px; border: 0; background: transparent !important; box-shadow: none !important; }
+table.dataTable tbody tr.ibpl-empty-row:hover > td { box-shadow: none; }
+/* The phone table is wide; keep the card in view at the left. */
+tr.ibpl-empty-row .ibpl-empty-state { position: sticky; left: 8px; margin-left: 0; }
+
+/* Loading: the old table dims (Shiny's recalculating) and a bar runs along
+   the top of the table area. */
+/* Always rendered (3px, empty) so nothing shifts when loading starts. */
+.ibpl-loading-bar {
+  position: relative;
+  height: 3px;
+  margin: 2px 0;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.ibpl-loading-bar:not(.is-on)::before { display: none; }
+.ibpl-loading-bar.is-on { background: rgba(var(--ibpl-accent-rgb), 0.15); }
+.ibpl-loading-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: 999px;
+  background: var(--ibpl-accent);
+  animation: ibpl-loading-slide 1.1s ease-in-out infinite;
+}
+@keyframes ibpl-loading-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibpl-loading-bar::before { width: 100%; animation: none; opacity: 0.6; }
+}
+
+/* Error: a card with what failed and a Retry button. */
+.shiny-output-error.ibpl-error-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--ibpl-neg-rgb), 0.45);
+  border-left: 3px solid var(--ibpl-neg);
+  border-radius: 10px;
+  background: rgba(var(--ibpl-neg-rgb), 0.08);
+  color: var(--ibpl-text-body);
+}
+.shiny-output-error.ibpl-error-card::before { display: none; content: none; }
+.ibpl-error-card-icon { flex: none; color: var(--ibpl-neg); font-size: 1.25rem; }
+.ibpl-error-card-body { flex: 1 1 auto; min-width: 0; }
+.ibpl-error-card-title { margin: 0; color: var(--ibpl-text); font-size: 0.88rem; font-weight: 700; }
+.ibpl-error-card-detail { margin: 2px 0 0; color: var(--ibpl-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+
+/* ---- Compare, Glossary, Ask, phone menu (user 2026-11-16) ----------------- */
+/* Compare: the same rounded fields as the Filters panel, at Compare's
+   denser size, and the Clutch boxes as switches. */
+:is(.cmp-settings, .cmp-preset, .cmp-grid) .selectize-input {
+  border-radius: 8px !important;
+  background: var(--ibpl-surface-2) !important;
+  box-shadow: none !important;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+:is(.cmp-settings, .cmp-preset, .cmp-grid) .selectize-input:hover { border-color: rgba(var(--ibpl-accent-rgb), 0.6) !important; }
+:is(.cmp-settings, .cmp-preset, .cmp-grid) .selectize-input.focus {
+  border-color: var(--ibpl-accent) !important;
+  box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18) !important;
+}
+:is(.cmp-settings, .cmp-preset, .cmp-grid) .selectize-control.single .selectize-input::after { border-top-color: var(--ibpl-accent) !important; }
+.cmp-settings .input-daterange {
+  flex-wrap: nowrap;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 8px;
+  background: var(--ibpl-surface-2);
+}
+.cmp-settings .input-daterange:focus-within { border-color: var(--ibpl-accent); box-shadow: 0 0 0 3px rgba(var(--ibpl-accent-rgb), 0.18); }
+.cmp-settings .input-daterange .form-control { border: 0 !important; background: transparent !important; box-shadow: none !important; text-align: center; font-variant-numeric: tabular-nums; }
+.cmp-settings .input-daterange .input-group-addon,
+.cmp-settings .input-daterange .input-group-text { border: 0 !important; background: transparent !important; color: var(--ibpl-text-dim) !important; font-size: 0.75rem; }
+.cmp-grid-cell .input-daterange .form-control { border: 1px solid var(--ibpl-control-border) !important; border-radius: 8px !important; background: var(--ibpl-surface-2) !important; }
+input.cmp-grid-check {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid var(--ibpl-control-border);
+  border-radius: 999px;
+  background: var(--ibpl-surface-2);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+input.cmp-grid-check::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ibpl-text-muted);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+input.cmp-grid-check:checked { border-color: var(--ibpl-accent); background: var(--ibpl-accent); }
+input.cmp-grid-check:checked::before { transform: translateX(14px); background: var(--ibpl-bg); }
+input.cmp-grid-check:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+/* The A / B / gap summary: cards with the side's colour along the top and
+   the value large. */
+.cmp-summary-row .card {
+  border: 1px solid var(--ibpl-border) !important;
+  border-top: 3px solid var(--ibpl-text-dim) !important;
+  border-radius: 12px;
+  background: var(--ibpl-surface) !important;
+}
+.cmp-summary-row > :nth-child(1) .card { border-top-color: var(--ibpl-side-a) !important; }
+.cmp-summary-row > :nth-child(2) .card { border-top-color: var(--ibpl-accent) !important; }
+.cmp-summary-row .card .text-uppercase { color: var(--ibpl-text-muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; }
+.cmp-summary-row .cmp-side-value { display: block; margin: 2px 0 4px; font-size: 1.6rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.cmp-summary-row .card .text-muted { font-size: 0.78rem; }
+
+/* Glossary: a rounded panel, the title and close pinned at the top, each
+   section's list as a card of its own. */
+.ibpl-glossary .modal-content {
+  overflow: hidden;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 16px;
+  background: var(--ibpl-surface);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.ibpl-glossary .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ibpl-border);
+  background: var(--ibpl-surface);
+}
+.ibpl-glossary .modal-title { margin: 0; color: var(--ibpl-text); font-weight: 700; }
+.ibpl-glossary-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.ibpl-glossary-x:hover,
+.ibpl-glossary-x:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.12); color: var(--ibpl-accent); }
+.ibpl-glossary .modal-body { padding: 8px 18px 18px; }
+.ibpl-glossary .modal-body h5 { margin: 16px 0 8px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ibpl-glossary .modal-body ul {
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 10px;
+  background: var(--ibpl-surface-2);
+}
+.ibpl-glossary .modal-body li { margin: 4px 0; line-height: 1.45; }
+.ibpl-glossary .modal-footer { padding: 10px 18px; border-top: 1px solid var(--ibpl-border); }
+@media (max-width: 767.98px) {
+  .ibpl-glossary { width: calc(100vw - 16px); margin-top: 8px; max-height: calc(100dvh - 16px); }
+}
+
+/* Ask: before the first question, examples to tap. */
+.ibpl-ask-start { padding: 8px 0; }
+.ibpl-ask-start-title { margin: 0 0 8px; color: var(--ibpl-text-muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ibpl-ask-examples { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ibpl-ask-example {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 10px;
+  background: var(--ibpl-surface-2);
+  color: var(--ibpl-text-body);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: start;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.ibpl-ask-example:hover:not(:disabled),
+.ibpl-ask-example:focus-visible { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1); color: var(--ibpl-text); }
+
+
+/* ---- Columns menu (ColumnsMenu.tsx, user 2026-11-16): a wide panel of chips */
+div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ibpl-columns-btn { padding: 4px 12px !important; font-size: 0.8rem !important; }
+.ibpl-columns-count { color: var(--ibpl-text-muted); font-weight: 600; }
+.ibpl-columns-pop {
+  z-index: 10045;
+  width: min(720px, calc(100vw - 16px));
+  max-height: min(80vh, var(--radix-popover-content-available-height, 80vh));
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 14px;
+  background: var(--ibpl-surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  overscroll-behavior: contain;
+}
+.ibpl-columns-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 -12px 10px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--ibpl-border);
+  background: var(--ibpl-surface);
+}
+.ibpl-columns-title { color: var(--ibpl-text); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ibpl-columns-hint { flex: 1 1 auto; color: var(--ibpl-text-dim); font-size: 0.75rem; }
+.ibpl-columns-hint-touch { display: none; }
+@media (hover: none) {
+  .ibpl-columns-hint-pointer { display: none; }
+  .ibpl-columns-hint-touch { display: inline; }
+}
+.ibpl-columns-reset { padding: 2px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--ibpl-accent); font-size: 0.78rem; font-weight: 600; }
+.ibpl-columns-reset:hover { background: rgba(var(--ibpl-accent-rgb), 0.12); }
+.ibpl-columns-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.ibpl-columns-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--ibpl-accent-rgb), 0.1);
+  color: var(--ibpl-text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+.ibpl-columns-chip .bi { color: var(--ibpl-accent); font-size: 0.85em; }
+.ibpl-columns-chip:hover { border-color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.ibpl-columns-chip:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+.ibpl-columns-chip.is-hidden {
+  border-style: dashed;
+  border-color: var(--ibpl-border);
+  background: transparent;
+  color: var(--ibpl-text-dim);
+}
+.ibpl-columns-chip.is-hidden .bi { color: var(--ibpl-text-dim); }
+.ibpl-columns-chip.is-locked { border-color: var(--ibpl-border); background: var(--ibpl-surface-2); }
+.ibpl-columns-chip.is-locked .bi { color: var(--ibpl-text-dim); }
+.ibpl-columns-grid.is-dragging .ibpl-columns-chip { cursor: grabbing; }
+.ibpl-columns-chip.is-dragged {
+  z-index: 2;
+  opacity: 0.95;
+  border-color: var(--ibpl-accent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  transition: none;
+  pointer-events: none;
+}
+/* Where the dragged chip will land: an amber bar in the gap. */
+.ibpl-columns-chip.is-drop-before::before,
+.ibpl-columns-chip.is-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--ibpl-accent);
+  box-shadow: 0 0 0 2px rgba(var(--ibpl-accent-rgb), 0.25);
+}
+.ibpl-columns-chip.is-drop-before::before { left: -6px; }
+.ibpl-columns-chip.is-drop-after::after { right: -6px; }
+@media (max-width: 767.98px) {
+  .ibpl-columns-chip { min-height: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibpl-columns-chip { transition: none; }
+}
+
+/* Columns menu, compact (user 2026-11-16: "smaller"). */
+.ibpl-columns-pop { width: auto; max-width: min(560px, calc(100vw - 16px)); padding: 0 10px 10px; border-radius: 12px; }
+.ibpl-columns-head { margin: 0 -10px 8px; padding: 8px 10px 6px; gap: 2px 8px; }
+.ibpl-columns-title { font-size: 0.7rem; }
+.ibpl-columns-hint { font-size: 0.7rem; }
+.ibpl-columns-reset { padding: 1px 8px; font-size: 0.72rem; }
+.ibpl-columns-grid { gap: 5px; }
+.ibpl-columns-chip { gap: 4px; min-height: 26px; padding: 2px 9px; font-size: 0.74rem; }
+.ibpl-columns-chip .bi { font-size: 0.8em; }
+.ibpl-columns-chip.is-drop-before::before { left: -4px; }
+.ibpl-columns-chip.is-drop-after::after { right: -4px; }
+@media (max-width: 767.98px) {
+  .ibpl-columns-chip { min-height: 32px; padding: 3px 10px; font-size: 0.78rem; }
+}
+
+/* ---- Top bar (Navbar.tsx; navbar redesign, user 2026-11-16) ---------------
+   Narrow first: the bar holds the logo, league and season menus, Glossary
+   and the theme switch; the page links are a tab bar fixed to the bottom.
+   From 1024px: one sticky row of page pills, then the settings set apart by
+   dividers and labels, then the update date and the round buttons.
+   --ibpl-tabbar-h is the bottom bar's height (0 when there is none); the
+   page padding, the Ask button and the Gameflow phone panel stay above it. */
+:root { --ibpl-tabbar-h: 54px; }
+/* No env(safe-area-inset-bottom) here or on the other bottom-pinned pieces:
+   the page does not draw under the system bars (no viewport-fit=cover), yet
+   Android Chrome reports a 47 px inset while its address bar shows, which
+   became an empty band under the tab bar (measured on a phone 2026-11-16). */
+.ibpl-topbar { background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
+.ibpl-topbar-row { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 14px; }
+.ibpl-brand { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ibpl-accent); font-family: var(--ibpl-font-display); font-size: 1.05rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.ibpl-brand:hover { color: var(--ibpl-accent-hover); }
+.ibpl-brand .bi { font-size: 1.3rem; }
+.ibpl-brand-name { display: none; }
+.ibpl-settings { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.ibpl-setting { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ibpl-setting-label { display: none; color: var(--ibpl-text-muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.ibpl-sep { flex: 0 0 auto; width: 1px; height: 24px; background: var(--ibpl-border); }
+.ibpl-sep + .ibpl-setting ~ .ibpl-sep { display: none; }
+.ibpl-league-switch { display: none; }
+.ibpl-updated { display: none; align-items: center; gap: 6px; color: var(--ibpl-text-muted); font-size: 0.75rem; white-space: nowrap; }
+.ibpl-updated-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ibpl-pos); }
+.ibpl-icon-btn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; padding: 0; border: 1px solid var(--ibpl-border); border-radius: 50%; background: transparent; color: var(--ibpl-text-body); font-size: 1rem; transition: border-color 120ms ease, color 120ms ease; }
+.ibpl-icon-btn:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+#open_glossary { margin-left: auto; }
+
+/* League and season menus: a neutral pill (settings, not pages). */
+.ibpl-menu { position: relative; display: inline-flex; min-width: 0; }
+.ibpl-menu-btn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-bg); color: var(--ibpl-text); font-size: 0.875rem; font-weight: 700; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease; }
+.ibpl-menu-btn .bi { color: var(--ibpl-text-muted); font-size: 0.7rem; transition: transform 150ms ease; }
+.ibpl-menu-btn:hover { border-color: var(--ibpl-control-border); }
+.ibpl-menu-btn[aria-expanded="true"] { border-color: var(--ibpl-text-muted); background: var(--ibpl-surface-hover); }
+.ibpl-menu-btn[aria-expanded="true"] .bi { transform: rotate(180deg); }
+.ibpl-menu-list { z-index: 10003; min-width: 180px; padding: 6px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
+.ibpl-menu-list ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ibpl-menu-title { padding: 6px 10px 4px; color: var(--ibpl-text-muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.ibpl-menu-list a, .ibpl-menu-list button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ibpl-text); font-size: 0.9rem; font-weight: 600; text-align: left; text-decoration: none; white-space: nowrap; }
+.ibpl-menu-list a:hover, .ibpl-menu-list button:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+.ibpl-menu-list .active { background: rgba(var(--ibpl-accent-rgb), 0.16); color: var(--ibpl-accent); font-weight: 700; }
+.ibpl-menu-footer { margin: 4px 0 0; padding: 8px 10px 4px; border-top: 1px solid var(--ibpl-border); color: var(--ibpl-text-muted); font-size: 0.75rem; white-space: nowrap; }
+.ibpl-menu-list .active:hover { background: rgba(var(--ibpl-accent-rgb), 0.22); color: var(--ibpl-accent); }
+
+/* The bottom tab bar. */
+.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 0 4px; box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); }
+.ibpl-pages ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 720px; height: 100%; margin: 0 auto; padding: 0; list-style: none; }
+.ibpl-page { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%; border-radius: 12px; color: var(--ibpl-text-muted); font-size: 0.66rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.ibpl-page .bi { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 26px; border-radius: 999px; font-size: 1.1rem; transition: background-color 120ms ease; }
+.ibpl-page:hover { color: var(--ibpl-text); }
+.ibpl-page.active { color: var(--ibpl-accent); font-weight: 700; }
+.ibpl-page.active .bi { background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.ibpl-page-label { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+
+@media (max-width: 359.98px) {
+  .ibpl-topbar-row { gap: 6px; padding: 0 8px 0 10px; }
+  .ibpl-settings { gap: 6px; }
+  .ibpl-menu-btn { padding: 0 10px; }
+}
+
+@media (min-width: 1024px) {
+  :root { --ibpl-tabbar-h: 0px; }
+  .ibpl-topbar { position: sticky; top: 0; z-index: 9998; }
+  .ibpl-topbar-row { gap: 20px; padding: 0 20px; }
+  .ibpl-pages { position: static; height: auto; padding: 0; background: none; border: 0; }
+  .ibpl-pages ul { display: flex; gap: 2px; max-width: none; }
+  .ibpl-page { flex-direction: row; height: auto; padding: 7px 12px; border-radius: 999px; color: var(--ibpl-text-body); font-size: 0.875rem; transition: background-color 120ms ease, color 120ms ease; }
+  .ibpl-page .bi { display: none; }
+  .ibpl-page:hover { background: var(--ibpl-surface-hover); color: var(--ibpl-text); }
+  .ibpl-page.active { background: rgba(var(--ibpl-accent-rgb), 0.16); color: var(--ibpl-accent); }
+  .ibpl-page.active:hover { background: rgba(var(--ibpl-accent-rgb), 0.16); }
+  .ibpl-settings { flex: 0 0 auto; margin-left: auto; gap: 10px; }
+  .ibpl-sep + .ibpl-setting ~ .ibpl-sep { display: block; }
+  .ibpl-sep { height: 28px; }
+  .ibpl-setting-label { display: inline; }
+  .ibpl-league-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-bg); }
+  .ibpl-league-switch a { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border-radius: 999px; color: var(--ibpl-text-body); font-size: 0.8125rem; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background-color 120ms ease, color 120ms ease; }
+  .ibpl-league-switch a:hover { color: var(--ibpl-text); background: var(--ibpl-surface-hover); }
+  .ibpl-league-switch a.active { background: var(--ibpl-surface-hover); color: var(--ibpl-text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--ibpl-control-border); }
+  .ibpl-league-menu { display: none; }
+  .ibpl-menu-btn { height: 36px; font-size: 0.8125rem; }
+  .ibpl-updated { display: inline-flex; }
+  .ibpl-icon-btn { width: 36px; height: 36px; font-size: 0.9rem; }
+  #open_glossary { margin-left: 0; }
+}
+/* Measured 2026-11-16 with the real fonts: the row needs ~1,390px with
+   everything shown. Narrower, it gives up, in order, the brand's name, the
+   setting labels (below 1,250px) and the league switch, which becomes a menu
+   (below 1,200px). Below 1,024px the pages move to the bottom bar. */
+@media (min-width: 1400px) { .ibpl-brand-name { display: inline; } }
+@media (min-width: 1024px) and (max-width: 1249.98px) { .ibpl-setting-label { display: none; } }
+@media (min-width: 1024px) and (max-width: 1199.98px) {
+  .ibpl-topbar-row { gap: 14px; padding: 0 14px; }
+  .ibpl-league-switch { display: none; }
+  .ibpl-league-menu { display: inline-flex; }
+}
+
+/* ---- Narrow screens: Filters rides on the bottom bar (user 2026-11-16) ----
+   The drawer's trigger stays in the chips row's markup (FilterDrawer anchors
+   to it and focus returns to it); here it is a small tab on top of the tab
+   bar, so it is always one tap away and the row above the table is gone. */
+@media (max-width: 1023.98px) {
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle {
+    position: fixed; left: 50%; bottom: calc(var(--ibpl-tabbar-h) - 1px); z-index: 1036;
+    transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px;
+    border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0;
+    background: var(--ibpl-surface); color: var(--ibpl-accent);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25); font-size: 0.78rem; font-weight: 700;
+  }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle::after {
+    content: ""; border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-bottom: 5px solid currentColor;
+  }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle .bi { font-size: 0.85rem; }
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle:hover,
+  .ibpl-drawer-layout .chips-row .chips-drawer-toggle[aria-expanded="true"] {
+    background: var(--ibpl-surface-hover); border-color: var(--ibpl-border); color: var(--ibpl-accent-hover); box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
+  }
+  /* The chips no longer share a line with the Filters button: let the
+     controls sit beside them when they fit. */
+  .ibpl-drawer-layout .chips-row { gap: 8px 16px; margin: 10px 0 4px; }
+  .ibpl-drawer-layout .chips-row-chips { flex: 0 1 auto; }
+}
+/* Phones: less air above the table. A 16 px side gutter, chips and
+   controls 8 px apart, steppers side by side with their labels above. */
+@media (max-width: 767.98px) {
+  .container-fluid.ibpl-drawer-layout { padding-left: 4px; padding-right: 4px; }
+  .ibpl-drawer-layout .chips-row { gap: 8px; }
+  /* The controls join the chips' row: buttons (CSV, ranges) beside the
+     chips where they fit, the steppers on the next line. */
+  .ibpl-drawer-layout .chips-row { align-items: flex-end; justify-content: flex-start; }
+  .ibpl-drawer-layout .chips-row-controls { display: contents; }
+  body .ibpl-drawer-layout .chips-row-controls > .poss-stepper.poss-stepper { order: 3; }
+  /* The steppers start their own line (a full-width break before them). */
+  .ibpl-drawer-layout .chips-row:has(.poss-stepper)::after { content: ""; order: 2; flex-basis: 100%; height: 0; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper-label { font-size: 0.68rem; }
+  .ibpl-drawer-layout .chips-row-controls .poss-stepper-box input { width: 40px; }
+  .ibpl-drawer-layout .view-tabs-list { margin: 4px 0; }
+  .ibpl-drawer-layout .chips-row-controls .shiny-download-link { height: 32px; padding: 0 10px; font-size: 0.75rem; }
+  .ibpl-drawer-layout .chips-row-controls > .poss-stepper + :not(.poss-stepper) { margin-left: auto; }
+  /* Lineups: group size beside the team; the player chips below. Player
+     Stats: teams beside players. */
+  body .ibpl-drawer-layout .lineup-bar { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 8px 10px; }
+  body .ibpl-drawer-layout .lineup-bar > :nth-child(n + 3) { grid-column: 1 / -1; }
+  body .ibpl-drawer-layout .ps-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ibpl-drawer-layout .lineup-bar .control-label { margin-bottom: 4px; font-size: 0.75rem; }
+}
+
+/* ---- Accessibility fixes (modern-web-guidance audit, 2026-11-16) --------
+   Fixed bars never cover the focused element (WCAG 2.4.11): the browser
+   scrolls focus clear of the sticky top bar (desktop) and of the bottom
+   tab bar plus its Filters tab (narrow screens). */
+html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0px) + 40px); }
+@media (min-width: 1024px) {
+  html { scroll-padding-top: 64px; scroll-padding-bottom: 0; }
+}
+/* Touch screens: the small round "?" and CSV buttons, Columns and the row
+   tags keep their look but get a 44 px hit area from a pseudo-element; the
+   row spaces them so the areas do not overlap. */
+@media (pointer: coarse) {
+  .table-top { column-gap: 16px; }
+  .table-top .table-tools, .table-tools div.dt-buttons { gap: 16px; }
+  .view-intro-btn,
+  .table-tools div.dt-buttons > .dt-button,
+  .table-tools .shiny-download-link,
+  .table-top .tl-tag { position: relative; }
+  .view-intro-btn::after,
+  .table-tools div.dt-buttons > .dt-button::after,
+  .table-tools .shiny-download-link::after { content: ""; position: absolute; inset: -8px; }
+  .table-top .tl-tag::after { content: ""; position: absolute; inset: -13px 0; }
+}
 /* Gameflow's tied line (user 2026-11-16: much more prominent, but not to be
    read as the score line). Heavier and darker than the faint gridlines, kept
    dashed and muted so the solid score line, drawn over it, stays the chart. */

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Page, type Route } from "@playwright/test";
-import { openNavMenu } from "./navMenu";
+import { chooseLeague, openNavMenu } from "./navMenu";
 import type { HomeFrames } from "../src/rules/home";
 import type { Row } from "../src/rules/gameLogs";
 import type { HomePayload } from "../src/server/homeRepo";
@@ -8,6 +8,7 @@ import ui from "../src/data/homeUi.json";
 import shiny from "../src/data/shinyUi.json";
 import { loadGameflow } from "../test/gameflowGoldens";
 import { loadLineup } from "../test/lineupGoldens";
+import { lineupDotted } from "../src/components/shiny/LineupNames";
 type Golden = {
   season: number;
   team: string;
@@ -137,8 +138,8 @@ for (const name of [
     if (g.expected.lineups)
       await expect(page.locator("#hub_lineups .hub-lineup-players")).toHaveText(
         [
-          String(g.expected.lineups.best.player_names_str),
-          String(g.expected.lineups.worst.player_names_str),
+          lineupDotted(g.expected.lineups.best.player_names_str),
+          lineupDotted(g.expected.lineups.worst.player_names_str),
         ],
       );
     else await expect(page.locator("#hub_lineups .hub-lineup")).toHaveCount(0);
@@ -198,22 +199,28 @@ for (const league of ["euroleague", "eurocup"])
     await expect(page.locator(".league-chooser")).toHaveCount(0);
     await expect(page.locator(".home-more-toggle")).toHaveCount(0);
     const next = league === "euroleague" ? "eurocup" : "euroleague";
-    // On a phone the league menu sits in the header bar, burger closed.
-    const current = page.getByRole("button", { name: /^League:/ });
-    await expect(current).toHaveText(
-      `League: ${league === "eurocup" ? "EuroCup" : "EuroLeague"}`,
-    );
-    await openNavMenu(page, /^League:/);
-    const toggle = page.locator("#league_menu");
-    await expect(
-      toggle.getByRole("link", { name: "Israeli League", exact: true }),
-    ).toHaveAttribute("href", "/il/home");
-    await toggle
-      .getByRole("link", {
-        name: next === "eurocup" ? "EuroCup" : "EuroLeague",
-        exact: true,
-      })
-      .click();
+    const here = league === "eurocup" ? "EuroCup" : "EuroLeague";
+    // Wide screens: a league switch; narrow ones: a menu in the top bar.
+    const sw = page.getByRole("group", { name: "League" });
+    if (await sw.isVisible()) {
+      await expect(
+        sw.getByRole("link", { name: here, exact: true }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(
+        sw.getByRole("link", { name: "Israeli", exact: true }),
+      ).toHaveAttribute("href", "/il/home");
+    } else {
+      await expect(page.getByRole("button", { name: /^League:/ })).toHaveText(
+        `League: ${here}`,
+      );
+      await openNavMenu(page, /^League:/);
+      await expect(
+        page
+          .locator("#league_menu")
+          .getByRole("link", { name: "Israeli League", exact: true }),
+      ).toHaveAttribute("href", "/il/home");
+    }
+    await chooseLeague(page, next === "eurocup" ? "EuroCup" : "EuroLeague");
     await expect(page).toHaveURL(new RegExp(`/${next}/home\\?season=2025`));
     expect(
       await page.evaluate(() => localStorage.getItem("ibpl_league_select")),
