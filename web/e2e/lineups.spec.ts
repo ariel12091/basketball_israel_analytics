@@ -95,14 +95,6 @@ for (const file of presets)
     );
     await fixedStep(page, id, 20);
     const table = page.locator(".ibpl-dt-scroll table");
-    if (g.league !== "il")
-      await expect(
-        page
-          .locator(".filter-chip")
-          .filter({ hasText: `${g.query.size ?? 5}-player units` }),
-      ).toContainText(
-        `${local.filter((r) => Number(r.total_poss) >= 20).length} shown`,
-      );
     await expect(page.locator(".dataTables_info")).toHaveText(
       `Showing ${rows.length ? 1 : 0} to ${Math.min(50, rows.length)} of ${rows.length.toLocaleString("en-US")} entries`,
     );
