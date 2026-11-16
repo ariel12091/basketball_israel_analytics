@@ -155,7 +155,7 @@ export default function LineupTable({
       rows={rows}
       defaultOrder={[]}
       pinTotals
-      nameColumns={["Players", "Team"]}
+      nameColumns={["Team", "Players"]}
       lengthMenu={ff ? undefined : [25, 50, 100, 200, 1000]}
       groups={
         ff
