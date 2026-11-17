@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loadPlayer, playerPresets } from "../test/playerGoldens";
 import { formatNumber } from "../src/components/shiny/DataTable";
-import { playerDisplay } from "../src/rules/playerStatsTable";
+import {
+  playerDisplay,
+  playerViewColumns,
+} from "../src/rules/playerStatsTable";
 /** Clears every filter from the filters panel (Filters button, toolbar end). */
 async function clearAll(page: Page) {
   const button = page.locator(".chips-drawer-toggle");
@@ -30,7 +33,8 @@ for (const file of playerPresets)
       }),
     );
     await page.goto(
-      `/${g.league}/player-stats?${new URLSearchParams(g.query)}`,
+      // All: every column, so the cell check covers the whole table.
+      `/${g.league}/player-stats?${new URLSearchParams({ ...g.query, cols: "all" })}`,
     );
     await expect(page.locator(".dataTables_info")).toHaveText(
       `Showing ${rows.length ? 1 : 0} to ${Math.min(50, rows.length)} of ${rows.length} entries`,
@@ -154,7 +158,8 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     // Mode and display narrowing are local: no repeat SQL request.
     const count = requests.length;
     await page
-      .getByRole("button", { name: "Per 30 Minutes", exact: true })
+      .getByRole("group", { name: "Mode" })
+      .getByRole("button", { name: "Per 30 min", exact: true })
       .click();
     await expect(page.locator('th[data-column="base_min_pg"]')).toBeVisible();
     expect(requests.length).toBe(count);
@@ -198,4 +203,71 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await clearAll(page);
     await expect(page.locator("#ts_min_gp")).toHaveValue("1");
     await expect(page.locator('th[data-column="base_min_pg"]')).toHaveCount(0);
+  });
+
+for (const league of ["il", "euroleague", "eurocup"] as const)
+  test(`Player Stats column views ${league}`, async ({ page }) => {
+    const { answer } = loadPlayer(`${league}_per_game.json`);
+    const requests: string[] = [];
+    await page.route("**/api/v1/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/version"))
+        return route.fulfill({
+          json: { leagues: [{ league, version: answer.meta.version }] },
+        });
+      requests.push(url.search);
+      return route.fulfill({ json: answer });
+    });
+    const season = league === "il" ? 2026 : 2025;
+    const ids = () =>
+      page
+        .locator(".ibpl-dt-scroll thead th")
+        .evaluateAll((ths) => ths.map((th) => th.getAttribute("data-column")));
+    const views = page.getByRole("group", { name: "View" });
+    await page.goto(`/${league}/player-stats?season=${season}`);
+    await expect(page.locator(".dataTables_info")).toContainText("entries");
+    // Main by default.
+    expect(await ids()).toEqual(playerViewColumns("Main", "Per Game", league));
+    await expect(
+      views.getByRole("button", { name: "Main", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    // Switching views is local: the URL changes, no new data request.
+    const count = requests.length;
+    await views.getByRole("button", { name: "Shooting", exact: true }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("cols"))
+      .toBe("shooting");
+    await expect
+      .poll(ids)
+      .toEqual(playerViewColumns("Shooting", "Per Game", league));
+    expect(requests.length).toBe(count);
+    // A column hidden in Main stays hidden in All; Shooting keeps its own.
+    await views.getByRole("button", { name: "Main", exact: true }).click();
+    await page.getByRole("button", { name: "Columns", exact: true }).click();
+    await page.getByRole("button", { name: /^AST:/ }).click();
+    await page.keyboard.press("Escape");
+    expect(await ids()).not.toContain("ast");
+    await views.getByRole("button", { name: "All", exact: true }).click();
+    await expect.poll(ids).toContain("oreb");
+    expect(await ids()).not.toContain("ast");
+    await views.getByRole("button", { name: "Shooting", exact: true }).click();
+    await expect
+      .poll(ids)
+      .toEqual(playerViewColumns("Shooting", "Per Game", league));
+    // An old link (mode only, no cols) opens Main in that mode.
+    await page.goto(
+      `/${league}/player-stats?season=${season}&view=Per%2030%20Minutes`,
+    );
+    await expect(page.locator(".dataTables_info")).toContainText("entries");
+    await expect(
+      page
+        .getByRole("group", { name: "Mode" })
+        .getByRole("button", { name: "Per 30 min", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect((await ids())[4]).toBe("base_min_pg");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
   });
