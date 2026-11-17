@@ -3,7 +3,10 @@ import { useSyncExternalStore } from "react";
 import type { Row, League } from "@/rules/gameLogs";
 import {
   PLAYER_LABELS,
+  PLAYER_SOFT_HEAT,
   playerPr,
+  playerViewColumns,
+  type PlayerColumnView,
   type PlayerMode,
 } from "@/rules/playerStatsTable";
 import DataTable, { formatNumber, heat, type Column } from "./DataTable";
@@ -38,10 +41,13 @@ export default function PlayerStatsTable({
   rows,
   league,
   mode,
+  columnView = "All",
 }: {
   rows: Row[];
   league: League;
   mode: PlayerMode;
+  /** Which column set shows; the full table when omitted. */
+  columnView?: PlayerColumnView;
 }) {
   const key =
     league === "il"
@@ -67,6 +73,7 @@ export default function PlayerStatsTable({
         return {
           node: text,
           text,
+          className: PLAYER_SOFT_HEAT.has(id) ? "ibpl-heat-soft" : undefined,
           bg:
             r.is_multi_team_total === true &&
             ["team_name", "Player"].includes(id)
@@ -77,14 +84,18 @@ export default function PlayerStatsTable({
         };
       },
     });
-  for (const [id, label] of Object.entries(PLAYER_LABELS)) {
-    if (id === "dfl" && league !== "il") continue;
-    add(id, label, !["gp", "minutes", "poss_on_floor"].includes(id));
-    if (id === "poss_on_floor" && mode === "Per 60 Possessions")
-      add("base_poss_pg", "Poss/G");
-    if (id === "minutes" && mode === "Per 30 Minutes")
-      add("base_min_pg", "Min/G");
-  }
+  const BASE_LABELS: Record<string, string> = {
+    base_poss_pg: "Poss/G",
+    base_min_pg: "Min/G",
+  };
+  for (const id of playerViewColumns("All", mode, league).slice(2))
+    add(
+      id,
+      PLAYER_LABELS[id] ?? BASE_LABELS[id],
+      !["gp", "minutes", "poss_on_floor", ...Object.keys(BASE_LABELS)].includes(
+        id,
+      ),
+    );
   for (const c of columns.slice(0, 2))
     c.render = (r) => ({
       node: String(r[c.id] ?? ""),
@@ -100,6 +111,10 @@ export default function PlayerStatsTable({
       .filter((c): c is Column => !!c),
     ...columns.filter((c) => !saved.includes(c.id)),
   ];
+  // The view picks which columns show; the stored order and hidden list are
+  // shared by every view (a column hidden in Main stays hidden in All).
+  const inView = new Set(playerViewColumns(columnView, mode, league)),
+    visible = ordered.filter((c) => inView.has(c.id));
   const move = (from: string, to: string) => {
     const ids = ordered.map((c) => c.id),
       a = ids.indexOf(from),
@@ -116,12 +131,12 @@ export default function PlayerStatsTable({
     <>
       <DataTable
         rows={rows}
-        columns={ordered.filter((c) => !hidden.includes(c.id))}
+        columns={visible.filter((c) => !hidden.includes(c.id))}
         defaultOrder={[]}
         onColumnMove={move}
         tools={
           <ColumnsMenu
-            columns={ordered}
+            columns={visible}
             hidden={hidden}
             locked={["team_name", "Player"]}
             onMove={move}

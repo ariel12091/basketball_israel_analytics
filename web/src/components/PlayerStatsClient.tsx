@@ -3,8 +3,12 @@ import { useMemo } from "react";
 import type { League } from "@/rules/gameLogs";
 import type { PlayerStatsPayload } from "@/server/playerStatsRepo";
 import {
+  PLAYER_COLUMN_VIEWS,
   PLAYER_MODES,
+  parsePlayerColumnView,
+  playerColumnViewParam,
   playerDisplay,
+  type PlayerColumnView,
   type PlayerMode,
 } from "@/rules/playerStatsTable";
 import {
@@ -19,6 +23,7 @@ import DateRangeInput from "./shiny/DateRangeInput";
 import ClutchFilters from "./shiny/ClutchFilters";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
+import PillSwitch from "./shiny/PillSwitch";
 import PossStepper from "./shiny/PossStepper";
 import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
 import { ToolsSlot } from "./shiny/toolsSlot";
@@ -42,6 +47,12 @@ import {
   OutputArea,
   list,
 } from "./shiny/TabKit";
+const MODE_LABELS: Record<PlayerMode, string> = {
+  Totals: "Totals",
+  "Per Game": "Per game",
+  "Per 60 Possessions": "Per 60 poss",
+  "Per 30 Minutes": "Per 30 min",
+};
 export default function PlayerStatsClient({
   league,
   initial,
@@ -135,6 +146,7 @@ export default function PlayerStatsClient({
       />,
     );
   const onMode = (view: string) => set({ view });
+  const columnView = parsePlayerColumnView(query.cols);
   const introBlocks = (ui.playerStats.blocks as Block[]).filter(
     (b) => !euro || b.kind !== "example",
   );
@@ -255,7 +267,27 @@ export default function PlayerStatsClient({
               placeholder="All players"
             />
           </div>
-          <ViewTabs views={[...PLAYER_MODES]} view={mode} onView={onMode} />
+          {/* Column views take the tabs; the mode is a pill switch beside
+              them (design 2026-11-17). */}
+          <div className="ps-views-row">
+            <ViewTabs
+              views={[...PLAYER_COLUMN_VIEWS]}
+              view={columnView}
+              onView={(v) =>
+                set({ cols: playerColumnViewParam(v as PlayerColumnView) })
+              }
+            />
+            <PillSwitch
+              label="Mode"
+              options={PLAYER_MODES.map((m) => ({
+                value: m,
+                label: MODE_LABELS[m],
+                title: m,
+              }))}
+              value={mode}
+              onChange={onMode}
+            />
+          </div>
           <ChipsRow
             p="ts"
             seasonChip={seasonChipLabel(league, query.season)}
@@ -343,6 +375,7 @@ export default function PlayerStatsClient({
                 rows={result.rows}
                 league={league}
                 mode={mode}
+                columnView={columnView}
               />
             ) : (
               <p role="status">Loading Player Stats…</p>

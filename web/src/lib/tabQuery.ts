@@ -177,13 +177,21 @@ export const TEAM_QUERY_DEFAULTS = {
 export const PLAYER_QUERY_DEFAULTS = {
   ...TEAM_QUERY_DEFAULTS,
   view: "Per Game",
+  cols: "main",
   players: "",
   min_gp: "1",
   show_ineligible: "false",
 };
 export function playerStatsPath(league: League, query: Query): string {
   const q = contextParams(query, league);
-  for (const k of ["view", "team", "stats", "own_starters", "opp_starters"])
+  for (const k of [
+    "view",
+    "cols",
+    "team",
+    "stats",
+    "own_starters",
+    "opp_starters",
+  ])
     q.delete(k);
   for (const k of [
     "clutch",

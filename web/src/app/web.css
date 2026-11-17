@@ -2251,3 +2251,21 @@ html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0
   fill: var(--ibpl-text);
   font-weight: 600;
 }
+/* Player Stats (design 2026-11-17): counting columns carry a softer heat
+   tint than the rates, so the efficiency columns stand out. Dark: half the
+   colour over the row. Light: a paler re-derivation than light.css's
+   .ibpl-heat, which this outranks. */
+.ibpl-heat.ibpl-heat-soft {
+  background-color: color-mix(in srgb, var(--ibpl-heat) 50%, transparent) !important;
+}
+html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
+  background-color: color-mix(in srgb, var(--ibpl-heat) 30%, #FFFFFF) !important;
+  background-color: oklch(from var(--ibpl-heat) calc(0.96 - c * 1.2) min(calc(c * 1.3), 0.11) h) !important;
+}
+/* Player Stats views row (design 2026-11-17): the column-view tabs take the
+   row, the mode pill switch sits at its right end and wraps under the tabs
+   when the row is too narrow (phones). */
+.ps-views-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; }
+.ps-views-row .view-tabs { flex: 1 1 280px; min-width: 0; }
+.ibpl-pill-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.ibpl-pill-switch .btn { border-radius: 20px; }
