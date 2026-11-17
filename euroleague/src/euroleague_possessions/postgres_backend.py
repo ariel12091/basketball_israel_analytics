@@ -399,6 +399,11 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         "default_clutch_player_totals_by_game",
         "player_stats_actions_by_game",
         "player_traditional_by_game",
+        # Migration 063 (2026-11-14): the Lineups table, rebuilt per season by
+        # refresh_sub_lineups_stats() in finish_load_run. Its name keeps the
+        # _mv suffix from when it was a materialized view; it is a table now,
+        # and was missing here, which refused every publication after 063.
+        "sub_lineups_stats_mv",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
