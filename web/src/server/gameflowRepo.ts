@@ -8,6 +8,7 @@ import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { ownerName, readPlayerNames } from "./playerNames";
+import { readTeamIdentity } from "./teamIdentity";
 export function parseGameflow(search: URLSearchParams) {
   const id = (key: string) => {
     const value = search.get(key) ?? "";
@@ -22,7 +23,7 @@ async function read(league: League, game: number, team: number) {
     const euro = league !== "il",
       meta = (
         await q<Row>(
-          `SELECT team_name,opp_team_name,game_year FROM ${euro ? "euroleague" : "basketball_test"}.final_schedule_mv WHERE game_id=$1::int4 AND team_id=$2::int4${euro ? " AND competition=$3::text" : ""} LIMIT 1`,
+          `SELECT team_name,opp_team_name,opp_team_id,game_year FROM ${euro ? "euroleague" : "basketball_test"}.final_schedule_mv WHERE game_id=$1::int4 AND team_id=$2::int4${euro ? " AND competition=$3::text" : ""} LIMIT 1`,
           euro ? [game, team, league === "eurocup" ? "U" : "E"] : [game, team],
         )
       )[0];
@@ -66,6 +67,10 @@ async function read(league: League, game: number, team: number) {
       oppTeam = String(meta.opp_team_name ?? "Opponent");
     // Runs and player ratings, once, for the page and the API/chat alike.
     const summary = gameflowSummary(model, { own: ownTeam, opp: oppTeam });
+    // Each club's colours and logo (catalogue rows): Gameflow draws each side
+    // in its own club's colours.
+    const oppId = Number(meta.opp_team_id),
+      identity = await readTeamIdentity(q, league, Number(meta.game_year), [team, oppId].filter(Number.isFinite));
     return {
       ...model,
       runs: summary.runs,
@@ -81,6 +86,8 @@ async function read(league: League, game: number, team: number) {
         season: String(meta.game_year),
         ownTeam,
         oppTeam,
+        ...(identity.has(team) ? { ownIdentity: identity.get(team) } : {}),
+        ...(identity.has(oppId) ? { oppIdentity: identity.get(oppId) } : {}),
       },
     };
   });

@@ -22,6 +22,7 @@ import {
   gameLineups,
   laneKey,
   lineupsRoom,
+  marginArea,
   marginPath,
   pmLabel,
   RATING_WINDOW,
@@ -56,6 +57,7 @@ import {
   type Run,
 } from "@/rules/gameflowRuns";
 import type { ExplainedRun } from "@/rules/gameflowSummary";
+import { paletteVars, type TeamIdentity } from "@/rules/teamColors";
 import {
   EMPTY_SELECTION,
   selectionReducer,
@@ -395,6 +397,8 @@ export function GameflowView({
     ) : (
       list
     );
+  const meta = data.meta as typeof data.meta & { ownIdentity?: TeamIdentity; oppIdentity?: TeamIdentity },
+    teamColours = useMemo(() => paletteVars(meta.ownIdentity, meta.oppIdentity), [meta.ownIdentity, meta.oppIdentity]);
   const ortgToggle = data.ratings && (
     <div
       className="ibpl-gameflow-rtg-toggle"
@@ -437,6 +441,8 @@ export function GameflowView({
   return (
     <div
       className={`ibpl-ribbon-game ibpl-react-gameflow${compact ? " gf-m" : ""}`}
+      // Each side in its own club's colours, both themes (web.css picks one).
+      style={teamColours as CSSProperties}
       onPointerMove={(e) => {
         if (pointerMoved.current || !(e.movementX || e.movementY)) return;
         pointerMoved.current = true;
@@ -515,10 +521,25 @@ export function GameflowView({
                   height={56}
                 />
               ))}
-              <path
-                className="ibpl-ribbon-overview-line"
-                d={marginPath(data.margin, data.bounds.at(-1)!, 320, 4, 44, 0)}
-              />
+              <defs>
+                <clipPath id="gf-m-strip-up">
+                  <rect x={0} y={0} width={320} height={26} />
+                </clipPath>
+                <clipPath id="gf-m-strip-down">
+                  <rect x={0} y={26} width={320} height={30} />
+                </clipPath>
+              </defs>
+              {(() => {
+                const line = marginPath(data.margin, data.bounds.at(-1)!, 320, 4, 44, 0),
+                  area = marginArea(line, 26);
+                return (
+                  <>
+                    <path className="gf-m-lead is-own" d={area} clipPath="url(#gf-m-strip-up)" />
+                    <path className="gf-m-lead is-opp" d={area} clipPath="url(#gf-m-strip-down)" />
+                    <path className="ibpl-ribbon-overview-line" d={line} />
+                  </>
+                );
+              })()}
               {/* Which way is which (user 2026-11-12): the team whose Gameflow
                   this is on top, the other below, in the lanes' colours. */}
               <text className="gf-m-side is-own" x={4} y={9}>
@@ -849,6 +870,22 @@ function PhonePanel({
     r.side === "own" ? data.meta.ownTeam : data.meta.oppTeam;
   const window = (r: ExplainedRun) =>
     `${periodClock(r.start, data.bounds)} – ${periodClock(r.end, data.bounds)}`; // a run starts and ends on scores
+  // The Ask button sits above the bar, never on its button: the bar's
+  // height goes to the page as --gf-m-bar-h.
+  const bar = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const root = document.documentElement.style,
+      measure = () => root.setProperty("--gf-m-bar-h", `${el.offsetHeight}px`);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      root.removeProperty("--gf-m-bar-h");
+    };
+  }, []);
   let title: string, sub: string, body: ReactNode;
   if (showRuns) {
     title = "Runs in this game";
@@ -939,8 +976,9 @@ function PhonePanel({
     body = <p className="ibpl-ribbon-inline-hint">{PHONE_HINT}</p>;
   }
   return (
-    <section className="gf-m-panel" aria-label="Selection">
+    <section className={`gf-m-panel${open ? " is-open" : ""}`} aria-label="Selection">
       <button
+        ref={bar}
         type="button"
         className="gf-m-panel-bar"
         aria-expanded={open}

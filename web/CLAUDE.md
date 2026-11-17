@@ -49,6 +49,14 @@ credits a free throw to the lineup that drew the foul too since migration 062
   collapsed panel's default. A player, stint or run replaces them. Every
   lineup row's Net/ORtg/DRtg is tinted against the game's own rating
   (`ratingTone()`, `gameRating()`; no league constant).
+- Club colours (every width, since 2026-11-17): each side in its own club's
+  colours from the catalogue rows (`season_teams` / `euroleague.teams`,
+  basket.co.il's colours where it has them), read by `server/teamIdentity.ts`
+  into `meta.ownIdentity` / `oppIdentity`. `rules/teamColors.ts` pairs them
+  (opponent on its second colour when the two clash, never a rival's colour;
+  2:1 on the chart so yellow stays yellow) and `paletteVars()` sets both
+  themes' `--gf-own-l/-d`, `--gf-opp-l/-d`; web.css picks the theme's. No
+  colours on a row: the chart keeps amber/grey.
 - Fixtures with events: `src/rules/__fixtures__/gameflow-{673,440,1147}.json`
   from `scripts/save_gameflow_fixture.R` (the real reader as app_readonly);
   e2e loads them with `loadFixture()`.

@@ -4,6 +4,7 @@ import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
   clock,
   laneKey,
+  marginArea,
   marginPath,
   marginScale,
   pmLabel,
@@ -284,7 +285,7 @@ export default function GameflowChart({
           </g>
         );
       })}
-      <text className="ibpl-ribbon-team" x={0} y={geometry.padTop + 10}>
+      <text className="ibpl-ribbon-team is-own" x={0} y={geometry.padTop + 10}>
         {data.meta.ownTeam}
       </text>
       {!compact && (
@@ -308,7 +309,7 @@ export default function GameflowChart({
         </>
       )}
       <text
-        className="ibpl-ribbon-team"
+        className="ibpl-ribbon-team is-opp"
         x={0}
         y={oppTop - geometry.header + 10}
       >
@@ -369,6 +370,17 @@ export default function GameflowChart({
         data-base-height={height}
       >
         <defs>
+          <clipPath id={`${id}-up`}>
+            <rect x={L.gutter} y={marginTop} width={Math.max(0, width - L.gutter)} height={marginY(0) - marginTop} />
+          </clipPath>
+          <clipPath id={`${id}-down`}>
+            <rect
+              x={L.gutter}
+              y={marginY(0)}
+              width={Math.max(0, width - L.gutter)}
+              height={marginTop + L.margin_height - marginY(0)}
+            />
+          </clipPath>
           <clipPath id={`${id}-focus`}>
             {clipped(highlight).map((w, i) => (
               <rect
@@ -430,6 +442,9 @@ export default function GameflowChart({
             />
           </g>
         ))}
+        {/* The lead, filled in the leading side's colour. */}
+        <path className="gf-m-lead is-own" d={marginArea(path, marginY(0))} clipPath={`url(#${id}-up)`} />
+        <path className="gf-m-lead is-opp" d={marginArea(path, marginY(0))} clipPath={`url(#${id}-down)`} />
         <path className="ibpl-ribbon-margin-base" d={path} />
         <path
           className="ibpl-ribbon-margin-focus"
