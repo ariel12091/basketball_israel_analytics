@@ -285,7 +285,7 @@ export default function GameflowChart({
           </g>
         );
       })}
-      <text className="ibpl-ribbon-team" x={0} y={geometry.padTop + 10}>
+      <text className="ibpl-ribbon-team is-own" x={0} y={geometry.padTop + 10}>
         {data.meta.ownTeam}
       </text>
       {!compact && (
@@ -309,7 +309,7 @@ export default function GameflowChart({
         </>
       )}
       <text
-        className="ibpl-ribbon-team"
+        className="ibpl-ribbon-team is-opp"
         x={0}
         y={oppTop - geometry.header + 10}
       >

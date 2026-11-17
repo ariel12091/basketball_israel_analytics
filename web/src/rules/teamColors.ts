@@ -87,6 +87,19 @@ function drawable(hex: string, theme: Theme): string {
   return out;
 }
 
+/** A team's name in its club colour: lightness moved (hue kept) until the
+ * text shows 4.5:1 on the chart. */
+function readable(hex: string, theme: Theme): string {
+  const bg = CHART_BG[theme],
+    lab = toLab(hex);
+  let out = hex;
+  for (let i = 0; i < 100 && contrast(out, bg) < 4.5; i++) {
+    lab[0] = Math.min(100, Math.max(0, lab[0] + (theme === "dark" ? 1 : -1)));
+    out = fromLab(lab);
+  }
+  return out;
+}
+
 /** The two sides' colours for one game, or null when either club has no
  * colours (the chart then keeps its own two). Never the same, or a near-same,
  * colour for both sides. */
@@ -123,6 +136,8 @@ export function paletteVars(
     out[`--gf-opp-${t}`] = p.opp;
     out[`--gf-own-text-${t}`] = p.ownText;
     out[`--gf-opp-text-${t}`] = p.oppText;
+    out[`--gf-own-label-${t}`] = readable(p.own, theme);
+    out[`--gf-opp-label-${t}`] = readable(p.opp, theme);
   }
   return out;
 }

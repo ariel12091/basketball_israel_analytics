@@ -87,10 +87,24 @@ test("every colour stays visible on the chart, and its numbers readable", () => 
 
 test("paletteVars: both themes' colours as CSS variables, none without a palette", () => {
   const v = paletteVars(MACCABI, HAPOEL_TA);
-  expect(Object.keys(v).sort()).toEqual(
-    ["--gf-opp-d", "--gf-opp-l", "--gf-opp-text-d", "--gf-opp-text-l", "--gf-own-d", "--gf-own-l", "--gf-own-text-d", "--gf-own-text-l"],
-  );
+  expect(Object.keys(v).sort()).toEqual([
+    "--gf-opp-d", "--gf-opp-l", "--gf-opp-label-d", "--gf-opp-label-l", "--gf-opp-text-d", "--gf-opp-text-l",
+    "--gf-own-d", "--gf-own-l", "--gf-own-label-d", "--gf-own-label-l", "--gf-own-text-d", "--gf-own-text-l",
+  ]);
   expect(v["--gf-own-l"]).toBe(gamePalette(MACCABI, HAPOEL_TA, "light")!.own);
   expect(v["--gf-opp-d"]).toBe(gamePalette(MACCABI, HAPOEL_TA, "dark")!.opp);
   expect(paletteVars(MACCABI, undefined)).toEqual({});
+});
+
+test("team names read in their club colour: 4.5:1 on the chart, same hue", () => {
+  for (const theme of THEMES)
+    for (const [a, b] of [[MACCABI, HAPOEL_TA], [EILAT, MACCABI], [PARTIZAN, VIRTUS]]) {
+      const v = paletteVars(a, b), t = theme === "light" ? "l" : "d";
+      for (const side of ["own", "opp"]) {
+        const label = v[`--gf-${side}-label-${t}`];
+        expect(contrast(label, CHART_BG[theme])).toBeGreaterThanOrEqual(4.5);
+        // Only lightness moves: still near its bar's colour.
+        expect(colourDistance(label, v[`--gf-${side}-${t}`])).toBeLessThan(60);
+      }
+    }
 });
