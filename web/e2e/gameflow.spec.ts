@@ -292,8 +292,8 @@ test("Gameflow card shows Net, ORtg and DRtg", async ({
   await expect(h2h).toContainText(`On the floor together${clock(shared.reduce((t, w) => t + w.end - w.start, 0))}`);
   await expect(h2h).not.toContainText("DRtg");
 });
-test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
-  test.skip(info.project.name === "phone", "hover tips are pointer-only");
+test("Gameflow bar hover reads in the status line, with Net after the +/-", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "hover is pointer-only");
   const { answer } = await routeFixture(page, 673);
   const dib = answer.bars.find((b) => b.player_label.includes("DIBARTOLOMEO"))!;
   const bar = page
@@ -306,12 +306,13 @@ test("Gameflow bar tooltip adds Net after the +/-", async ({ page }, info) => {
   const box = (await bar.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2 - 2, box.y + box.height / 2);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.getByRole("tooltip")).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
-  await expect(page.getByRole("tooltip")).not.toContainText("poss");
-  // At most two lineups in the tip (user 2026-11-11), each rated.
-  expect(await page.locator(".gf-hover-tip-row").count()).toBeLessThanOrEqual(2);
-  await expect(page.locator(".gf-hover-tip-row").first()).toContainText(/Net [+-]?[\d.–]+ · ORtg [\d.–]+ · DRtg [\d.–]+/);
-  await expectPoints(page.locator(".gf-hover-tip-row").first());
+  // In the status line above the chart, not a tip over the bars (user
+  // 2026-11-17); the lineups are a click away.
+  const line = page.locator(".ibpl-ribbon-pair-status .gf-hover-readout");
+  await expect(line).toContainText(/\+\/- [+-]?\d+ · Net [+-]?[\d.–]+ · /);
+  await expect(line).toContainText(/\d+ for, \d+ against/);
+  await expect(line).not.toContainText("poss");
+  await expect(page.locator(".gf-hover-tip")).toHaveCount(0);
 });
 test("EuroLeague Gameflow card shows ratings", async ({ page }, info) => {
   const { answer } = await routeFixture(page, 1147);

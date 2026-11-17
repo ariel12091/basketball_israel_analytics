@@ -20,7 +20,7 @@ test("Gameflow hover moves nothing; a clicked stint shows only that stint", asyn
   await page.goto(url);
   const chart = page.locator(CHART),
     details = page.locator(".gf-details"),
-    tip = page.locator(".gf-hover-tip");
+    tip = page.locator(".ibpl-ribbon-pair-status .gf-hover-readout");
   await expect(chart).toHaveCount(1);
   const full = (await chart.boundingBox())!.height,
     lane = chart.locator(".ibpl-ribbon-lane.is-own").nth(5),
@@ -30,7 +30,8 @@ test("Gameflow hover moves nothing; a clicked stint shows only that stint", asyn
     box = (await lane.locator("rect").first().boundingBox())!,
     x = box.x + box.width / 2,
     y = box.y + box.height / 2;
-  // Hover: a tooltip with the lineups, inside the window, and nothing moves.
+  // Hover: the stint reads in the status line above the chart (no floating
+  // tip over the bars), and nothing moves.
   await page.mouse.move(x - 3, y);
   await page.mouse.move(x, y);
   await expect(tip).toBeVisible();
@@ -40,10 +41,10 @@ test("Gameflow hover moves nothing; a clicked stint shows only that stint", asyn
   expect((await chart.boundingBox())!.height).toBeCloseTo(full, 0);
   const same = (await lane.locator("rect").first().boundingBox())!;
   expect(same.y).toBeCloseTo(box.y, 0);
+  await expect(page.locator(".gf-hover-tip")).toHaveCount(0);
   const t = (await tip.boundingBox())!;
-  expect(t.y).toBeGreaterThanOrEqual(0);
-  expect(t.y + t.height).toBeLessThanOrEqual(height);
-  // It takes no clicks and leaves with the pointer.
+  expect(t.y + t.height).toBeLessThanOrEqual((await chart.first().boundingBox())!.y);
+  // It leaves with the pointer.
   await page.mouse.move(2, 2);
   await expect(tip).toHaveCount(0);
   // Click, however long the pointer rested first: the aimed bar, every time.

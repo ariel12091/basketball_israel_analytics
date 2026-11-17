@@ -523,11 +523,15 @@ a.ibpl-gameflow-back { text-decoration: none; }
   .ibpl-react-gameflow .ibpl-ribbon-pair-controls button { min-height: 30px; padding: 3px 10px; flex-shrink: 0; font-size: .8rem; }
   .ibpl-react-gameflow .ibpl-ribbon-pair-status { flex: 1 1 0; min-width: 0; }
 }
-/* A hovered stint: floats clear of its bar and takes no clicks, so nothing moves
-   on the way to a click. */
+/* A run's tip: floats clear of its chip and takes no clicks. */
 .gf-hover-tip { position: fixed; z-index: 1050; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--ibpl-border); border-radius: 6px; background: var(--ibpl-bg-sunken); box-shadow: 0 4px 16px rgba(0,0,0,.5); color: var(--ibpl-text-body); font-family: var(--ibpl-font-mono); font-size: 0.6875rem; line-height: 1.35; pointer-events: none; }
-.gf-hover-tip-stats { margin-bottom: 6px; color: var(--ibpl-text-muted); }
-.gf-hover-tip-row { padding: 3px 0; border-top: 1px solid var(--ibpl-border); }
+/* The status line above the chart: always two lines tall, so a hovered stint's
+   readout (drawn over the prompt) never moves the chart (user 2026-11-17). */
+.ibpl-react-gameflow .ibpl-ribbon-pair-status { display: grid; line-height: 1.4; height: 2.8em; overflow: hidden; }
+.ibpl-react-gameflow .ibpl-ribbon-pair-status > span { grid-area: 1 / 1; min-width: 0; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.ibpl-react-gameflow .ibpl-ribbon-pair-status > .is-covered { opacity: 0; }
+.gf-hover-readout { color: var(--ibpl-text-body); font-variant-numeric: tabular-nums; }
 /* The lineups under a fitted chart: as tall as they need up to the room the chart
    can give (max-height, set inline), with the stint's numbers beside a list that
    scrolls inside it when it is longer than that. */
