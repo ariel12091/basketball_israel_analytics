@@ -5,6 +5,8 @@ data/raw/
 data/staging/
 data/exports/
 *.csv
+# The register of accepted defects is reviewed in git (RUNBOOK).
+!data_quality/accepted_defects.csv
 *.parquet
 *.jsonl
 

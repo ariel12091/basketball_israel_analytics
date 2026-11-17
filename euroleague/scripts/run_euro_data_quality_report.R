@@ -1398,29 +1398,59 @@ build_checks <- function(con, schema) {
 
     list(
       id = "N1_publication_blocked_games",
-      title = "Games whose latest load run is blocked from publication",
+      title = "Blocked games whose failed check is not in the register of accepted defects",
       severity = "error",
       purpose = paste(
-        "publication_status = 'blocked' means the schema's own fail-closed gates",
-        "rejected the game. Its facts are in the read layer regardless, because the",
-        "season aggregates do not filter on QA status."
+        "publication_status = 'blocked' means one of staging's four checks failed",
+        "(possession structure, box-score totals, running score, lineup structure).",
+        "The loader publishes the game regardless, so its facts are in every season",
+        "aggregate. One row per failed check of each blocked game that has no row in",
+        "euroleague/data_quality/accepted_defects.csv. Fix the game, or record why it",
+        "is accepted there (scripts/dq_accepted_defects.R). Gate 'unexplained' means",
+        "a blocked game fails none of the four known checks."
       ),
       required_tables = c("game_qa", "schedule"),
-      sql = sprintf(
-        "WITH latest AS (%s)
-         SELECT l.game_id, s.competition, s.season, s.gamecode, s.round_number, s.phase,
-                l.load_run_id, l.publication_status,
-                l.possession_structural_status, l.possession_review_status,
-                l.lineup_structure_valid, l.lineup_invalid_actor_rows,
-                l.boxscore_metrics_exact, l.score_progression_exact, l.score_progression_reconciled,
-                l.total_possessions, l.possession_difference, l.same_team_transitions,
-                l.unresolved_ft_rows, l.duplicate_endpoint_incidents, l.missing_parent_targets
-           FROM latest l
-           LEFT JOIN %s s ON s.game_id = l.game_id
-          WHERE l.publication_status = 'blocked'
-          ORDER BY 1",
-        latest_qa, sch
-      )
+      sql = NA_character_,
+      runner = function(con, schema, root) {
+        source(file.path(root, "scripts", "dq_accepted_defects.R"), local = TRUE)
+        accepted_defects_details(con, latest_qa, sch, root, "open")
+      }
+    ),
+
+    list(
+      id = "N1b_accepted_defects",
+      title = "Blocked games whose failed check is in the register of accepted defects",
+      severity = "warning",
+      purpose = paste(
+        "The blocked checks a person has looked at and accepted, each with its reason,",
+        "from euroleague/data_quality/accepted_defects.csv. Listed for the record;",
+        "never a finding (issue count is always 0)."
+      ),
+      required_tables = c("game_qa", "schedule"),
+      sql = NA_character_,
+      problem_count_col = "open",
+      runner = function(con, schema, root) {
+        source(file.path(root, "scripts", "dq_accepted_defects.R"), local = TRUE)
+        accepted_defects_details(con, latest_qa, sch, root, "accepted")
+      }
+    ),
+
+    list(
+      id = "N1c_stale_accepted_defects",
+      title = "Register rows of accepted defects that no longer match a blocked game",
+      severity = "warning",
+      purpose = paste(
+        "A row in euroleague/data_quality/accepted_defects.csv whose game is no longer",
+        "blocked by that check (fixed, reloaded, or a wrong key). Delete the row, so",
+        "the register says only what is true and cannot accept a later defect by",
+        "accident."
+      ),
+      required_tables = c("game_qa", "schedule"),
+      sql = NA_character_,
+      runner = function(con, schema, root) {
+        source(file.path(root, "scripts", "dq_accepted_defects.R"), local = TRUE)
+        accepted_defects_details(con, latest_qa, sch, root, "stale")
+      }
     ),
 
     list(
