@@ -69,6 +69,31 @@ credits a free throw to the lineup that drew the foul too since migration 062
   any bypass value) hit Vercel's 429 when both widths run back to back: run
   phone and desktop separately, about 90 s apart.
 
+## Player Stats views (since 2026-11-17, PR #84, live)
+
+The user reads this table for league leaders and team rotations; looking
+up one player belongs on a future player profile page, not here (user).
+Spec: `docs/superpowers/specs/2026-11-17-player-stats-views-design.md`.
+- `ViewTabs` pick the column set: Main (default), Shooting, All. URL key
+  `cols` (`main|shooting|all`), kept out of the API path, so a switch never
+  refetches. The mode (Totals / Per game / Per 60 poss / Per 30 min) is a
+  `PillSwitch` beside the tabs; its URL key stays `view` with the old
+  values, so old links still work.
+- Column sets live in `playerViewColumns()` (`rules/playerStatsTable.ts`).
+  The table draws every view in All's order filtered to that view, so a
+  view's list must equal All's order restricted to it (unit test pins it;
+  Poss/G broke this once). Add a column to Main only with the user.
+- Columns menu: one stored order and hidden list for all views, each view
+  listing only its own columns. Clear all keeps `cols` (user), resets mode.
+- Counting columns carry `ibpl-heat-soft` (lighter tint, web.css); rates
+  keep full heat.
+- Stat filters apply after the mode conversion: in Per 60, FGA >= 15 means
+  per 60 possessions, and they filter on columns the view hides.
+- Known minors left: the Columns button can read "· 18/18" when the hidden
+  columns are outside the view; Columns Reset clears every view.
+- `e2e/player-stats.spec.ts` is not run in CI (only the live smoke is); its
+  column-view test was written while C: was full and has not been run yet.
+
 ## Current resume point (2026-10-22)
 
 Gameflow is implemented for all competitions: Game Logs links and direct SSR
