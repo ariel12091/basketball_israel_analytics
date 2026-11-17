@@ -2,7 +2,9 @@
 #
 #   1. season_teams: insert any (game_year, team_id) that full_rosters holds
 #      and the table lacks, under the roster's name. Insert-only, so a display
-#      name corrected by hand in the table is never overwritten.
+#      name corrected by hand in the table is never overwritten. Then fill
+#      logo_url where it is NULL (scripts/team_identity.R); club colours are
+#      entered by hand.
 #   2. Regenerate app/R/catalogues_generated.R from season_teams and
 #      game_types. The app sources that file for STATIC_TEAM_ROSTERS,
 #      GAME_TYPE_LABELS and GAME_TYPE_CHOICES_UI, because its UI is built
@@ -38,6 +40,7 @@ suppressPackageStartupMessages({
   library(DBI)
   library(RPostgres)
 })
+source("scripts/team_identity.R")
 
 con <- dbConnect(
   Postgres(),
@@ -78,6 +81,15 @@ if (nrow(missing_teams)) {
   }
 } else {
   message("season_teams: covers every team in full_rosters.")
+}
+
+no_logo <- dbGetQuery(con, sprintf(
+  'SELECT COUNT(*) AS n FROM "%s"."season_teams" WHERE logo_url IS NULL', schema))$n
+if (no_logo > 0 && confirm_apply) {
+  message("season_teams: filled ", fill_season_team_logos(con), " logo(s).")
+} else if (no_logo > 0) {
+  message("season_teams: ", no_logo,
+          " team(s) without a logo; set CONFIRM_CATALOGUE_SYNC=1 to fill them.")
 }
 
 # ---- 2. Generated copy for the app ------------------------------------------

@@ -32,6 +32,7 @@ suppressPackageStartupMessages({
 })
 
 if (!exists("parse_basket_profile_photo")) source("scripts/basket_rosters.R")
+source("scripts/team_identity.R")
 
 readRenviron("etl/.Renviron")
 con <- dbConnect(RPostgres::Postgres(),
@@ -41,22 +42,7 @@ con <- dbConnect(RPostgres::Postgres(),
 invisible(dbExecute(con, "SET default_transaction_read_only = on"))
 
 # --- logos --------------------------------------------------------------------
-logos <- dbGetQuery(con, "
-  WITH sides AS (
-    SELECT game_year, game_date, id, team1 AS team_id_schedule, team_icon_1 AS icon
-    FROM basketball_test.schedule
-    UNION ALL
-    SELECT game_year, game_date, id, team2, team_icon_2
-    FROM basketball_test.schedule
-  )
-  SELECT DISTINCT ON (s.game_year, d.team_id_rosters)
-         s.game_year, d.team_id_rosters AS team_id, s.icon
-  FROM sides s
-  JOIN basketball_test.schedule_team_dict d
-    ON d.game_year = s.game_year AND d.team_id_schedule = s.team_id_schedule
-  WHERE NULLIF(btrim(s.icon), '') IS NOT NULL
-  ORDER BY s.game_year, d.team_id_rosters, s.game_date DESC NULLS LAST, s.id DESC")
-logos$url <- basket_absolute_url(logos$icon)
+logos <- season_team_logos(con)
 
 teams <- dbGetQuery(con, "SELECT game_year, team_id FROM basketball_test.season_teams")
 missing_logo <- merge(teams, logos, all.x = TRUE)
