@@ -22,6 +22,7 @@ import {
   gameLineups,
   laneKey,
   lineupsRoom,
+  marginArea,
   marginPath,
   pmLabel,
   RATING_WINDOW,
@@ -520,10 +521,25 @@ export function GameflowView({
                   height={56}
                 />
               ))}
-              <path
-                className="ibpl-ribbon-overview-line"
-                d={marginPath(data.margin, data.bounds.at(-1)!, 320, 4, 44, 0)}
-              />
+              <defs>
+                <clipPath id="gf-m-strip-up">
+                  <rect x={0} y={0} width={320} height={26} />
+                </clipPath>
+                <clipPath id="gf-m-strip-down">
+                  <rect x={0} y={26} width={320} height={30} />
+                </clipPath>
+              </defs>
+              {(() => {
+                const line = marginPath(data.margin, data.bounds.at(-1)!, 320, 4, 44, 0),
+                  area = marginArea(line, 26);
+                return (
+                  <>
+                    <path className="gf-m-lead is-own" d={area} clipPath="url(#gf-m-strip-up)" />
+                    <path className="gf-m-lead is-opp" d={area} clipPath="url(#gf-m-strip-down)" />
+                    <path className="ibpl-ribbon-overview-line" d={line} />
+                  </>
+                );
+              })()}
               {/* Which way is which (user 2026-11-12): the team whose Gameflow
                   this is on top, the other below, in the lanes' colours. */}
               <text className="gf-m-side is-own" x={4} y={9}>

@@ -772,3 +772,11 @@ export function marginPath(
     )
     .join(" ");
 }
+
+/** The area between a margin line (marginPath) and the zero axis at zeroY:
+ * the line, down to zero, back to where it started. Filled in the leading
+ * team's colour, clipped above and below zero (user 2026-11-17). */
+export function marginArea(line: string, zeroY: number): string {
+  const start = line.match(/^M (-?[\d.]+)/);
+  return start ? `${line} V ${zeroY.toFixed(2)} H ${start[1]} Z` : "";
+}
