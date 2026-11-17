@@ -16,6 +16,7 @@ import {
 } from "../src/rules/gameflow";
 import { stintRatings, windowsRatings } from "../src/rules/gameflowRatings";
 import { rRound } from "../src/rules/round";
+import { gamePalette } from "../src/rules/teamColors";
 type Page = import("@playwright/test").Page;
 const isPhone = (info: { project: { name: string } }) =>
   info.project.name === "phone";
@@ -673,4 +674,56 @@ test("Gameflow errors can be retried", async ({ page }) => {
   failed = false;
   await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
+});
+
+test("Each team is drawn in its club colour", async ({ page }) => {
+  // Fixture 673 is Maccabi Tel-Aviv (own) v Hapoel Tel-Aviv, with the
+  // colours stored on their catalogue rows.
+  const f = loadFixture(673);
+  const ownIdentity = { logo: null, primary: "#FFD700", secondary: "#003087" },
+    oppIdentity = { logo: null, primary: "#E8001C", secondary: "#FFFFFF" };
+  await page.route("**/api/v1/**", (r) =>
+    r.fulfill({
+      json: new URL(r.request().url()).pathname.endsWith("/version")
+        ? { leagues: [{ league: f.league, version: "golden" }] }
+        : { ...f.answer, meta: { ...f.answer.meta, ownIdentity, oppIdentity } },
+    }),
+  );
+  await page.goto(f.url);
+  const theme = (await page.locator("html").getAttribute("data-theme")) === "light" ? "light" : "dark";
+  const want = gamePalette(ownIdentity, oppIdentity, theme)!;
+  const fill = (side: string) =>
+    page.locator(`svg.ibpl-ribbon .ibpl-ribbon-lane.is-${side} rect`).first().evaluate((r) => getComputedStyle(r).fill);
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+  expect(await fill("own")).toBe(rgb(want.own));
+  expect(await fill("opp")).toBe(rgb(want.opp));
+  expect(want.own).not.toBe(want.opp);
+});
+test("A game without club colours keeps the chart's own two", async ({ page }) => {
+  await routeFixture(page, 673);
+  const accent = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("--ibpl-accent").trim());
+  const fill = await page
+    .locator("svg.ibpl-ribbon .ibpl-ribbon-lane.is-own rect")
+    .first()
+    .evaluate((r) => getComputedStyle(r).fill);
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+  expect(fill).toBe(rgb(accent));
+});
+
+test("Phone: the Ask button does not cover the panel's button", async ({ page }, info) => {
+  test.skip(!isPhone(info), "phone layout only");
+  await routeFixture(page, 673);
+  const fab = page.locator(".ibpl-ask-fab");
+  await expect(panelBar(page)).toBeVisible();
+  test.skip((await fab.count()) === 0, "Ask is off on this server (ASK_ENABLED)");
+  // Measured once the panel is on the page (the button renders before it).
+  await expect
+    .poll(async () => {
+      const [f, b] = [(await fab.boundingBox())!, (await panelBar(page).boundingBox())!];
+      return f.y + f.height <= b.y;
+    })
+    .toBe(true);
+  // Hidden while the panel is open.
+  await setPanel(page, true);
+  await expect(fab).toBeHidden();
 });

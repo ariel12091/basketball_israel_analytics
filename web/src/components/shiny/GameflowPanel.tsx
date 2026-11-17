@@ -56,6 +56,7 @@ import {
   type Run,
 } from "@/rules/gameflowRuns";
 import type { ExplainedRun } from "@/rules/gameflowSummary";
+import { paletteVars, type TeamIdentity } from "@/rules/teamColors";
 import {
   EMPTY_SELECTION,
   selectionReducer,
@@ -395,6 +396,8 @@ export function GameflowView({
     ) : (
       list
     );
+  const meta = data.meta as typeof data.meta & { ownIdentity?: TeamIdentity; oppIdentity?: TeamIdentity },
+    teamColours = useMemo(() => paletteVars(meta.ownIdentity, meta.oppIdentity), [meta.ownIdentity, meta.oppIdentity]);
   const ortgToggle = data.ratings && (
     <div
       className="ibpl-gameflow-rtg-toggle"
@@ -437,6 +440,8 @@ export function GameflowView({
   return (
     <div
       className={`ibpl-ribbon-game ibpl-react-gameflow${compact ? " gf-m" : ""}`}
+      // Each side in its own club's colours, both themes (web.css picks one).
+      style={teamColours as CSSProperties}
       onPointerMove={(e) => {
         if (pointerMoved.current || !(e.movementX || e.movementY)) return;
         pointerMoved.current = true;
@@ -849,6 +854,22 @@ function PhonePanel({
     r.side === "own" ? data.meta.ownTeam : data.meta.oppTeam;
   const window = (r: ExplainedRun) =>
     `${periodClock(r.start, data.bounds)} – ${periodClock(r.end, data.bounds)}`; // a run starts and ends on scores
+  // The Ask button sits above the bar, never on its button: the bar's
+  // height goes to the page as --gf-m-bar-h.
+  const bar = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const root = document.documentElement.style,
+      measure = () => root.setProperty("--gf-m-bar-h", `${el.offsetHeight}px`);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      root.removeProperty("--gf-m-bar-h");
+    };
+  }, []);
   let title: string, sub: string, body: ReactNode;
   if (showRuns) {
     title = "Runs in this game";
@@ -939,8 +960,9 @@ function PhonePanel({
     body = <p className="ibpl-ribbon-inline-hint">{PHONE_HINT}</p>;
   }
   return (
-    <section className="gf-m-panel" aria-label="Selection">
+    <section className={`gf-m-panel${open ? " is-open" : ""}`} aria-label="Selection">
       <button
+        ref={bar}
         type="button"
         className="gf-m-panel-bar"
         aria-expanded={open}
