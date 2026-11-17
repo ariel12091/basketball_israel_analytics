@@ -123,8 +123,8 @@ const baseColumn = (mode: PlayerMode) =>
       ? "base_min_pg"
       : null;
 /** Ordered column ids of one view. All is the full table: every label in
- * PLAYER_LABELS order (DFL Israeli only), Poss/G after Poss On Floor and
- * Min/G after Min in the rate modes. */
+ * PLAYER_LABELS order (DFL Israeli only), with the rate mode's Poss/G or
+ * Min/G right after Min. */
 export function playerViewColumns(
   view: PlayerColumnView,
   mode: PlayerMode,
@@ -144,8 +144,9 @@ export function playerViewColumns(
   for (const id of Object.keys(PLAYER_LABELS)) {
     if (id === "dfl" && league !== "il") continue;
     ids.push(id);
-    if (id === "poss_on_floor" && base === "base_poss_pg") ids.push(base);
-    if (id === "minutes" && base === "base_min_pg") ids.push(base);
+    // After Min in every view: the table draws Main and Shooting in All's
+    // order, so the base column must sit where those views put it.
+    if (id === "minutes" && base) ids.push(base);
   }
   return ids;
 }

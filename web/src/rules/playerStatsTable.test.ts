@@ -9,6 +9,7 @@ import {
   playerColumnViewParam,
   PLAYER_COLUMN_VIEWS,
   PLAYER_SOFT_HEAT,
+  PLAYER_MODES,
   type Identity,
 } from "./playerStatsTable";
 import type { Row } from "./gameLogs";
@@ -239,6 +240,16 @@ describe("player column views", () => {
     expect(playerViewColumns("All", "Per 60 Possessions", "il")).toContain(
       "base_poss_pg",
     );
+  });
+  it("each view keeps All's order (the table draws views from it)", () => {
+    for (const mode of PLAYER_MODES)
+      for (const view of ["Main", "Shooting"] as const) {
+        const ids = playerViewColumns(view, mode, "il");
+        expect(
+          playerViewColumns("All", mode, "il").filter((id) => ids.includes(id)),
+          `${view} ${mode}`,
+        ).toEqual(ids);
+      }
   });
   it("parses cols, falling back to Main", () => {
     expect(parsePlayerColumnView("foo")).toBe("Main");
