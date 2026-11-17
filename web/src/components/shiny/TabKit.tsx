@@ -28,11 +28,12 @@ import {
   parseStats,
   queryDefaults,
   seasonBounds,
+  defaultDates,
   type Patch,
   type Query,
   type StatFilter,
 } from "@/lib/tabQuery";
-export { contextParams, parseStats, seasonBounds };
+export { contextParams, parseStats, seasonBounds, defaultDates };
 export type { Patch, Query, StatFilter };
 import type { League } from "@/rules/gameLogs";
 import type { PagePath } from "@/lib/pageTitle";
@@ -962,7 +963,7 @@ export function contextChips({
 }): ReactNode[] {
   const euro = league !== "il";
   const name = (id: string) => teams.find((t) => t.value === id)?.label ?? id;
-  const b = seasonBounds(league, query.season);
+  const b = defaultDates(league, query.season);
   const start = query.start || b.start,
     end = query.end || b.end;
   const chips: ReactNode[] = [];

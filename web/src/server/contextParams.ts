@@ -31,21 +31,9 @@ export type Context = {
   };
 };
 
-const BOUNDS = ui.seasonDateBounds as Record<
-  string,
-  { start: string; end: string }
->;
-/** season_date_bounds_for_year() / euro_season_date_bounds(). */
-export function seasonBounds(league: League, season: number) {
-  if (league === "il")
-    return (
-      BOUNDS[String(season)] ?? {
-        start: `${season - 1}-09-01`,
-        end: `${season}-07-01`,
-      }
-    );
-  return { start: `${season}-09-01`, end: `${season + 1}-07-01` };
-}
+// One definition, shared with the pages (lib/tabQuery.ts).
+import { seasonBounds, defaultDates } from "../lib/tabQuery";
+export { seasonBounds, defaultDates };
 
 function int(
   v: string | null,
@@ -85,7 +73,7 @@ export function parseContext(s: URLSearchParams, league: League): Context {
   const season =
     int(s.get("season"), "season", 2000, 2100) ??
     Number(league === "il" ? ui.defaultGameYear : ui.euroDefaultSeason);
-  const b = seasonBounds(league, season);
+  const b = defaultDates(league, season);
   const start = date(s.get("start"), "start") ?? b.start;
   const end = date(s.get("end"), "end") ?? b.end;
   if (start > end) throw new ParamError("start", "Invalid date range");

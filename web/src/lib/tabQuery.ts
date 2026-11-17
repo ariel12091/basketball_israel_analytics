@@ -58,12 +58,27 @@ const BOUNDS = ui.seasonDateBounds as Record<
   string,
   { start: string; end: string }
 >;
-/** season_date_bounds_for_year() / euro_season_date_bounds(). */
-export function seasonBounds(league: League, season: string) {
+/** The full season: every game of it (season_date_bounds_for_year() /
+ * euro_season_date_bounds()). The date picker's range, and the window the
+ * season tables answer (R10); not what a page shows by default. */
+export function seasonBounds(league: League, season: string | number) {
   const y = Number(season);
   if (league === "il")
-    return BOUNDS[season] ?? { start: `${y - 1}-09-01`, end: `${y}-07-01` };
+    return (
+      BOUNDS[String(season)] ?? { start: `${y - 1}-09-01`, end: `${y}-07-01` }
+    );
   return { start: `${y}-09-01`, end: `${y + 1}-07-01` };
+}
+
+/** The dates a page and the API use when none are given. Israeli league:
+ * from 1 October, so the pre-season Winner Cup (September) stays out while
+ * Winner Cup games from October on stay in (user 2026-11-17); the whole
+ * season is still a date choice away. EuroLeague: its full season. */
+export function defaultDates(league: League, season: string | number) {
+  const b = seasonBounds(league, season);
+  if (league !== "il") return b;
+  const start = `${Number(season) - 1}-10-01`;
+  return { start: start > b.start ? start : b.start, end: b.end };
 }
 
 /** The API parameters for the game context: complete starter bounds only,

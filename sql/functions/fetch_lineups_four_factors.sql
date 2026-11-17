@@ -130,7 +130,10 @@ BEGIN
                         OR p_num_starters_def_min IS NOT NULL OR p_num_starters_def_max IS NOT NULL);
 
   IF p_game_year IS NOT NULL THEN
-    v_season_start := make_date(p_game_year - 1, 10, 1);
+    v_season_start := COALESCE(
+      (SELECT min(sch.game_date)::date FROM basketball_test.schedule sch
+        WHERE sch.game_year = p_game_year),
+      make_date(p_game_year - 1, 9, 1));
     v_season_end   := make_date(p_game_year, 7, 1);
   ELSE
     v_season_start := NULL;

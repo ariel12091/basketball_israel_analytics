@@ -31,6 +31,7 @@ import {
   OutputArea,
   parseStats,
   seasonBounds,
+  defaultDates,
   seasonChipLabel,
   StarterRows,
   StatFilters,
@@ -149,7 +150,8 @@ export default function OnOffClient({
   const updated = useVersion(league, version, retry);
   const teams = teamChoices(league, query.season, data?.meta.teams);
   const teamIds = list(query.teams).map(Number);
-  const bounds = seasonBounds(league, query.season);
+  const bounds = seasonBounds(league, query.season),
+    dflt = defaultDates(league, query.season);
   const allStats = parseStats(query.stats);
 
   // The table's rows: ranked population -> teams and possession bars ->
@@ -314,8 +316,8 @@ export default function OnOffClient({
   const seasons = euro
     ? (data?.meta.seasons ?? ui.euroStaticSeasons)
     : ui.ilSeasons;
-  const start = query.start || bounds.start,
-    end = query.end || bounds.end;
+  const start = query.start || dflt.start,
+    end = query.end || dflt.end;
 
   const statFilters = (
     <StatFilters
@@ -360,8 +362,8 @@ export default function OnOffClient({
             min={bounds.start}
             max={bounds.end}
             onChange={(s, e) => {
-              const full = s === bounds.start && e === bounds.end;
-              set({ start: full ? null : s, end: full ? null : e });
+              const same = s === dflt.start && e === dflt.end;
+              set({ start: same ? null : s, end: same ? null : e });
             }}
           />
         </>

@@ -1,6 +1,6 @@
 "use client";
 import type { Query, Patch } from "@/lib/tabQuery";
-import { seasonBounds } from "@/lib/tabQuery";
+import { defaultDates, seasonBounds } from "@/lib/tabQuery";
 import {
   editCompareSide,
   fullSideLabel,
@@ -107,8 +107,8 @@ export function CompareDates({
         <DateRangeInput
           id={`cmp_${prefix}dates`}
           label="Date range"
-          start={q[key("start")] || bounds.start}
-          end={q[key("end")] || bounds.end}
+          start={q[key("start")] || defaultDates("il", q.season).start}
+          end={q[key("end")] || defaultDates("il", q.season).end}
           min={bounds.start}
           max={bounds.end}
           onChange={(a, b) =>
