@@ -107,42 +107,101 @@ def apply_package_lineups(
 KNOWN_SUBSTITUTION_CORRECTIONS: dict[
     tuple[str, int, int, int], tuple[str, str, Optional[str]]
 ] = {
-    # Empty on purpose. EuroCup 2026-27 game 18 (Trento's Q1 5:06 block of
-    # eight substitutions, rows 63-70) was investigated and held back by the
-    # user on 2026-11-10: ignoring it removes every duplicate, but about five
-    # minutes still disagree with the box score. See D37. Since 0.2.4 the
-    # phantom_pair rule repairs that block by itself (D38); the game is still
-    # not reloaded.
+    # EuroCup 2026-27 game 18, Tortona (TRT) vs Le Mans (LEM), Q1 5:06
+    # timeout. The feed logs sixteen substitutions there; fourteen are copies
+    # of substitutions made later in the quarter (4:16, 3:55, 2:53, 2:44,
+    # 1:25). The phantom_pair rule (D38) drops five of those pairs; these two
+    # it cannot, because the outgoing player has no action before his real
+    # exit to prove it. Ajinca blocks at 4:35 and assists at 4:16 and leaves
+    # at 3:55; Hubb leaves at 2:44. Decided by the user 2026-11-17 (no video).
+    ("U", 2026, 18, 56): ("IN", "PENDA, SWANN", None),
+    ("U", 2026, 18, 61): ("OUT", "AJINCA, MELVIN", None),
+    ("U", 2026, 18, 68): ("IN", "PECCHIA, ANDREA", None),
+    ("U", 2026, 18, 70): ("OUT", "HUBB, PRENTISS", None),
+    # EuroCup 2026-27 game 10, Napoli (NAP) vs Bourg (BOU), Q1 4:03: the feed
+    # brings in Brown for Dowtin, but Brown never left the floor. Spissu acts
+    # from 3:02 and goes OUT for Dowtin at 1:00, so he is the one who came in.
+    ("U", 2026, 10, 74): ("IN", "BROWN, MARKEL", "SPISSU, MARCO"),
+    # EuroCup 2026-27 game 100, Rostock (RTK) vs Ljubljana (LJU), Q2: the
+    # pair at 7:57 (IN Gainey, OUT Radovic) did not happen -- Radovic goes OUT
+    # again at 7:39 and Gainey comes IN again at 4:51 -- while a substitution
+    # the feed never logs did: Hurt acts until row 193 and next comes IN at
+    # 2:32; Johnson acts from row 210 (6:51) and goes OUT at 3:58. That pair
+    # stands in for the missing one: renamed here, applied with the 7:39
+    # block in KNOWN_SUBSTITUTION_MOVES.
+    ("U", 2026, 100, 177): ("IN", "GAINEY, JORDAN", "JOHNSON, JAYCE"),
+    ("U", 2026, 100, 178): ("OUT", "RADOVIC, ROK", "HURT, MATTHEW"),
 }
+
+# Provider substitution rows logged at the wrong time, keyed like
+# KNOWN_SUBSTITUTION_CORRECTIONS. Value: (play type, player, after): the row is
+# applied to the lineups as if it came right after row ``after`` (a
+# TRUE_NUMBEROFPLAY of the same game). The stored event keeps its place and
+# clock, and shows the lineup of the row before it.
+KNOWN_SUBSTITUTION_MOVES: dict[tuple[str, int, int, int], tuple[str, str, int]] = {
+    # EuroCup 2026-27 game 18: the feed takes Wood off for Dufeal at Q1 5:06,
+    # but Wood then acts nine times up to Q1 2:44 (five points) and Dufeal not
+    # until Q2 8:57. With no video, the user chose the first Le Mans
+    # substitution stoppage after Wood's last action: the Q1 1:25 timeout
+    # (after row 140). 2026-11-17.
+    ("U", 2026, 18, 58): ("IN", "DUFEAL, LUCAS", 140),
+    ("U", 2026, 18, 59): ("OUT", "WOOD, MOSES", 140),
+    # EuroCup 2026-27 game 100: Johnson for Hurt (see the corrections above),
+    # at the 7:39 timeout, the only Ljubljana substitution stoppage between
+    # Hurt's last action and Johnson's first. 2026-11-17.
+    ("U", 2026, 100, 177): ("IN", "GAINEY, JORDAN", 200),
+    ("U", 2026, 100, 178): ("OUT", "RADOVIC, ROK", 200),
+}
+
+
+def _find_rows(game: pd.DataFrame, competition: str, table: dict, label: str) -> dict[int, Any]:
+    """Row position -> the entry's last field, for this game's entries in a
+    correction table whose rows still look as the entry expects."""
+
+    season = int(game["Season"].iloc[0])
+    gamecode = int(game["Gamecode"].iloc[0])
+    found: dict[int, Any] = {}
+    if "TRUE_NUMBEROFPLAY" not in game.columns:
+        return found
+    orders = game["TRUE_NUMBEROFPLAY"].tolist()
+    for (comp, corr_season, corr_game, order), (play_type, player, value) in table.items():
+        if (comp, corr_season, corr_game) != (competition, season, gamecode):
+            continue
+        positions = [p for p, o in enumerate(orders) if o == order]
+        row = game.iloc[positions[0]] if len(positions) == 1 else None
+        if row is None or row["PLAYTYPE"] != play_type or row["PLAYER"] != player:
+            logger.warning(
+                "substitution %s %s/%s/%s #%s no longer matches the feed; skipped",
+                label, comp, corr_season, corr_game, order,
+            )
+            continue
+        found[positions[0]] = value
+    return found
 
 
 def _substitution_corrections(
     game: pd.DataFrame, competition: str
 ) -> dict[int, Optional[str]]:
-    """Row index -> corrected substitution player (None = ignore the row)."""
+    """Row position -> corrected substitution player (None = ignore the row)."""
 
-    season = int(game["Season"].iloc[0])
-    gamecode = int(game["Gamecode"].iloc[0])
-    corrections: dict[int, Optional[str]] = {}
-    if "TRUE_NUMBEROFPLAY" not in game.columns:
-        return corrections
-    for (comp, corr_season, corr_game, order), (
-        play_type,
-        player,
-        replacement,
-    ) in KNOWN_SUBSTITUTION_CORRECTIONS.items():
-        if (comp, corr_season, corr_game) != (competition, season, gamecode):
+    return _find_rows(game, competition, KNOWN_SUBSTITUTION_CORRECTIONS, "correction")
+
+
+def _substitution_moves(game: pd.DataFrame, competition: str) -> dict[int, int]:
+    """Row position -> the position it is applied after."""
+
+    moves = _find_rows(game, competition, KNOWN_SUBSTITUTION_MOVES, "move")
+    if not moves:
+        return {}
+    orders = game["TRUE_NUMBEROFPLAY"].tolist()
+    result: dict[int, int] = {}
+    for position, after in moves.items():
+        targets = [p for p, o in enumerate(orders) if o == after]
+        if len(targets) != 1 or targets[0] in moves:
+            logger.warning("substitution move target #%s not found; skipped", after)
             continue
-        rows = game.index[game["TRUE_NUMBEROFPLAY"].eq(order)]
-        row = game.loc[rows[0]] if len(rows) == 1 else None
-        if row is None or row["PLAYTYPE"] != play_type or row["PLAYER"] != player:
-            logger.warning(
-                "substitution correction %s/%s/%s #%s no longer matches the feed; skipped",
-                comp, corr_season, corr_game, order,
-            )
-            continue
-        corrections[int(rows[0])] = replacement
-    return corrections
+        result[position] = targets[0]
+    return result
 
 
 # Two feed errors are repaired by rule, from the rest of the game, not by a
@@ -263,14 +322,27 @@ def build_pbp_lineups(
         for team in (home_team, away_team)
     }
     corrections = _substitution_corrections(result, competition)
-    play_types = result["PLAYTYPE"].tolist()
-    team_codes = result["CODETEAM"].tolist()
-    players = [
-        corrections.get(index, player) if index in corrections else player
-        for index, player in zip(result.index, result["PLAYER"].tolist())
+    moves = _substitution_moves(result, competition)
+    # Rows are applied in ``sequence`` order: the feed's, except that a moved
+    # row comes right after its target. Everything below works on ranks in
+    # that sequence; lineups are mapped back to the rows at the end.
+    sequence: list[int] = []
+    for position in range(len(result)):
+        if position in moves:
+            continue
+        sequence.append(position)
+        sequence.extend(sorted(p for p, after in moves.items() if after == position))
+    feed_types = result["PLAYTYPE"].tolist()
+    feed_teams = result["CODETEAM"].tolist()
+    feed_players = [
+        corrections.get(position, player) if position in corrections else player
+        for position, player in enumerate(result["PLAYER"].tolist())
     ]
-    ignored = {position for position, index in enumerate(result.index)
-               if index in corrections and corrections[index] is None}
+    play_types = [feed_types[p] for p in sequence]
+    team_codes = [feed_teams[p] for p in sequence]
+    players = [feed_players[p] for p in sequence]
+    ignored = {rank for rank, position in enumerate(sequence)
+               if position in corrections and corrections[position] is None}
 
     timeline = _PlayerTimeline(play_types, team_codes, players, ignored)
     processed: set[int] = set()
@@ -313,7 +385,7 @@ def build_pbp_lineups(
                         rule, value = repair
                         logger.info(
                             "inferred substitution repair (%s) %s rows %s/%s: %s",
-                            rule, team, in_pos, out_pos, value,
+                            rule, team, sequence[in_pos], sequence[out_pos], value,
                         )
                         if rule == "phantom_pair":
                             player_out = player_in  # the pair did not happen
@@ -325,17 +397,29 @@ def build_pbp_lineups(
         lineup_home.append(list(five[home_team]))
         lineup_away.append(list(five[away_team]))
 
+    # Back to feed order. A moved row shows the lineup of the row before it.
+    by_row_home: list[list[str]] = [[]] * len(sequence)
+    by_row_away: list[list[str]] = [[]] * len(sequence)
+    for rank, position in enumerate(sequence):
+        by_row_home[position] = lineup_home[rank]
+        by_row_away[position] = lineup_away[rank]
+    for position in sorted(moves):
+        if position > 0:
+            by_row_home[position] = list(by_row_home[position - 1])
+            by_row_away[position] = list(by_row_away[position - 1])
+    lineup_home, lineup_away = by_row_home, by_row_away
+
     result["Lineup_A"] = lineup_home
     result["Lineup_B"] = lineup_away
     if "IsHomeTeam" not in result.columns:
         result["IsHomeTeam"] = [
             True if team == home_team else False if team == away_team else None
-            for team in team_codes
+            for team in feed_teams
         ]
     result["validate_on_court_player"] = [
         player is None or play_type == "OUT" or player in (home + away)
         for player, play_type, home, away in zip(
-            result["PLAYER"].tolist(), play_types, lineup_home, lineup_away
+            result["PLAYER"].tolist(), feed_types, lineup_home, lineup_away
         )
     ]
     if "TRUE_NUMBEROFPLAY" in result.columns:

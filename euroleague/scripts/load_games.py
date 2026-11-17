@@ -50,7 +50,9 @@ REPO = Path(__file__).resolve().parent.parent
 # changed lineups in five of the 801 stored games on 2026-11-11: U 2025 32 and
 # U 2026 71 were re-derived on 0.2.4; U 2026 10, 18 and 100 are blocked (a
 # duplicated lineup player), so they are in no derived table. Every other game
-# builds identical lineups.
+# builds identical lineups. U 2026 10, 18 and 100 were corrected per row on
+# 2026-11-17 (KNOWN_SUBSTITUTION_CORRECTIONS / _MOVES, D37); the corrections are
+# keyed by game, so no other game changes and the version stays 0.2.4.
 EQUIVALENT_PARSER_VERSIONS: dict[tuple[str, int], dict[str, str]] = {
     ("E", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},
     ("U", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},

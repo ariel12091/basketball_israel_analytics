@@ -404,6 +404,9 @@ class LineupUnitWiringTest(unittest.TestCase):
         "lineup_totals_by_game", "sub_lineups",
         "default_clutch_lineup_totals_by_game",
         "player_traditional_by_game",
+        # Migration 063 made the Lineups relation a table; the guard refused
+        # every publication until it was listed (found 2026-11-17).
+        "sub_lineups_stats_mv",
     }
 
     def test_schema_allowlist_accepts_the_unit_relations(self) -> None:
