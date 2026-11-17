@@ -241,6 +241,14 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       .poll(ids)
       .toEqual(playerViewColumns("Shooting", "Per Game", league));
     expect(requests.length).toBe(count);
+    // Clear all keeps the column view (user 2026-11-17).
+    await page.locator(".chips-drawer-toggle").click();
+    await page
+      .getByRole("dialog", { name: "Filters" })
+      .getByRole("checkbox", { name: "Clutch", exact: true })
+      .check();
+    await clearAll(page);
+    expect(new URL(page.url()).searchParams.get("cols")).toBe("shooting");
     // A column hidden in Main stays hidden in All; Shooting keeps its own.
     await views.getByRole("button", { name: "Main", exact: true }).click();
     await page.getByRole("button", { name: "Columns", exact: true }).click();

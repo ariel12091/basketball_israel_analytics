@@ -113,6 +113,9 @@ export default function PlayerStatsClient({
         ]),
       ),
       season: query.season,
+      // Clearing filters keeps the column view (user 2026-11-17); the mode
+      // still resets, as Shiny's Reset Filters did.
+      cols: query.cols,
     });
   const chips = contextChips({
     p: "ts",
