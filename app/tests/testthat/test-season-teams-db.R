@@ -63,3 +63,21 @@ test_that("season_teams covers every team in full_rosters", {
   expect_equal(nrow(uncovered), 0,
                info = paste(capture.output(print(uncovered)), collapse = "\n"))
 })
+
+test_that("every current-season team has a logo and two colours", {
+  # Logos come from the schedule feed (scripts/team_identity.R, run by the
+  # nightly catalogue sync); colours are entered by hand, so a new club
+  # fails here until someone gives it its colours.
+  for (season in db_test_seasons()) {
+    rows <- DBI::dbGetQuery(con, "
+      SELECT team_id, team_name, logo_url, primary_color, secondary_color
+      FROM basketball_test.season_teams
+      WHERE game_year = $1", params = list(as.integer(season)))
+    expect_gt(nrow(rows), 0)
+    no_logo <- rows$team_name[is.na(rows$logo_url) | !startsWith(rows$logo_url, "https://")]
+    expect_equal(no_logo, character(0), label = paste(season, "teams without a logo"))
+    hex <- "^#[0-9A-F]{6}$"
+    uncoloured <- rows$team_name[!grepl(hex, rows$primary_color) | !grepl(hex, rows$secondary_color)]
+    expect_equal(uncoloured, character(0), label = paste(season, "teams without two colours"))
+  }
+})

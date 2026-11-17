@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
   library(DBI)
   library(RPostgres)
 })
+source("scripts/team_identity.R")
 
 ddl_port <- suppressWarnings(as.integer(Sys.getenv("PG_DDL_PORT", "5432")))
 if (!is.finite(ddl_port) || ddl_port <= 0L) {
@@ -64,6 +65,19 @@ catalogues <- list(
       GROUP BY fr.game_year, fr.team_id
       ORDER BY fr.game_year, fr.team_id"
   )
+)
+
+# Logos and club colours on season_teams (2026-11-17): the migration adds the
+# columns; the logos are filled below, the colours by hand.
+catalogues$season_team_identity <- list(
+  migration = "2026-11-17_season_teams_identity.sql",
+  show = "
+    SELECT game_year, COUNT(*) AS teams, COUNT(logo_url) AS logos,
+           COUNT(primary_color) AS coloured
+    FROM basketball_test.season_teams
+    GROUP BY game_year
+    ORDER BY game_year",
+  uncovered = "SELECT 1 WHERE false"
 )
 
 migration_paths <- file.path(
@@ -120,6 +134,9 @@ for (name in names(catalogues)) {
     stop(name, " does not cover the live data above; transaction will roll back")
   }
 }
+
+message("season_teams: filled ", fill_season_team_logos(con), " logo(s)")
+print(dbGetQuery(con, catalogues$season_team_identity$show))
 
 if (confirm_apply) {
   dbCommit(con)
