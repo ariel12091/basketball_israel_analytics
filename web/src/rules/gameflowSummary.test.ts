@@ -35,8 +35,9 @@ describe("gameflowSummary", () => {
     expect(new Set(s.players.map((p) => p.player_key)).size).toBe(s.players.length);
   });
   it("has no runs and no ratings without the data for them", () => {
-    const m440 = ribbonModel(fixture440 as unknown as RawRibbon, 2, "il", 440);
-    expect(gameflowSummary(m440, names).runs).toEqual([]);
+    // No score, no runs (game 440 has runs since an 11-2 counts, 2026-11-17).
+    const noScore = ribbonModel({ ...(fixture440 as unknown as RawRibbon), margin: [] }, 2, "il", 440);
+    expect(gameflowSummary(noScore, names).runs).toEqual([]);
     const bare = ribbonModel({ ...(fixture673 as unknown as RawRibbon), events: null }, 2, "il", 673);
     expect(gameflowSummary(bare, names).players.every((p) => p.net == null)).toBe(true);
   });

@@ -13,8 +13,9 @@ import type {
 import { rRound } from "./round";
 import { aggregateSegments, points, type Segment } from "./gameflow";
 
-/** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP. */
-export const RUN_MIN_NET = 10;
+/** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP
+ *  (8, not 10, since 2026-11-17: the user counts an 11-2 as a run). */
+export const RUN_MIN_NET = 8;
 export const RUN_MAX_OPP = 6;
 export const RUN_MAX = 3;
 /** A lineup change "lines up" with a run when it came at most this many
@@ -29,7 +30,8 @@ export type Run = {
   pts: number;
   oppPts: number;
   net: number;
-  /** The largest swing of the game: the first run taken. */
+  /** The winner's run during which it went ahead for good, else the
+   *  winner's biggest run; never the losing team's (user 2026-11-17). */
   defining: boolean;
   /** Own team's margin just before the run and at its end. */
   fromMargin: number;
@@ -104,13 +106,32 @@ export function detectRuns(steps: Score[]): Run[] {
     }
   }
   cand.sort((x, y) => y.net - x.net || x.end - x.start - (y.end - y.start) || x.start - y.start);
-  const taken: Run[] = [];
+  const best = definingRun(steps, cand),
+    taken: Run[] = best ? [{ ...best, defining: true }] : [];
   for (const c of cand) {
-    if (taken.some((t) => c.start <= t.end && c.end >= t.start)) continue;
-    taken.push({ ...c, defining: taken.length === 0 });
     if (taken.length === RUN_MAX) break;
+    if (taken.some((t) => c.start <= t.end && c.end >= t.start)) continue;
+    taken.push({ ...c, defining: false });
   }
   return taken.sort((x, y) => x.start - y.start);
+}
+
+/** The defining stretch: the winner's run during which it went ahead for good
+ *  (the first score after it last trailed or was level), else the winner's
+ *  biggest run. None in a game with no winner yet. `cand` is in rank order. */
+function definingRun(steps: Score[], cand: Omit<Run, "defining">[]) {
+  const scored = steps.filter((s) => s.own != null),
+    final = Number(scored.at(-1)?.margin ?? 0);
+  if (!final) return null;
+  const winner: Side = final > 0 ? "own" : "opp",
+    ahead = (m: number) => (winner === "own" ? m > 0 : m < 0);
+  let last = -1;
+  scored.forEach((s, i) => {
+    if (!ahead(Number(s.margin))) last = i;
+  });
+  const goAhead = scored[last + 1]?.elapsed;
+  const own = cand.filter((c) => c.side === winner);
+  return own.find((c) => goAhead != null && c.start <= goAhead && goAhead <= c.end) ?? own[0] ?? null;
 }
 
 export type RunLineup = {

@@ -647,7 +647,17 @@ test("Phone: every quarter shows its whole chart", async ({ page }, info) => {
   }
 });
 test("Gameflow draws no run in a game without one", async ({ page }) => {
-  await routeFixture(page, 440);
+  // Every real fixture has runs since an 11-2 counts (2026-11-17): the
+  // answer is given none.
+  const f = loadFixture(440);
+  await page.route("**/api/v1/**", (r) =>
+    r.fulfill({
+      json: new URL(r.request().url()).pathname.endsWith("/version")
+        ? { leagues: [{ league: f.league, version: "golden" }] }
+        : { ...f.answer, runs: [] },
+    }),
+  );
+  await page.goto(f.url);
   await expect(page.locator("svg.ibpl-ribbon").first()).toBeVisible();
   await expect(page.locator(".gf-run-chip")).toHaveCount(0);
   await expect(page.locator(".gf-run-band")).toHaveCount(0);

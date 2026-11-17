@@ -79,7 +79,7 @@ const opening = (() => {
 })();
 
 describe("detectRuns", () => {
-  it("finds game 673's three runs, the defining one first by net", () => {
+  it("finds game 673's three runs; the winner's go-ahead run is defining", () => {
     const runs = detectRuns(model673.steps);
     expect(runs).toHaveLength(3);
     const defining = runs.find((r) => r.defining)!;
@@ -103,18 +103,44 @@ describe("detectRuns", () => {
     expect(d.toMargin - d.fromMargin).toBe(32);
   });
 
-  it("finds none in game 440", () => {
-    expect(detectRuns(model440.steps)).toEqual([]);
+  it("game 440 (no run of 10): the winner's 9-0 is defining", () => {
+    // Hapoel Tel-Aviv won by 18 with no 10-point run.
+    const defining = detectRuns(model440.steps).filter((r) => r.defining);
+    expect(defining).toEqual([expect.objectContaining({ side: "opp", pts: 9, oppPts: 0 })]);
   });
 
-  it("needs a net of 10 with the other team at 6 or fewer", () => {
-    expect(detectRuns(steps([[10, 4, 0], [20, 0, 6], [30, 6, 0], [40, 6, 0]]))).toHaveLength(1);
-    expect(detectRuns(steps([[10, 3, 0], [20, 3, 0], [30, 3, 0]]))).toEqual([]);
+  it("needs a net of 8 with the other team at 6 or fewer (an 11-2 is a run)", () => {
+    expect(detectRuns(steps([[10, 4, 0], [20, 4, 0]]))).toHaveLength(1);
+    expect(detectRuns(steps([[10, 5, 0], [20, 0, 2], [30, 6, 0]]))[0]).toMatchObject({ pts: 11, oppPts: 2 });
+    expect(detectRuns(steps([[10, 3, 0], [20, 4, 0]]))).toEqual([]);
     expect(
       detectRuns(steps([[10, 8, 0], [20, 0, 7], [30, 8, 0], [40, 7, 0]])).some(
         (r) => r.oppPts === 7,
       ),
     ).toBe(false);
+  });
+
+  it("never makes the loser's run defining, even when it is the biggest", () => {
+    // Own 12-0, then the other team 15-0 to lead by 3, then own 10-2 to win
+    // by 5: own went ahead for good during its 10-2.
+    const runs = detectRuns(
+      steps([[10, 4, 0], [20, 4, 0], [30, 4, 0], [40, 0, 5], [50, 0, 5], [60, 0, 5], [70, 4, 0], [80, 0, 2], [90, 3, 0], [100, 3, 0]]),
+    );
+    const defining = runs.filter((r) => r.defining);
+    expect(defining).toHaveLength(1);
+    expect(defining[0]).toMatchObject({ side: "own", pts: 10, oppPts: 2, start: 70, end: 100 });
+    expect(runs.find((r) => r.side === "opp")).toMatchObject({ pts: 15, defining: false });
+  });
+
+  it("without a go-ahead run, the winner's biggest run is defining", () => {
+    // Own 10-0, the other team 12-0 to lead by 2, then own ties and goes
+    // ahead for good with two lone baskets (no run); own wins by 2.
+    const runs = detectRuns(
+      steps([[10, 5, 0], [20, 5, 0], [30, 0, 6], [40, 0, 6], [50, 2, 0], [60, 2, 0]]),
+    );
+    expect(runs.filter((r) => r.defining)).toEqual([
+      expect.objectContaining({ side: "own", start: 10, end: 20, pts: 10 }),
+    ]);
   });
 
   it("keeps the shorter window when nets tie", () => {
