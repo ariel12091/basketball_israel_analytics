@@ -169,6 +169,64 @@ class SubstitutionCorrectionTest(unittest.TestCase):
         self.assertIn("A6", enriched.iloc[-1]["Lineup_A"])
 
 
+class SubstitutionMoveTest(unittest.TestCase):
+    """KNOWN_SUBSTITUTION_MOVES: a pair logged too early is applied later."""
+
+    def _build(self, moves):
+        from unittest import mock
+
+        from euroleague_possessions import package_lineups
+
+        events = _rows([
+            ("OUT", "A1", "08:00"), ("IN", "A6", "08:00"),  # rows 1-2, logged early
+            ("2FGM", "A1", "07:00"),                         # row 3: A1 still plays
+            ("TOUT", None, "06:00"),                         # row 4: the real stoppage
+            ("2FGM", "A6", "05:00"),                         # row 5
+        ])
+        with mock.patch.dict(package_lineups.KNOWN_SUBSTITUTION_MOVES, moves, clear=True):
+            return apply_package_lineups(events, _boxscore())
+
+    def test_a_moved_pair_takes_effect_after_its_target(self) -> None:
+        enriched = self._build({
+            ("E", 2025, 3, 1): ("OUT", "A1", 4),
+            ("E", 2025, 3, 2): ("IN", "A6", 4),
+        })
+        self.assertIn("A1", enriched.iloc[3]["Lineup_A"])
+        self.assertTrue(enriched.iloc[3]["validate_on_court_player"])
+        self.assertEqual(sorted(enriched.iloc[5]["Lineup_A"]), ["A2", "A3", "A4", "A5", "A6"])
+        # The moved rows keep their place and show the lineup before them.
+        self.assertEqual(enriched.iloc[1]["Lineup_A"], enriched.iloc[0]["Lineup_A"])
+        self.assertEqual(enriched.iloc[2]["Lineup_A"], enriched.iloc[0]["Lineup_A"])
+        self.assertEqual(enriched["MARKERTIME"].tolist()[1:3], ["08:00", "08:00"])
+
+    def test_a_renamed_pair_can_also_move(self) -> None:
+        # Game 100's shape: a spurious pair stands in for a missing one.
+        from unittest import mock
+
+        from euroleague_possessions import package_lineups
+
+        with mock.patch.dict(
+            package_lineups.KNOWN_SUBSTITUTION_CORRECTIONS,
+            {("E", 2025, 3, 1): ("OUT", "A1", "A2"), ("E", 2025, 3, 2): ("IN", "A6", "A6")},
+            clear=True,
+        ):
+            enriched = self._build({
+                ("E", 2025, 3, 1): ("OUT", "A1", 4),
+                ("E", 2025, 3, 2): ("IN", "A6", 4),
+            })
+        self.assertEqual(sorted(enriched.iloc[5]["Lineup_A"]), ["A1", "A3", "A4", "A5", "A6"])
+        self.assertTrue(enriched.iloc[3]["validate_on_court_player"])
+
+    def test_without_the_move_the_feed_order_holds(self) -> None:
+        enriched = self._build({})
+        self.assertFalse(enriched.iloc[3]["validate_on_court_player"])
+
+    def test_a_move_that_no_longer_matches_is_skipped(self) -> None:
+        with self.assertLogs("euroleague_possessions.package_lineups", level="WARNING"):
+            enriched = self._build({("E", 2025, 3, 1): ("OUT", "SOMEONE", 4)})
+        self.assertFalse(enriched.iloc[3]["validate_on_court_player"])
+
+
 def _bench_boxscore() -> pd.DataFrame:
     bench = pd.DataFrame({"Home": [1], "Team": ["AAA"], "Player": ["A7"], "IsStarter": [0]})
     return pd.concat([_boxscore(), bench], ignore_index=True)
