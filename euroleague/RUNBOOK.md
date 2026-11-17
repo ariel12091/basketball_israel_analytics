@@ -376,6 +376,29 @@ four-factor facts before and after a real validation pass. It then rolls the
 transaction back and proves the original rows were restored. Run it after any
 publication-path or actions-consumer change.
 
+## Blocked games and the register of accepted defects
+
+Staging marks a game `publication_status = 'blocked'` when one of four checks
+fails: possession structure (`possession_structure`), box-score totals
+(`boxscore_metrics`), the running score (`score_progression`) or lineup
+structure (`lineup_structure`). **The loader publishes a blocked game anyway**:
+the status is a label, and the game's facts are in every season aggregate.
+
+`data_quality/accepted_defects.csv` records the ones a person has looked at and
+accepted, one row per game and failed check: `competition, season, gamecode,
+gate, accepted_on, accepted_by, reason, reference`. The data quality report
+reads it (`scripts/dq_accepted_defects.R`):
+
+- `N1_publication_blocked_games` (error): a blocked check with no register row.
+  Fix the game, or add a row that says why it stays.
+- `N1b_accepted_defects`: the covered ones, with their reasons. Never a finding.
+- `N1c_stale_accepted_defects` (warning): a register row whose game no longer
+  fails that check, for instance after a fix and reload. Delete the row.
+
+Accept a defect only when its numbers are understood: say what is wrong, how
+big it is, and why it is not fixed. A malformed row (unknown gate, blank reason,
+duplicate) makes the check error rather than skip the row.
+
 ## When something goes wrong
 
 **A load run is left `partial`.** At least one game failed and rolled back. The
