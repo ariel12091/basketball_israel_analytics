@@ -30,6 +30,7 @@ import {
   useVersion,
   teamChoices,
   seasonBounds,
+  defaultDates,
   GameFiltersAccordion,
   type DrawerSection,
   ChipsRow,
@@ -150,8 +151,8 @@ export default function PlayerStatsClient({
           <DateRangeInput
             id="ts_dates"
             label="Date range"
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
+            start={query.start || defaultDates(league, query.season).start}
+            end={query.end || defaultDates(league, query.season).end}
             min={bounds.start}
             max={bounds.end}
             onChange={(start, end) => set({ start, end })}

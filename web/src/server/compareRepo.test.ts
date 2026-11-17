@@ -7,6 +7,7 @@ import {
   readCompareFacts,
 } from "./compareRepo";
 import data from "../data/compareUi.json";
+import { seasonBounds } from "./contextParams";
 import type { Query } from "./db";
 
 const cases = JSON.parse(
@@ -20,12 +21,18 @@ const cases = JSON.parse(
   }
 >;
 const normalized = (sql: string) => sql.replace(/\s/g, "").toLowerCase();
+// Shiny's default dates are the whole season; the web's default window starts
+// on 1 October (defaultDates). The goldens record Shiny's calls, so give each
+// golden query the dates Shiny used.
+const shinyQuery = (query: Record<string, string>) => {
+  const b = seasonBounds("il", Number(query.season));
+  return new URLSearchParams({ start: b.start, end: b.end, ...query });
+};
 for (const [name, g] of Object.entries(cases)) {
   const presetOnly =
-    g.variant !== null &&
-    parseCompare(new URLSearchParams(g.query)).kind === "ratings";
+    g.variant !== null && parseCompare(shinyQuery(g.query)).kind === "ratings";
   it(`Compare R ${presetOnly ? "preset classification" : "SQL signature"} ${name}`, async () => {
-    const p = parseCompare(new URLSearchParams(g.query));
+    const p = parseCompare(shinyQuery(g.query));
     if (p.kind === "ratings") {
       expect(presetVariant(p)).toBe(g.variant);
       if (g.variant !== null) return;
@@ -42,7 +49,7 @@ for (const [name, g] of Object.entries(cases)) {
   });
   if (presetOnly)
     it(`Compare preset reader executes ${name}`, async () => {
-      const p = parseCompare(new URLSearchParams(g.query));
+      const p = parseCompare(shinyQuery(g.query));
       const calls: { sql: string; params: unknown[] }[] = [];
       const rows = [{ team_id: 2, net_rtg: 7 }];
       const q: Query = async <R>(sql: string, params: unknown[]) => {
@@ -66,9 +73,7 @@ for (const [name, g] of Object.entries(cases)) {
 }
 
 it("Compare missing preset rolls back before executing the dynamic reader", async () => {
-  const p = parseCompare(
-    new URLSearchParams({ season: "2026", kind: "ratings" }),
-  );
+  const p = parseCompare(shinyQuery({ season: "2026", kind: "ratings" }));
   const calls: { sql: string; params: unknown[] }[] = [];
   const rows = [{ team_id: 2 }];
   const q: Query = async <R>(sql: string, params: unknown[]) => {

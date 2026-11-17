@@ -25,6 +25,7 @@ import {
   OutputArea,
   parseStats,
   seasonBounds,
+  defaultDates,
   seasonChipLabel,
   StarterRows,
   StatFilters,
@@ -156,8 +157,8 @@ export default function TeamRatingsClient({
           <DateRangeInput
             id={`${p}_dates`}
             label={euro ? "Game Date Range" : "Date range"}
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
+            start={query.start || defaultDates(league, query.season).start}
+            end={query.end || defaultDates(league, query.season).end}
             min={bounds.start}
             max={bounds.end}
             onChange={(start, end) => set({ start, end })}

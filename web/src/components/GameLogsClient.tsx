@@ -21,6 +21,7 @@ import {
   OutputArea,
   parseStats,
   seasonBounds,
+  defaultDates,
   seasonChipLabel,
   StarterRows,
   StatFilters,
@@ -79,7 +80,8 @@ export default function GameLogsClient({
   const { query, set } = useTabQuery(league);
   const view = query.view === "four_factors" ? "four_factors" : "summary";
   const stats = euro ? [] : parseStats(query.stats);
-  const bounds = seasonBounds(league, query.season);
+  const bounds = seasonBounds(league, query.season),
+    dflt = defaultDates(league, query.season);
   const url = gameLogsPath(league, query);
   const { data, loading, error, draw, retry, version } = useTabData<Payload>(
     url,
@@ -140,8 +142,8 @@ export default function GameLogsClient({
       onChange={(v) => set({ [teamKey]: v.join(",") })}
     />
   );
-  const start = query.start || bounds.start,
-    end = query.end || bounds.end;
+  const start = query.start || dflt.start,
+    end = query.end || dflt.end;
   const dates = (
     <DateRangeInput
       id={`${p}_dates`}
@@ -151,8 +153,8 @@ export default function GameLogsClient({
       min={bounds.start}
       max={bounds.end}
       onChange={(s, e) => {
-        const full = s === bounds.start && e === bounds.end;
-        set({ start: full ? null : s, end: full ? null : e });
+        const same = s === dflt.start && e === dflt.end;
+        set({ start: same ? null : s, end: same ? null : e });
       }}
     />
   );

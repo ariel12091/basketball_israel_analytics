@@ -1,6 +1,6 @@
 // Tab 7 collect_side_params / apply_compare_preset / PRESET_MIRROR_BLOCKS.
 import type { Query, Patch } from "./tabQuery";
-import { seasonBounds } from "./tabQuery";
+import { defaultDates } from "./tabQuery";
 import { addDays, parsePlainDate } from "./plainDate";
 import data from "../data/compareUi.json";
 import type { Row } from "../rules/gameLogs";
@@ -162,7 +162,7 @@ export function applyPreset(q: Query, preset: string): Patch {
     Object.assign(out, {
       start: null,
       end: null,
-      split_date: q.split_date || seasonBounds("il", q.season).end,
+      split_date: q.split_date || defaultDates("il", q.season).end,
     });
   if (preset === "gn_split") Object.assign(out, { min_gn: null, max_gn: null });
   // Last N and a game-number range exclude each other (setup_gn_last_n_sync).
@@ -202,7 +202,7 @@ export function compareSideParams(
   side: CompareSide,
   kind: string,
 ): URLSearchParams {
-  const b = seasonBounds("il", q.season),
+  const b = defaultDates("il", q.season),
     s = new URLSearchParams({ season: q.season, kind });
   const self = q.view === "Players" && q.player_compare === "self";
   let start = (self ? q[`${side}_start`] : q.start) || b.start,
