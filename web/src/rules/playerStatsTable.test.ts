@@ -4,6 +4,11 @@ import {
   playerPopulation,
   playerPr,
   playerRateThreshold,
+  playerViewColumns,
+  parsePlayerColumnView,
+  playerColumnViewParam,
+  PLAYER_COLUMN_VIEWS,
+  PLAYER_SOFT_HEAT,
   type Identity,
 } from "./playerStatsTable";
 import type { Row } from "./gameLogs";
@@ -167,5 +172,84 @@ describe("Player Stats Tab 5 rules", () => {
       playerDisplay(population.slice(1), [], { mode: "Per 60 Possessions" })
         .threshold,
     ).toBe(0);
+  });
+});
+describe("player column views", () => {
+  const MAIN = [
+    "team_name",
+    "Player",
+    "gp",
+    "minutes",
+    "pts",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "fg_pct",
+    "tp_pct",
+    "ft_pct",
+    "ts",
+    "usg_pct",
+  ];
+  const SHOOTING = [
+    "team_name",
+    "Player",
+    "gp",
+    "minutes",
+    "fgm",
+    "fga",
+    "fg_pct",
+    "2pm",
+    "2pa",
+    "two_pct",
+    "3pm",
+    "3pa",
+    "tp_pct",
+    "ftm",
+    "fta",
+    "ft_pct",
+    "efg",
+    "ts",
+  ];
+  it("Main and Shooting list their columns in order", () => {
+    expect(playerViewColumns("Main", "Per Game", "il")).toEqual(MAIN);
+    expect(playerViewColumns("Shooting", "Per Game", "euroleague")).toEqual(
+      SHOOTING,
+    );
+  });
+  it("rate modes add the base column after Min", () => {
+    expect(playerViewColumns("Main", "Per 60 Possessions", "il")[4]).toBe(
+      "base_poss_pg",
+    );
+    expect(playerViewColumns("Shooting", "Per 30 Minutes", "il")[4]).toBe(
+      "base_min_pg",
+    );
+    const totals = playerViewColumns("Main", "Totals", "il");
+    expect(totals).not.toContain("base_poss_pg");
+    expect(totals).not.toContain("base_min_pg");
+  });
+  it("All is every column, DFL Israeli only", () => {
+    const il = playerViewColumns("All", "Per Game", "il");
+    expect(il).toHaveLength(29);
+    expect(il).toContain("dfl");
+    expect(playerViewColumns("All", "Per Game", "euroleague")).not.toContain(
+      "dfl",
+    );
+    expect(playerViewColumns("All", "Per 60 Possessions", "il")).toContain(
+      "base_poss_pg",
+    );
+  });
+  it("parses cols, falling back to Main", () => {
+    expect(parsePlayerColumnView("foo")).toBe("Main");
+    expect(parsePlayerColumnView(null)).toBe("Main");
+    expect(parsePlayerColumnView("all")).toBe("All");
+    for (const v of PLAYER_COLUMN_VIEWS)
+      expect(parsePlayerColumnView(playerColumnViewParam(v))).toBe(v);
+  });
+  it("soft heat covers counts, not rates", () => {
+    expect(PLAYER_SOFT_HEAT.has("pts")).toBe(true);
+    expect(PLAYER_SOFT_HEAT.has("ts")).toBe(false);
+    expect(PLAYER_SOFT_HEAT.has("usg_pct")).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 // Faithful Tab 5 pipeline: app/R/server_tab5_traditional.R and helpers.R.
 // Rank the full context population before narrowing the displayed players.
-import { percentRank, type Row } from "./gameLogs";
+import { percentRank, type League, type Row } from "./gameLogs";
 import { adaptiveBaseline } from "./onoff";
 import {
   addUsagePct,
@@ -73,6 +73,84 @@ const COUNTS = [
   "ftm",
   "fta",
 ];
+/** The table's column views (design 2026-11-17): Main for leaders and
+ * rotations, Shooting for the made/attempted detail, All for everything. */
+export const PLAYER_COLUMN_VIEWS = ["Main", "Shooting", "All"] as const;
+export type PlayerColumnView = (typeof PLAYER_COLUMN_VIEWS)[number];
+const VIEW_STATS: Record<Exclude<PlayerColumnView, "All">, string[]> = {
+  Main: [
+    "pts",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "fg_pct",
+    "tp_pct",
+    "ft_pct",
+    "ts",
+    "usg_pct",
+  ],
+  Shooting: [
+    "fgm",
+    "fga",
+    "fg_pct",
+    "2pm",
+    "2pa",
+    "two_pct",
+    "3pm",
+    "3pa",
+    "tp_pct",
+    "ftm",
+    "fta",
+    "ft_pct",
+    "efg",
+    "ts",
+  ],
+};
+/** `cols` URL value -> view; anything unknown is Main. */
+export function parsePlayerColumnView(
+  cols: string | null | undefined,
+): PlayerColumnView {
+  return cols === "shooting" ? "Shooting" : cols === "all" ? "All" : "Main";
+}
+export const playerColumnViewParam = (v: PlayerColumnView) => v.toLowerCase();
+/** The mode's base column (Poss/G, Min/G), shown right after Min. */
+const baseColumn = (mode: PlayerMode) =>
+  mode === "Per 60 Possessions"
+    ? "base_poss_pg"
+    : mode === "Per 30 Minutes"
+      ? "base_min_pg"
+      : null;
+/** Ordered column ids of one view. All is the full table: every label in
+ * PLAYER_LABELS order (DFL Israeli only), Poss/G after Poss On Floor and
+ * Min/G after Min in the rate modes. */
+export function playerViewColumns(
+  view: PlayerColumnView,
+  mode: PlayerMode,
+  league: League,
+): string[] {
+  const base = baseColumn(mode);
+  if (view !== "All")
+    return [
+      "team_name",
+      "Player",
+      "gp",
+      "minutes",
+      ...(base ? [base] : []),
+      ...VIEW_STATS[view],
+    ];
+  const ids = ["team_name", "Player"];
+  for (const id of Object.keys(PLAYER_LABELS)) {
+    if (id === "dfl" && league !== "il") continue;
+    ids.push(id);
+    if (id === "poss_on_floor" && base === "base_poss_pg") ids.push(base);
+    if (id === "minutes" && base === "base_min_pg") ids.push(base);
+  }
+  return ids;
+}
+/** Counting columns get a lighter heat tint; the rates keep full strength. */
+export const PLAYER_SOFT_HEAT: ReadonlySet<string> = new Set(COUNTS);
 const SUMS = [
   "gp",
   "poss_on_floor",
