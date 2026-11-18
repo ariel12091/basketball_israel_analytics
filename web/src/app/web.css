@@ -527,11 +527,14 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-hover-tip { position: fixed; z-index: 1050; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--ibpl-border); border-radius: 6px; background: var(--ibpl-bg-sunken); box-shadow: 0 4px 16px rgba(0,0,0,.5); color: var(--ibpl-text-body); font-family: var(--ibpl-font-mono); font-size: 0.6875rem; line-height: 1.35; pointer-events: none; }
 /* The status line above the chart: always two lines tall, so a hovered stint's
    readout (drawn over the prompt) never moves the chart (user 2026-11-17). */
-.ibpl-react-gameflow .ibpl-ribbon-pair-status { display: grid; line-height: 1.4; height: 2.8em; overflow: hidden; }
+.ibpl-react-gameflow .ibpl-ribbon-pair-status { display: grid; font-size: 0.8125rem; line-height: 1.4; height: 2.8em; overflow: hidden; color: var(--ibpl-text-muted); }
 .ibpl-react-gameflow .ibpl-ribbon-pair-status > span { grid-area: 1 / 1; min-width: 0; overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .ibpl-react-gameflow .ibpl-ribbon-pair-status > .is-covered { opacity: 0; }
-.gf-hover-readout { color: var(--ibpl-text-body); font-variant-numeric: tabular-nums; }
+/* Like the cards under the chart: who and when in bold, the numbers muted,
+   then what a click does (user 2026-11-18). */
+.gf-hover-readout b { color: var(--ibpl-text); font-weight: 700; }
+.gf-hover-readout .gf-hover-hint { color: var(--ibpl-accent); white-space: nowrap; }
 /* The lineups under a fitted chart: as tall as they need up to the room the chart
    can give (max-height, set inline), with the stint's numbers beside a list that
    scrolls inside it when it is longer than that. */

@@ -486,7 +486,8 @@ export function GameflowView({
           </span>
           {hoverLine && (
             <span className="gf-hover-readout" aria-hidden="true">
-              {hoverLine}
+              <b>{hoverLine.head}</b> · {hoverLine.stats}{" "}
+              <span className="gf-hover-hint">Click the bar for its lineups ›</span>
             </span>
           )}
         </div>
@@ -1097,12 +1098,13 @@ function stintHoverLine(data: GameflowPayload, window: BarWindow) {
     rtg = data.events.length
       ? stintRatings(data.events, window.bar.side, [window.bar.player_key], window)
       : null;
-  return (
-    `${window.bar.player_label} · ${windowLabel(window, data.bounds)}` +
-    ` · ${clock(d.end - d.start)} on the floor · +/- ${d.pm}` +
-    (rtg ? ` · Net ${netLabel(rtg.net)}` : "") +
-    (d.pf !== "" ? ` · ${d.pf} for, ${d.pa} against` : "")
-  );
+  return {
+    head: `${window.bar.player_label} · ${windowLabel(window, data.bounds)}`,
+    stats:
+      `${clock(d.end - d.start)} on the floor · +/- ${d.pm}` +
+      (rtg ? ` · Net ${netLabel(rtg.net)}` : "") +
+      (d.pf !== "" ? ` · ${d.pf} for, ${d.pa} against` : ""),
+  };
 }
 /** A run explained (the answer's runs[].lines): window, lineups, results,
  * cause. */
