@@ -1526,9 +1526,7 @@ function GameflowDetails({
                         <span className="ibpl-ribbon-detail-members">
                           {data.dict[g.dictIndex] ? (
                             <LineupNames
-                              value={data.dict[g.dictIndex].members
-                                .split(" | ")
-                                .join(", ")}
+                              value={data.dict[g.dictIndex].members.split(" | ")}
                             />
                           ) : (
                             "Lineup unavailable"

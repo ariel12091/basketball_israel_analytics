@@ -35,8 +35,13 @@ export function lineupSurnames(value: unknown): string {
     .join(" · ");
 }
 
+/** `value` is the readers' "A, B, C" string; a caller that already holds the
+ * names passes the list, since a EuroLeague name ("LAST, FIRST") holds a comma
+ * itself (Gameflow, user 2026-11-18). */
 export default function LineupNames({ value }: { value: unknown }) {
-  const names = lineupNameList(value);
+  const names = Array.isArray(value)
+    ? value.map(String).filter(Boolean)
+    : lineupNameList(value);
   return (
     <span className="lineup-names">
       {names.map((n, i) => (
