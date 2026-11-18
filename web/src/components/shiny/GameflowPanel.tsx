@@ -311,6 +311,20 @@ export function GameflowView({
       if (window && !pointerMoved.current) return;
       dispatch({ type: "hover", window, box });
     },
+    // A hovered lineup segment previews that lineup as its row does: every
+    // window of it in the list, else the segment itself.
+    onSegmentHover: (
+      seg: { side: Side; dictIndex: number; start: number; end: number } | null,
+    ) =>
+      dispatch({
+        type: "preview",
+        preview: seg && {
+          windows: groups.find(
+            (g) => g.side === seg.side && g.dictIndex === seg.dictIndex,
+          )?.windows ?? [{ start: seg.start, end: seg.end }],
+          lineup: seg.dictIndex,
+        },
+      }),
     onNameHover: (bar: Bar | null) => {
       if (bar && !pointerMoved.current) return;
       setNameHover(bar);
@@ -381,6 +395,7 @@ export function GameflowView({
       groups={groups}
       groupKey={groupKey}
       focus={focus}
+      previewLineup={preview?.lineup ?? null}
       run={run}
       top={idle}
       folded={folded}
@@ -1274,6 +1289,7 @@ function GameflowDetails({
   groups,
   groupKey,
   focus,
+  previewLineup,
   dispatch,
   detail,
   compact = false,
@@ -1297,6 +1313,8 @@ function GameflowDetails({
   groups: ReturnType<typeof aggregateSegments>;
   groupKey: (g: ReturnType<typeof aggregateSegments>[number]) => string;
   focus: string | null;
+  /** The lineup hovered in the chart or the list: its row is marked. */
+  previewLineup: number | null;
   dispatch: (a: SelectionAction) => void;
   detail: React.RefObject<HTMLElement | null>;
 }) {
@@ -1489,7 +1507,7 @@ function GameflowDetails({
                     .map((g) => (
                       <button
                         type="button"
-                        className={`ibpl-ribbon-detail-row ibpl-ribbon-shared-lineup${focus === groupKey(g) ? " is-active" : ""}`}
+                        className={`ibpl-ribbon-detail-row ibpl-ribbon-shared-lineup${focus === groupKey(g) ? " is-active" : ""}${previewLineup === g.dictIndex ? " is-previewed" : ""}`}
                         key={groupKey(g)}
                         aria-pressed={focus === groupKey(g)}
                         onClick={() => {

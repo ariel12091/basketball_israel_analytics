@@ -18,6 +18,7 @@ import {
   ratingAt,
   ratingLabel,
   type RatingMode,
+  type Side,
   shortLabels,
   scoreAt,
   windowDetail,
@@ -77,6 +78,7 @@ export default function GameflowChart({
   onBar,
   onHover,
   onNameHover,
+  onSegmentHover,
   active,
   stintBar,
   lineupIndex,
@@ -117,6 +119,11 @@ export default function GameflowChart({
   onHover: (window: BarWindow | null, box: DOMRect | null) => void;
   /** A player's name under the pointer or focus (wide layout only). */
   onNameHover?: (bar: Bar | null) => void;
+  /** A lineup segment of a selected stint under the pointer (wide only):
+   * its dictionary index and window, or null on leaving it. */
+  onSegmentHover?: (
+    seg: { side: Side; dictIndex: number; start: number; end: number } | null,
+  ) => void;
   active: BarWindow | null;
   /** Set when one stint was clicked: only that bar reads as selected. */
   stintBar?: Bar;
@@ -583,6 +590,26 @@ export default function GameflowChart({
                       focus = lineupIndex === s.dictIndex;
                     return (
                       <Fragment key={j}>
+                        {/* Its own hover, so the pointer finds this
+                            lineup, not only the stint (user 2026-11-18). */}
+                        {!compact && onSegmentHover && s.dictIndex >= 0 && (
+                          <rect
+                            className="gf-seg-hit"
+                            x={x(s.start)}
+                            y={y(b)}
+                            width={sw}
+                            height={L.lane_height}
+                            onPointerEnter={() =>
+                              onSegmentHover({
+                                side: b.side,
+                                dictIndex: s.dictIndex,
+                                start: s.start,
+                                end: s.end,
+                              })
+                            }
+                            onPointerLeave={() => onSegmentHover(null)}
+                          />
+                        )}
                         {focus && (
                           <rect
                             className="ibpl-ribbon-lineup-mark is-primary"

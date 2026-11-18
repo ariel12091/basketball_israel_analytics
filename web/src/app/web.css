@@ -1381,6 +1381,8 @@ button.cmp-back-btn:hover > span[aria-hidden],
   text-align: left;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
+/* A lineup segment hovered in the chart marks its row as a hover would. */
+.ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup.is-previewed,
 .ibpl-ribbon-shared-lineups .ibpl-ribbon-shared-lineup:hover {
   border-color: rgba(var(--ibpl-accent-rgb), 0.6);
   background: var(--ibpl-surface-2);
@@ -1490,6 +1492,9 @@ html[data-theme="light"] .ibpl-react-gameflow, html[data-theme="light"] .ibpl-re
 .ibpl-react-gameflow .ibpl-ribbon-lane:focus-visible rect { stroke: var(--ibpl-text); stroke-width: 1.5; }
 .ibpl-react-gameflow .ibpl-ribbon-lane-mark,
 .ibpl-react-gameflow .ibpl-ribbon-lineup-mark { rx: 3px; }
+/* Each segment's hit area: invisible, inside the overlay that takes no
+   pointer events. */
+.ibpl-react-gameflow .gf-seg-hit { fill: transparent; pointer-events: all; }
 
 /* Clear players: an outlined pill, quiet until something is selected. */
 .ibpl-react-gameflow .ibpl-ribbon-pair-controls .ibpl-ribbon-pair-clear {
