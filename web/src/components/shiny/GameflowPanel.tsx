@@ -130,6 +130,7 @@ export function GameflowView({
     { selected, active, hover, focus, preview, run } = selection,
     gameEnd = data.bounds[data.bounds.length - 1],
     [lineupsUsed, setLineupsUsed] = useState<number | null>(null),
+    [nameHover, setNameHover] = useState<Bar | null>(null),
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState(""),
@@ -306,6 +307,10 @@ export function GameflowView({
       if (window && !pointerMoved.current) return;
       dispatch({ type: "hover", window, box });
     },
+    onNameHover: (bar: Bar | null) => {
+      if (bar && !pointerMoved.current) return;
+      setNameHover(bar);
+    },
     active: hover ?? active,
     stintBar: stint?.bar,
     lineupIndex: focused?.dictIndex,
@@ -349,8 +354,15 @@ export function GameflowView({
     : selected.length
       ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
       : labels.prompt;
+  // A hovered bar, else a hovered name (user 2026-11-18).
   const hoverLine =
-    !compact && hover && !runTip ? stintHoverLine(data, hover) : null;
+    compact || runTip
+      ? null
+      : hover
+        ? stintHoverLine(data, hover)
+        : nameHover
+          ? playerHoverLine(data, nameHover)
+          : null;
   // Which team the selection belongs to: details sit next to its lanes.
   const sideOf = (key: string) =>
     data.bars.find((b) => laneKey(b) === key)?.side;
@@ -487,7 +499,7 @@ export function GameflowView({
           {hoverLine && (
             <span className="gf-hover-readout" aria-hidden="true">
               <b>{hoverLine.head}</b> · {hoverLine.stats}{" "}
-              <span className="gf-hover-hint">Click the bar for its lineups ›</span>
+              <span className="gf-hover-hint">{hoverLine.hint}</span>
             </span>
           )}
         </div>
@@ -1104,6 +1116,31 @@ function stintHoverLine(data: GameflowPayload, window: BarWindow) {
       `${clock(d.end - d.start)} on the floor · +/- ${d.pm}` +
       (rtg ? ` · Net ${netLabel(rtg.net)}` : "") +
       (d.pf !== "" ? ` · ${d.pf} for, ${d.pa} against` : ""),
+    hint: "Click the bar for its lineups ›",
+  };
+}
+/** A hovered name in one line: the player's whole game -- time on the floor,
+ * +/-, points for and against while on it, Net, ORtg and DRtg. Its lineups
+ * are a click away (user 2026-11-18). */
+function playerHoverLine(data: GameflowPayload, bar: Bar) {
+  const key = laneKey(bar),
+    stints = data.bars.filter((b) => laneKey(b) === key),
+    total = data.totals.find((r) => laneKey(r) === key),
+    known = stints.every((b) => b.pf != null && b.pa != null),
+    pf = stints.reduce((s, b) => s + (b.pf ?? 0), 0),
+    pa = stints.reduce((s, b) => s + (b.pa ?? 0), 0),
+    rtg = data.events.length
+      ? stintRatings(data.events, bar.side, [bar.player_key])
+      : null;
+  return {
+    head: bar.player_label,
+    stats:
+      `${clock(total?.secs ?? 0)} on the floor · +/- ${pmLabel(total?.pm ?? null)}` +
+      (known && stints.length ? ` · ${pf} for, ${pa} against` : "") +
+      (rtg
+        ? ` · Net ${netLabel(rtg.net)} · ORtg ${ratingLabel(rtg.ortg)} · DRtg ${ratingLabel(rtg.drtg)}`
+        : ""),
+    hint: "Click the name for their lineups ›",
   };
 }
 /** A run explained (the answer's runs[].lines): window, lineups, results,

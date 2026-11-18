@@ -40,6 +40,7 @@ export default function GameflowChart({
   onPlayer,
   onBar,
   onHover,
+  onNameHover,
   active,
   stintBar,
   lineupIndex,
@@ -78,6 +79,8 @@ export default function GameflowChart({
   onPlayer: (bar: Bar) => void;
   onBar: (window: BarWindow) => void;
   onHover: (window: BarWindow | null, box: DOMRect | null) => void;
+  /** A player's name under the pointer or focus (wide layout only). */
+  onNameHover?: (bar: Bar | null) => void;
   active: BarWindow | null;
   /** Set when one stint was clicked: only that bar reads as selected. */
   stintBar?: Bar;
@@ -235,6 +238,8 @@ export default function GameflowChart({
             key={key}
             className={`ibpl-ribbon-row${chosen ? " is-pair-selected" : ""}`}
             onClick={() => onPlayer(b)}
+            onPointerEnter={compact ? undefined : () => onNameHover?.(b)}
+            onPointerLeave={compact ? undefined : () => onNameHover?.(null)}
           >
             <rect
               className={`ibpl-ribbon-row-btn${chosen ? " is-pair-selected" : ""}`}
@@ -259,6 +264,8 @@ export default function GameflowChart({
                   onPlayer(b);
                 }
               }}
+              onFocus={compact ? undefined : () => onNameHover?.(b)}
+              onBlur={compact ? undefined : () => onNameHover?.(null)}
             >
               {label}
             </text>
