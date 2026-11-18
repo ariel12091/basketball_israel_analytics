@@ -27,7 +27,7 @@ const busy: Selection = {
   ...EMPTY_SELECTION,
   hover: win(b1),
   focus: "own:3",
-  preview: [{ start: 0, end: 10 }],
+  preview: { windows: [{ start: 0, end: 10 }], lineup: 3 },
 };
 
 describe("Gameflow selection reducer", () => {

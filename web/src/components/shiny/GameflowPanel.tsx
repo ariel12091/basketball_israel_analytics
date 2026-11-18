@@ -196,9 +196,13 @@ export function GameflowView({
         )
         .map((l) => ({ start: l.start_elapsed, end: l.end_elapsed }))
     : null;
+  // A hovered lineup row, then (wide) a hovered bar, win over what is
+  // selected: hovering marks without clicking (user 2026-11-18).
   const highlight =
-    preview ??
-    (focused
+    preview?.windows ??
+    (!compact && hover
+      ? [{ start: hover.start, end: hover.end }]
+      : focused
       ? selected.length > 1 || run
         ? focused.windows
         : echo!
@@ -313,7 +317,7 @@ export function GameflowView({
     },
     active: hover ?? active,
     stintBar: stint?.bar,
-    lineupIndex: focused?.dictIndex,
+    lineupIndex: preview?.lineup ?? focused?.dictIndex,
     previewing: preview != null,
     layout,
     ratingMode,
@@ -1489,10 +1493,13 @@ function GameflowDetails({
                           dispatch({ type: "focus", key: groupKey(g) });
                         }}
                         onPointerEnter={() =>
-                          dispatch({ type: "preview", windows: g.windows })
+                          dispatch({
+                            type: "preview",
+                            preview: { windows: g.windows, lineup: g.dictIndex },
+                          })
                         }
                         onPointerLeave={() =>
-                          dispatch({ type: "preview", windows: null })
+                          dispatch({ type: "preview", preview: null })
                         }
                       >
                         <span className="ibpl-ribbon-detail-members">
