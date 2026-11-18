@@ -49,7 +49,7 @@ import {
 import { useTabData } from "./TabKit";
 import LineupNames from "./LineupNames";
 import { NARROW } from "./layoutClasses";
-import GameflowChart, { type RunTrigger } from "./GameflowChart";
+import GameflowChart, { type RunTrigger, withTeams } from "./GameflowChart";
 import {
   periodClock,
   runLineupGroups,
@@ -127,9 +127,10 @@ export function GameflowView({
   compact: boolean;
 }) {
   const [selection, dispatch] = useReducer(selectionReducer, EMPTY_SELECTION),
-    { selected, active, hover, hoverBox, focus, preview, run } = selection,
+    { selected, active, hover, focus, preview, run } = selection,
     gameEnd = data.bounds[data.bounds.length - 1],
     [lineupsUsed, setLineupsUsed] = useState<number | null>(null),
+    [nameHover, setNameHover] = useState<Bar | null>(null),
     [full, setFull] = useState(false),
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState(""),
@@ -195,9 +196,13 @@ export function GameflowView({
         )
         .map((l) => ({ start: l.start_elapsed, end: l.end_elapsed }))
     : null;
+  // A hovered lineup row, then (wide) a hovered bar, win over what is
+  // selected: hovering marks without clicking (user 2026-11-18).
   const highlight =
-    preview ??
-    (focused
+    preview?.windows ??
+    (!compact && hover
+      ? [{ start: hover.start, end: hover.end }]
+      : focused
       ? selected.length > 1 || run
         ? focused.windows
         : echo!
@@ -306,9 +311,13 @@ export function GameflowView({
       if (window && !pointerMoved.current) return;
       dispatch({ type: "hover", window, box });
     },
+    onNameHover: (bar: Bar | null) => {
+      if (bar && !pointerMoved.current) return;
+      setNameHover(bar);
+    },
     active: hover ?? active,
     stintBar: stint?.bar,
-    lineupIndex: focused?.dictIndex,
+    lineupIndex: preview?.lineup ?? focused?.dictIndex,
     previewing: preview != null,
     layout,
     ratingMode,
@@ -349,6 +358,15 @@ export function GameflowView({
     : selected.length
       ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
       : labels.prompt;
+  // A hovered bar, else a hovered name (user 2026-11-18).
+  const hoverLine =
+    compact || runTip
+      ? null
+      : hover
+        ? stintHoverLine(data, hover)
+        : nameHover
+          ? playerHoverLine(data, nameHover)
+          : null;
   // Which team the selection belongs to: details sit next to its lanes.
   const sideOf = (key: string) =>
     data.bars.find((b) => laneKey(b) === key)?.side;
@@ -456,9 +474,6 @@ export function GameflowView({
         pointerMoved.current = true;
       }}
     >
-      {!compact && hover && hoverBox && !runTip && (
-        <GameflowHoverTip data={data} window={hover} box={hoverBox} />
-      )}
       {runTip && <GameflowRunTip run={runTip.run} box={runTip.box} />}
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
@@ -479,7 +494,18 @@ export function GameflowView({
           role="status"
           aria-live="polite"
         >
-          {prompt}
+          {/* A hovered stint reads here, over the prompt, instead of in a
+              tip that covered the bars (user 2026-11-17). The prompt stays
+              for screen readers; the readout is not announced. */}
+          <span className={hoverLine ? "is-covered" : undefined}>
+            {prompt}
+          </span>
+          {hoverLine && (
+            <span className="gf-hover-readout" aria-hidden="true">
+              <b>{hoverLine.head}</b> · {hoverLine.stats}{" "}
+              <span className="gf-hover-hint">{hoverLine.hint}</span>
+            </span>
+          )}
         </div>
         {ortgToggle}
       </div>
@@ -593,7 +619,7 @@ export function GameflowView({
                 }}
               />
             </svg>
-            {score && <output role="tooltip">{score}</output>}
+            {score && <output role="tooltip">{withTeams(score, data.meta)}</output>}
           </div>
           <div className="gf-m-tabs" role="tablist" aria-label="Quarter">
             {data.bounds.map((_, i) => (
@@ -790,10 +816,7 @@ const stintLineups = (data: GameflowPayload, w: BarWindow) =>
       w.end,
     ),
   );
-const TIP_WIDTH = 400,
-  // At most two lineups in a bar's tip (user 2026-11-11); the rest are a
-  // click away.
-  TIP_ROWS = 2;
+const TIP_WIDTH = 400;
 const LINEUPS_SHORT = 3;
 /** The default list: each team's most-played lineups (user 2026-11-15). */
 const TOP_LINEUPS = 5;
@@ -985,8 +1008,11 @@ function PhonePanel({
         onClick={() => setOpen(!open)}
       >
         <span className="gf-m-sum">
-          {title}
-          <span className="gf-m-sub">{sub}</span>
+          {/* Runs keep plain team names (user 2026-11-18). */}
+          {showRuns || run ? title : withTeams(title, data.meta)}
+          <span className="gf-m-sub">
+            {showRuns || run ? sub : withTeams(sub, data.meta)}
+          </span>
         </span>
         {/* What a tap opens, named (user 2026-11-12), pulsing once on each
             new selection; the plain arrow alone was easy to miss. */}
@@ -1076,16 +1102,10 @@ function lineupRatingText(
     </Fragment>
   ));
 }
-/** What a hovered stint holds, floating clear of its bar: nothing moves. */
-function GameflowHoverTip({
-  data,
-  window,
-  box,
-}: {
-  data: GameflowPayload;
-  window: BarWindow;
-  box: DOMRect;
-}) {
+/** A hovered stint in one line, for the status line above the chart: the
+ * player, the window, time on the floor, +/-, Net and points. Its lineups are
+ * a click away. */
+function stintHoverLine(data: GameflowPayload, window: BarWindow) {
   const d = windowDetail(
       data.lanes,
       data.steps,
@@ -1094,57 +1114,41 @@ function GameflowHoverTip({
       window.start,
       window.end,
     ),
-    lineups = stintLineups(data, window),
     rtg = data.events.length
       ? stintRatings(data.events, window.bar.side, [window.bar.player_key], window)
-      : null,
-    above = box.top > innerHeight / 2;
-  return (
-    <div
-      className="gf-hover-tip"
-      role="tooltip"
-      style={{
-        left: Math.max(
-          8,
-          Math.min(
-            innerWidth - TIP_WIDTH - 8,
-            box.left + box.width / 2 - TIP_WIDTH / 2,
-          ),
-        ),
-        width: TIP_WIDTH,
-        ...(above
-          ? { bottom: innerHeight - box.top + 6 }
-          : { top: box.bottom + 6 }),
-      }}
-    >
-      <div className="ibpl-ribbon-detail-head">
-        {window.bar.player_label} · {windowLabel(window, data.bounds)}
-      </div>
-      <div className="gf-hover-tip-stats">
-        {clock(d.end - d.start)} on the floor · +/- {d.pm}
-        {rtg && ` · Net ${netLabel(rtg.net)}`}
-        {d.pf !== "" && ` · ${d.pf} for, ${d.pa} against`}
-      </div>
-      {lineups.slice(0, TIP_ROWS).map((g) => (
-        <div className="gf-hover-tip-row" key={g.dictIndex}>
-          <div>
-            {data.dict[g.dictIndex]?.members.split(" | ").join(" · ") ??
-              "Lineup unavailable"}
-          </div>
-          <div className="ibpl-ribbon-detail-meta">
-            {clock(g.duration)}
-            {lineupPmText(data, g)}
-            {lineupRatingText(data, g)}
-          </div>
-        </div>
-      ))}
-      {lineups.length > TIP_ROWS && (
-        <div className="ibpl-ribbon-detail-meta">
-          +{lineups.length - TIP_ROWS} more. Click the bar to see them all.
-        </div>
-      )}
-    </div>
-  );
+      : null;
+  return {
+    head: `${window.bar.player_label} · ${windowLabel(window, data.bounds)}`,
+    stats:
+      `${clock(d.end - d.start)} on the floor · +/- ${d.pm}` +
+      (rtg ? ` · Net ${netLabel(rtg.net)}` : "") +
+      (d.pf !== "" ? ` · ${d.pf} for, ${d.pa} against` : ""),
+    hint: "Click the bar for its lineups ›",
+  };
+}
+/** A hovered name in one line: the player's whole game -- time on the floor,
+ * +/-, points for and against while on it, Net, ORtg and DRtg. Its lineups
+ * are a click away (user 2026-11-18). */
+function playerHoverLine(data: GameflowPayload, bar: Bar) {
+  const key = laneKey(bar),
+    stints = data.bars.filter((b) => laneKey(b) === key),
+    total = data.totals.find((r) => laneKey(r) === key),
+    known = stints.every((b) => b.pf != null && b.pa != null),
+    pf = stints.reduce((s, b) => s + (b.pf ?? 0), 0),
+    pa = stints.reduce((s, b) => s + (b.pa ?? 0), 0),
+    rtg = data.events.length
+      ? stintRatings(data.events, bar.side, [bar.player_key])
+      : null;
+  return {
+    head: bar.player_label,
+    stats:
+      `${clock(total?.secs ?? 0)} on the floor · +/- ${pmLabel(total?.pm ?? null)}` +
+      (known && stints.length ? ` · ${pf} for, ${pa} against` : "") +
+      (rtg
+        ? ` · Net ${netLabel(rtg.net)} · ORtg ${ratingLabel(rtg.ortg)} · DRtg ${ratingLabel(rtg.drtg)}`
+        : ""),
+    hint: "Click the name for their lineups ›",
+  };
 }
 /** A run explained (the answer's runs[].lines): window, lineups, results,
  * cause. */
@@ -1214,11 +1218,11 @@ function StintStats({ d }: { d: CardStats }) {
             the score with the game log's +/- in the middle, Net under it. */}
         {d.h2h && d.pf != null && (
           <div className="gf-h2h-board">
-            <span className="is-team">{d.h2h.ortg[0].name}</span>
+            <span className="is-team gf-team is-own">{d.h2h.ortg[0].name}</span>
             <span className="is-mid">
               {d.pf} – {d.pa} ({d.h2h.pm})
             </span>
-            <span className="is-team">{d.h2h.ortg[1].name}</span>
+            <span className="is-team gf-team is-opp">{d.h2h.ortg[1].name}</span>
             {d.h2h.ortg.some((o) => o.v != null) && (
               <>
                 <span>ORtg {ratingLabel(d.h2h.ortg[0].v)}</span>
@@ -1492,10 +1496,13 @@ function GameflowDetails({
                           dispatch({ type: "focus", key: groupKey(g) });
                         }}
                         onPointerEnter={() =>
-                          dispatch({ type: "preview", windows: g.windows })
+                          dispatch({
+                            type: "preview",
+                            preview: { windows: g.windows, lineup: g.dictIndex },
+                          })
                         }
                         onPointerLeave={() =>
-                          dispatch({ type: "preview", windows: null })
+                          dispatch({ type: "preview", preview: null })
                         }
                       >
                         <span className="ibpl-ribbon-detail-members">
@@ -1659,6 +1666,12 @@ export function GameflowSurface({
   return (
     <section
       className="ibpl-ribbon-inline-panel ibpl-react-gameflow-panel"
+      // The title's team names in their club colours, as in the chart.
+      style={
+        (data
+          ? paletteVars(data.meta.ownIdentity, data.meta.oppIdentity)
+          : undefined) as CSSProperties | undefined
+      }
       ref={panel}
       aria-label="Gameflow"
       onKeyDown={(e) => {
@@ -1678,7 +1691,7 @@ export function GameflowSurface({
           </button>
         )}
         {backLink}
-        <strong>{title}</strong>
+        <strong>{data ? withTeams(title, data.meta) : title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>
     </section>

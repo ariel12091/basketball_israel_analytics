@@ -1,5 +1,11 @@
 "use client";
-import { Fragment, useId, useState, type PointerEvent } from "react";
+import {
+  Fragment,
+  useId,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
   clock,
@@ -23,6 +29,36 @@ import {
 import geometry from "@/data/gameflowLayout.json";
 import type { BarWindow } from "@/rules/gameflowSelection";
 import type { Run } from "@/rules/gameflowRuns";
+
+/** Text with each team's name in its club colour (user 2026-11-18: every
+ * team name in Gameflow, not only the chart's). */
+export function withTeams(
+  text: string,
+  meta: { ownTeam: string; oppTeam: string },
+): ReactNode {
+  const names = (
+    [
+      [meta.ownTeam, "own"],
+      [meta.oppTeam, "opp"],
+    ] as const
+  )
+    .filter(([n]) => n)
+    .sort((a, b) => b[0].length - a[0].length);
+  if (!names.length) return text;
+  const re = new RegExp(
+    `(${names.map(([n]) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+  );
+  return text.split(re).map((part, i) => {
+    const hit = i % 2 ? names.find(([n]) => n === part) : undefined;
+    return hit ? (
+      <span key={i} className={`gf-team is-${hit[1]}`}>
+        {part}
+      </span>
+    ) : (
+      part
+    );
+  });
+}
 /** How a run's chip or band was reached: a pointer resting on it, or a tap. */
 export type RunTrigger = "hover" | "tap";
 const CHIP_FONT = 10,
@@ -40,6 +76,7 @@ export default function GameflowChart({
   onPlayer,
   onBar,
   onHover,
+  onNameHover,
   active,
   stintBar,
   lineupIndex,
@@ -78,6 +115,8 @@ export default function GameflowChart({
   onPlayer: (bar: Bar) => void;
   onBar: (window: BarWindow) => void;
   onHover: (window: BarWindow | null, box: DOMRect | null) => void;
+  /** A player's name under the pointer or focus (wide layout only). */
+  onNameHover?: (bar: Bar | null) => void;
   active: BarWindow | null;
   /** Set when one stint was clicked: only that bar reads as selected. */
   stintBar?: Bar;
@@ -235,6 +274,8 @@ export default function GameflowChart({
             key={key}
             className={`ibpl-ribbon-row${chosen ? " is-pair-selected" : ""}`}
             onClick={() => onPlayer(b)}
+            onPointerEnter={compact ? undefined : () => onNameHover?.(b)}
+            onPointerLeave={compact ? undefined : () => onNameHover?.(null)}
           >
             <rect
               className={`ibpl-ribbon-row-btn${chosen ? " is-pair-selected" : ""}`}
@@ -259,6 +300,8 @@ export default function GameflowChart({
                   onPlayer(b);
                 }
               }}
+              onFocus={compact ? undefined : () => onNameHover?.(b)}
+              onBlur={compact ? undefined : () => onNameHover?.(null)}
             >
               {label}
             </text>
@@ -703,7 +746,10 @@ export default function GameflowChart({
                   ? ratingAt(data.ratings[ratingMode], scoreTip.elapsed)
                   : null;
             if (!r)
-              return `${when}\n${data.meta.ownTeam} ${own} – ${opp} ${data.meta.oppTeam}`;
+              return withTeams(
+                `${when}\n${data.meta.ownTeam} ${own} – ${opp} ${data.meta.oppTeam}`,
+                data.meta,
+              );
             // Each team's ORtg under its own score: no team is "the" offense.
             return (
               <>
@@ -712,11 +758,13 @@ export default function GameflowChart({
                   ` · ORtg over the last ${RATING_WINDOW} possessions`}
                 <span className="ibpl-gameflow-score-grid">
                   <span>
-                    {data.meta.ownTeam} {own}
+                    <span className="gf-team is-own">{data.meta.ownTeam}</span>{" "}
+                    {own}
                   </span>
                   <span>–</span>
                   <span>
-                    {opp} {data.meta.oppTeam}
+                    {opp}{" "}
+                    <span className="gf-team is-opp">{data.meta.oppTeam}</span>
                   </span>
                   <span className="is-rtg">ORtg {ratingLabel(r.own)}</span>
                   <span />

@@ -234,35 +234,40 @@ export default function GameLogsClient({
       }}
       main={
         <>
-          <ViewTabs
-            views={VIEWS}
-            view={view === "four_factors" ? "Four Factors" : "Summary"}
-            onView={changeView}
-            tips={{
-              Summary: FILTER_TIPS.view_summary,
-              "Four Factors": FILTER_TIPS.view_ff,
-            }}
-          />
-          <ChipsRow
-            p={p}
-            seasonChip={seasonChipLabel(league, query.season)}
-            chips={chips}
-            activeCount={activeCount}
-            extra={
-              !euro && (
-                <StatFilters
-                  p={p}
-                  cols={ui.statFilterCols[view]}
-                  filters={stats}
-                  onChange={(f) =>
-                    set({ stats: f.length ? JSON.stringify(f) : null })
-                  }
-                />
-              )
-            }
-            active={activeCount > 0 || stats.length > 0}
-            onClearAll={reset}
-          />
+          {/* With Gameflow open, the view tabs and filters say nothing about it:
+              hidden (kept mounted), so the chart gets their room too (user
+              2026-11-18). */}
+          <div hidden={!!gameflow} style={{ display: "contents" }}>
+            <ViewTabs
+              views={VIEWS}
+              view={view === "four_factors" ? "Four Factors" : "Summary"}
+              onView={changeView}
+              tips={{
+                Summary: FILTER_TIPS.view_summary,
+                "Four Factors": FILTER_TIPS.view_ff,
+              }}
+            />
+            <ChipsRow
+              p={p}
+              seasonChip={seasonChipLabel(league, query.season)}
+              chips={chips}
+              activeCount={activeCount}
+              extra={
+                !euro && (
+                  <StatFilters
+                    p={p}
+                    cols={ui.statFilterCols[view]}
+                    filters={stats}
+                    onChange={(f) =>
+                      set({ stats: f.length ? JSON.stringify(f) : null })
+                    }
+                  />
+                )
+              }
+              active={activeCount > 0 || stats.length > 0}
+              onClearAll={reset}
+            />
+          </div>
           {/* Gameflow takes over the table's area (user 2026-10-28: no modal
               windows); the table stays mounted beneath, so Back returns to
               the same sort, page and scroll. */}

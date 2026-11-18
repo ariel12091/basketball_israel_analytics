@@ -16,8 +16,9 @@ export type Selection = {
   hoverBox: DOMRect | null;
   /** The shared lineup clicked in the details (`side:dictIndex`). */
   focus: string | null;
-  /** The windows of the lineup row under the pointer. */
-  preview: Window[] | null;
+  /** The lineup row under the pointer: its windows and its dictionary
+   * index, so the bars mark it as a click would (user 2026-11-18). */
+  preview: { windows: Window[]; lineup: number } | null;
   /** The run whose band was clicked: its lineups, both teams. */
   run: Run | null;
 };
@@ -29,7 +30,7 @@ export type SelectionAction =
   | { type: "hover"; window: BarWindow | null; box: DOMRect | null }
   /** A shared-lineup row was clicked: focus it, or unfocus it if focused. */
   | { type: "focus"; key: string }
-  | { type: "preview"; windows: Window[] | null }
+  | { type: "preview"; preview: Selection["preview"] }
   /** A run's band was clicked: show it, or close it if shown. */
   | { type: "run"; run: Run };
 
@@ -93,7 +94,7 @@ export function selectionReducer(s: Selection, a: SelectionAction): Selection {
     case "focus":
       return { ...s, focus: s.focus === a.key ? null : a.key, preview: null };
     case "preview":
-      return { ...s, preview: a.windows };
+      return { ...s, preview: a.preview };
     // A run replaces any player selection; its band again closes it.
     case "run":
       return s.run && s.run.start === a.run.start && s.run.side === a.run.side
