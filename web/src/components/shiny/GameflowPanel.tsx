@@ -49,7 +49,7 @@ import {
 import { useTabData } from "./TabKit";
 import LineupNames from "./LineupNames";
 import { NARROW } from "./layoutClasses";
-import GameflowChart, { type RunTrigger } from "./GameflowChart";
+import GameflowChart, { type RunTrigger, withTeams } from "./GameflowChart";
 import {
   periodClock,
   runLineupGroups,
@@ -619,7 +619,7 @@ export function GameflowView({
                 }}
               />
             </svg>
-            {score && <output role="tooltip">{score}</output>}
+            {score && <output role="tooltip">{withTeams(score, data.meta)}</output>}
           </div>
           <div className="gf-m-tabs" role="tablist" aria-label="Quarter">
             {data.bounds.map((_, i) => (
@@ -1008,8 +1008,11 @@ function PhonePanel({
         onClick={() => setOpen(!open)}
       >
         <span className="gf-m-sum">
-          {title}
-          <span className="gf-m-sub">{sub}</span>
+          {/* Runs keep plain team names (user 2026-11-18). */}
+          {showRuns || run ? title : withTeams(title, data.meta)}
+          <span className="gf-m-sub">
+            {showRuns || run ? sub : withTeams(sub, data.meta)}
+          </span>
         </span>
         {/* What a tap opens, named (user 2026-11-12), pulsing once on each
             new selection; the plain arrow alone was easy to miss. */}
@@ -1215,11 +1218,11 @@ function StintStats({ d }: { d: CardStats }) {
             the score with the game log's +/- in the middle, Net under it. */}
         {d.h2h && d.pf != null && (
           <div className="gf-h2h-board">
-            <span className="is-team">{d.h2h.ortg[0].name}</span>
+            <span className="is-team gf-team is-own">{d.h2h.ortg[0].name}</span>
             <span className="is-mid">
               {d.pf} – {d.pa} ({d.h2h.pm})
             </span>
-            <span className="is-team">{d.h2h.ortg[1].name}</span>
+            <span className="is-team gf-team is-opp">{d.h2h.ortg[1].name}</span>
             {d.h2h.ortg.some((o) => o.v != null) && (
               <>
                 <span>ORtg {ratingLabel(d.h2h.ortg[0].v)}</span>
@@ -1663,6 +1666,12 @@ export function GameflowSurface({
   return (
     <section
       className="ibpl-ribbon-inline-panel ibpl-react-gameflow-panel"
+      // The title's team names in their club colours, as in the chart.
+      style={
+        (data
+          ? paletteVars(data.meta.ownIdentity, data.meta.oppIdentity)
+          : undefined) as CSSProperties | undefined
+      }
       ref={panel}
       aria-label="Gameflow"
       onKeyDown={(e) => {
@@ -1682,7 +1691,7 @@ export function GameflowSurface({
           </button>
         )}
         {backLink}
-        <strong>{title}</strong>
+        <strong>{data ? withTeams(title, data.meta) : title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>
     </section>

@@ -1450,12 +1450,12 @@ button.cmp-back-btn:hover > span[aria-hidden],
    themes' pairs (--gf-own-l / -d, rules/teamColors.ts paletteVars) and the
    theme picks one. Without club colours the variables stay unset and every
    rule falls back to the accent / muted pair. */
-.ibpl-react-gameflow {
+.ibpl-react-gameflow, .ibpl-react-gameflow-panel {
   --gf-own: var(--gf-own-d); --gf-opp: var(--gf-opp-d);
   --gf-own-text: var(--gf-own-text-d); --gf-opp-text: var(--gf-opp-text-d);
   --gf-own-label: var(--gf-own-label-d); --gf-opp-label: var(--gf-opp-label-d);
 }
-html[data-theme="light"] .ibpl-react-gameflow {
+html[data-theme="light"] .ibpl-react-gameflow, html[data-theme="light"] .ibpl-react-gameflow-panel {
   --gf-own: var(--gf-own-l); --gf-opp: var(--gf-opp-l);
   --gf-own-text: var(--gf-own-text-l); --gf-opp-text: var(--gf-opp-text-l);
   --gf-own-label: var(--gf-own-label-l); --gf-opp-label: var(--gf-opp-label-l);
@@ -1463,6 +1463,14 @@ html[data-theme="light"] .ibpl-react-gameflow {
 /* Team names in their club colour, darkened or lightened to read as text. */
 .ibpl-react-gameflow .ibpl-ribbon-team.is-own { fill: var(--gf-own-label, var(--ibpl-text)); }
 .ibpl-react-gameflow .ibpl-ribbon-team.is-opp { fill: var(--gf-opp-label, var(--ibpl-text)); }
+/* Team names in text, in their club colour (user 2026-11-18); runs keep
+   their own styling. */
+.gf-team.is-own { color: var(--gf-own-label, inherit); }
+.gf-team.is-opp { color: var(--gf-opp-label, inherit); }
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="own"] { color: var(--gf-own-label, var(--ibpl-text)); }
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="opp"] { color: var(--gf-opp-label, var(--ibpl-text)); }
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="own"]::before { background: var(--gf-own, var(--ibpl-accent)); }
+.ibpl-ribbon-shared-lineups .gf-side-head[data-side="opp"]::before { background: var(--gf-opp, var(--ibpl-text-dim)); }
 /* The lead between the margin line and zero, in the leading side's colour. */
 .gf-m-lead { fill-opacity: 0.4; pointer-events: none; }
 .gf-m-lead.is-own { fill: var(--gf-own, var(--ibpl-accent)); }
