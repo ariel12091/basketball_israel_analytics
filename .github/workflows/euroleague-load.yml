@@ -152,6 +152,19 @@ jobs:
           fi
           exit $status
 
+      # Height, position and headshot of the players a load added (migration
+      # 067, scripts/refresh_player_profiles.py). Only after a load that
+      # published a game; a provider outage here does not fail the run.
+      - name: Refresh player profiles
+        if: ${{ steps.load.outputs.published == 'true' }}
+        continue-on-error: true
+        run: |
+          args=()
+          [ -n "$SEASON" ] && args+=(--season "$SEASON")
+          for comp in ${COMPETITIONS//,/ }; do args+=(--competition "$comp"); done
+          [ "$EXECUTE" = "true" ] && args+=(--execute)
+          python scripts/refresh_player_profiles.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # Data quality report (euroleague/scripts/run_euro_data_quality_report.R)
       # after every load that published a game, whether or not the load's own
       # checks passed (or on a manual run with dq_report). Read-only; about 3 minutes. Findings do not fail the run.

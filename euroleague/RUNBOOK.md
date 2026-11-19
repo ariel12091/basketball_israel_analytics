@@ -447,6 +447,12 @@ schedule endpoint.
   single competition: run the workflow manually with `season` / `competitions`.
   Its verification scopes the per-game analytics checks to the games it
   loaded; the four known-broken games are reported only as a schema-wide count.
+- **Player height, position and headshot (migration 067).** After a load that
+  published a game, the workflow runs `scripts/refresh_player_profiles.py`
+  (current season, the loaded competitions), which upserts
+  `euroleague.player_season_profiles` from the provider's `people` roster. A
+  failure there does not fail the run. Another season by hand:
+  `python scripts/refresh_player_profiles.py --season 2025 --execute`.
 - **`actions_raw` is empty by design (since 2026-09-23).** Nothing reads it,
   and verification proves per game that canonical `actions` reproduces every
   raw event and all 22 package fields exactly. Migration 055 removed the two
