@@ -131,11 +131,10 @@ and whether port 3100 is listening before starting the one shared dev server.
 
 ## Direction (user, 2026-10-21)
 
-1. **Features first.** Move every Shiny feature -- filters, behaviours and the
-   table layouts -- to Next.js/React on Vercel, in the spirit of the Shiny app.
-   Do not redesign and do not polish pixels: a later redesign will put all
-   devices under one design and declutter the stats pages with a richer React
-   layout. Stop at "same features, same numbers, Shiny's look".
+1. **Features first -- done; the look may now drift (user, 2026-11-16).**
+   Every Shiny feature moved across in Shiny's spirit. Shiny is being retired,
+   so the UI no longer has to match it: modernise where it helps (see "Look
+   and feel" below). Same features and same numbers still hold.
 2. **One layout per viewport width, mobile first.** Every device at a given
    width gets the same page; the phone layout is the default and wider
    screens add to it. Never port Shiny's user-agent device sniffing
@@ -156,6 +155,58 @@ and whether port 3100 is listening before starting the one shared dev server.
 4. **Reuse the tab kit.** Every tab is built from `components/shiny/TabKit.tsx`
    (URL state, data loading, frame, filters accordion, chips, stat-filter
    popover) and `DataTable`. Extend them instead of copying a tab.
+
+## Look and feel (since 2026-11-16, PRs #64-#73)
+
+The modern styles live in blocks at the end of `src/app/web.css`; the shared
+pieces are components. Reuse them, never a one-off:
+
+- **Filters panel** (`FilterDrawer`): a Radix Popover restyled as a sheet
+  (bottom on phones, right edge from 768 px). Section order on every tab:
+  team picker first where the section has one, then dates, clutch, lineup
+  starters, game filters.
+- **States** (`OutputArea` in `TabKit.tsx`): pass `onClear={reset}`; an empty
+  table shows `EmptyState` with Clear filters, loading shows a bar above the
+  dimmed table, errors a card with Retry.
+- **Lineup names** (`LineupNames`): middle dots, never commas; the label that
+  floats over a sideways-scrolled row uses `Column.rowName` (Lineups: team,
+  then `lineupSurnames`).
+- **Columns menu** (`ColumnsMenu`, via `DataTable`'s `tools`): chips; tap
+  hides, drag moves (window pointer events, state in a ref; touch = hold then
+  drag), Alt+arrows. Stored with `lib/storedList.ts`.
+- Links are amber with a soft underline and a `›`; buttons, pagers, chips and
+  back links are pills; on/off settings are switches over the native checkbox.
+- Before shipping a restyle or a new control: check light AND dark theme
+  (the vendor datepicker hid days in light theme once), and repeat the
+  interaction several times on desktop and phone widths (a drag that worked
+  once failed after the first drop on a real device).
+- Big visual changes start from a mock-up the user approves. When the user's
+  words are ambiguous ("half pilled", "same place"), render each reading in
+  the real app (inject CSS with Playwright) and send the screenshots.
+- **Top bar** (`Navbar.tsx`, PR #72): one markup, arranged by width. From
+  1024 px one sticky row: page pills, then the League switch and Season menu
+  set apart by dividers and labels, then date, Glossary, theme; it drops the
+  brand name below 1400, the labels below 1250 and turns the league switch
+  into a menu below 1200 (re-measure 1024-1600 px in `theme.spec.ts` after
+  adding anything). Narrower: all seven pages in a bottom tab bar, the
+  Filters button as a tab on top of it, the update time in the season menu.
+  League/season menus are Radix Popovers, navigation not ARIA menus.
+- **Bottom-pinned UI** (tab bar, Filters tab, Ask button, Gameflow phone
+  panel) sits above `--ibpl-tabbar-h` (0 on desktop). NEVER pad it with
+  `env(safe-area-inset-bottom)`: the page does not set viewport-fit=cover, yet
+  Android Chrome reports a 47 px inset while its address bar shows, which
+  became an empty band under the bar (measured on the user's phone).
+- **Views** (`ViewTabs`): a labelled group of `aria-pressed` buttons styled
+  as top-rounded tabs on an amber line (not an ARIA tablist: the views change
+  the URL and have no panels). The selected view scrolls into sight; both
+  edges fade when the row overflows.
+- **Row above the table**: row tags, the view's "?" (`ViewIntro`, a
+  popover named by the question) and the table tools (CSV as a round arrow,
+  Columns; `DataTable` portals them into `<ToolsSlot/>`) on the left, the
+  colour key (`TableLegend`) at the top right. Two rows when crowded.
+- Follow modern-web-guidance (`.claude/skills/modern-web-guidance`): 44 px
+  touch targets via `::after` on `(pointer: coarse)`, `scroll-padding` for
+  fixed bars, no document-level outside-click/Escape listeners.
 
 ## How a tab moves across
 
