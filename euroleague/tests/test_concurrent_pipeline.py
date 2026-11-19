@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
 
 from euroleague_possessions.batch_pipeline import (  # noqa: E402
     STAGE_FORMAT_VERSION,
+    PARSER_VERSION,
     StageRecord,
     publish_staged_games,
     stage_games,
@@ -363,6 +364,25 @@ class ConcurrentPipelineTest(unittest.TestCase):
             self.assertEqual(rebuilt[0].status, "staged")
             refreshed = json.loads(stale_path.read_text(encoding="utf-8"))
             self.assertEqual(refreshed["format_version"], STAGE_FORMAT_VERSION)
+
+            # A checkpoint built by another parser version is never reused.
+            refreshed["parser_version"] = "0.2.4"
+            stale_path.write_text(json.dumps(refreshed), encoding="utf-8")
+            with patch(
+                "euroleague_possessions.batch_pipeline.build_staged_game",
+                side_effect=fake_build,
+            ):
+                again = stage_games(
+                    pbp,
+                    boxscores,
+                    checkpoints,
+                    keys=[GameKey(2025, 1)],
+                )
+            self.assertEqual(again[0].status, "staged")
+            self.assertEqual(
+                json.loads(stale_path.read_text(encoding="utf-8"))["parser_version"],
+                PARSER_VERSION,
+            )
 
     def test_batch_publication_shares_one_run_and_stays_sequential(self) -> None:
         records = [

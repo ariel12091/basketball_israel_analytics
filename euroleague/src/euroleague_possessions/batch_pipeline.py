@@ -27,12 +27,14 @@ from .postgres_backend import (
     start_load_run,
 )
 from .schedule_collector import fetch_season_schedule_meta
-from .staging import GameBootstrap, StagedGame, build_staged_game, staged_counts
+from .staging import PARSER_VERSION, GameBootstrap, StagedGame, build_staged_game, staged_counts
 from .transaction_writer import GameSnapshot, NaturalGameKey, write_game_snapshot
 
 
 # Increment whenever staged derived rows must be rebuilt even if the raw PBP
-# and box-score fingerprints are unchanged.
+# and box-score fingerprints are unchanged. A checkpoint also records the
+# parser version that built it and is rebuilt under any other (0.3.0: the
+# fingerprints alone let a re-stage publish the previous parser's output).
 STAGE_FORMAT_VERSION = 6
 
 
@@ -128,6 +130,7 @@ def _staged_payload(
 ) -> dict[str, Any]:
     return {
         "format_version": STAGE_FORMAT_VERSION,
+        "parser_version": PARSER_VERSION,
         "input_fingerprints": {
             "pbp_sha256": pbp_sha256,
             "boxscore_sha256": boxscore_sha256,
@@ -176,6 +179,8 @@ def _load_staged_checkpoint(
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if int(payload["format_version"]) != STAGE_FORMAT_VERSION:
+            return None
+        if payload.get("parser_version") != PARSER_VERSION:
             return None
         fingerprints = payload["input_fingerprints"]
         if fingerprints != {
