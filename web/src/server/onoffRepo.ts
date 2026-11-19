@@ -55,6 +55,66 @@ export type OnOffAnswer = {
   seasons?: string[];
 };
 
+/** euroleague.onoff_compute for the context and teams: Tab 8's filtered
+ * reader, and Compare's EuroLeague player on/off side. */
+export function euroOnOffCompute(q: Query, c: Context, teams: number[]): Promise<Row[]> {
+  const a = dbArgs(c),
+    comp = c.league === "eurocup" ? "U" : "E",
+    teamCsv = teams.length ? teams.join(",") : null;
+  return q<Row>(SQL.elCompute, [
+    comp,
+    c.season,
+    c.start,
+    c.end,
+    teamCsv,
+    a.typeCsv,
+    a.oppCsv,
+    a.homeAway,
+    a.outcome,
+    a.rankSide,
+    a.rankN,
+    a.rankMetric,
+    a.minGn,
+    a.maxGn,
+    a.lastN,
+    a.offMin,
+    a.offMax,
+    a.defMin,
+    a.defMax,
+    DEFAULT_MIN_NET,
+    0,
+    0,
+  ]);
+}
+
+/** euroleague.four_factors_dashboard_compute for the context and teams: Tab
+ * 8's Four Factors reader (no team), and Compare's player Four Factors side. */
+export function euroFourFactors(q: Query, c: Context, teams: number[]): Promise<Row[]> {
+  const a = dbArgs(c),
+    comp = c.league === "eurocup" ? "U" : "E";
+  return q<Row>(SQL.elFf, [
+    comp,
+    c.season,
+    c.start,
+    c.end,
+    teams.length ? teams.join(",") : null,
+    a.typeCsv,
+    a.oppCsv,
+    a.homeAway,
+    a.outcome,
+    a.rankSide,
+    a.rankN,
+    a.rankMetric,
+    a.minGn,
+    a.maxGn,
+    a.lastN,
+    a.offMin,
+    a.offMax,
+    a.defMin,
+    a.defMax,
+  ]);
+}
+
 async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   const euro = c.league !== "il";
   const comp = c.league === "eurocup" ? "U" : "E";
@@ -69,30 +129,7 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   const compute = (teams: number[]) => {
     const teamCsv = teams.length ? teams.join(",") : null;
     return euro
-      ? q<Row>(SQL.elCompute, [
-          comp,
-          c.season,
-          c.start,
-          c.end,
-          teamCsv,
-          a.typeCsv,
-          a.oppCsv,
-          a.homeAway,
-          a.outcome,
-          a.rankSide,
-          a.rankN,
-          a.rankMetric,
-          a.minGn,
-          a.maxGn,
-          a.lastN,
-          a.offMin,
-          a.offMax,
-          a.defMin,
-          a.defMax,
-          DEFAULT_MIN_NET,
-          0,
-          0,
-        ])
+      ? euroOnOffCompute(q, c, teams)
       : q<Row>(SQL.ilCompute, [
           c.start,
           c.end,
@@ -123,27 +160,7 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   if (view === "four_factors") {
     rows = filtered
       ? await (euro
-          ? q<Row>(SQL.elFf, [
-              comp,
-              c.season,
-              c.start,
-              c.end,
-              null,
-              a.typeCsv,
-              a.oppCsv,
-              a.homeAway,
-              a.outcome,
-              a.rankSide,
-              a.rankN,
-              a.rankMetric,
-              a.minGn,
-              a.maxGn,
-              a.lastN,
-              a.offMin,
-              a.offMax,
-              a.defMin,
-              a.defMax,
-            ])
+          ? euroFourFactors(q, c, [])
           : q<Row>(SQL.ilFf, [
               c.season,
               c.start,
