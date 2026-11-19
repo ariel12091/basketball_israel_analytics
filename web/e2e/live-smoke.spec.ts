@@ -307,8 +307,9 @@ test("live: /api/v1/openapi.json describes the API", async ({ page }, info) => {
 test("live: EuroLeague Compare sides equal their tabs", async ({ page }, info) => {
   test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
   test.skip(info.project.name !== "desktop", "API check, once per run");
-  // 27 reads, three of them a whole season's lineups per competition.
-  test.setTimeout(300_000);
+  // Lineups only under clutch (hundreds of rows; a season's 5,000 per
+  // competition would cost Fast Origin Transfer on every Preview push).
+  test.setTimeout(180_000);
   type Rows = Record<string, unknown>[];
   // The request client, not page.goto: a whole season's lineups is too large
   // for the browser inspector's cache, which evicts the body. It skips the
@@ -337,7 +338,8 @@ test("live: EuroLeague Compare sides equal their tabs", async ({ page }, info) =
         ["off_ppp", "def_ppp", "net_rtg"],
         `${league}${extra} ratings`,
       );
-      same(
+      if (extra === "&clutch=true")
+        same(
         await rows(`${league}/compare?kind=lineups&size=5&${s}`),
         (await rows(`${league}/lineups?size=5&auto=false&min_poss=0&${s}`)).filter((r) => r.sub_lineup_hash !== "TOTAL"),
         (r) => String(r.sub_lineup_hash),
