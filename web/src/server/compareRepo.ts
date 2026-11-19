@@ -422,6 +422,7 @@ async function euroRefs(q: Query, p: Params, s: URLSearchParams, version: string
     players: namedPicker(players, await readPlayerNames(q, c.league, c.season), "name"),
     rounds: refs.rounds,
     phases: refs.phases,
+    seasons: refs.seasons,
     meta: { version, key: s.toString() },
   };
 }

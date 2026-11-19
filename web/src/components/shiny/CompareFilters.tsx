@@ -2,6 +2,7 @@
 import type { Query, Patch } from "@/lib/tabQuery";
 import { defaultDates, seasonBounds } from "@/lib/tabQuery";
 import {
+  compareLeague,
   editCompareSide,
   fullSideLabel,
   oppRankMissing,
@@ -99,7 +100,7 @@ export function CompareDates({
   showDates?: boolean;
   showGN?: boolean;
 }) {
-  const bounds = seasonBounds("il", q.season),
+  const bounds = seasonBounds(compareLeague(q), q.season),
     key = (s: string) => `${prefix}${s}`;
   return (
     <>
@@ -107,8 +108,8 @@ export function CompareDates({
         <DateRangeInput
           id={`cmp_${prefix}dates`}
           label="Date range"
-          start={q[key("start")] || defaultDates("il", q.season).start}
-          end={q[key("end")] || defaultDates("il", q.season).end}
+          start={q[key("start")] || defaultDates(compareLeague(q), q.season).start}
+          end={q[key("end")] || defaultDates(compareLeague(q), q.season).end}
           min={bounds.start}
           max={bounds.end}
           onChange={(a, b) =>
@@ -179,6 +180,7 @@ export default function CompareSidesGrid({
   teams,
   players,
   rounds,
+  phases = [],
   onToggle,
 }: {
   q: Query;
@@ -186,8 +188,11 @@ export default function CompareSidesGrid({
   teams: Choice[];
   players: Row[];
   rounds: number[];
+  /** EuroLeague and EuroCup: the season's phases (the Israeli league has game types). */
+  phases?: string[];
   onToggle: () => void;
 }) {
+  const euro = compareLeague(q) !== "il";
   const update = (side: CompareSide, k: string, v: string) =>
       set(editCompareSide(q, side, k, v)),
     playerMode = q.view === "Players",
@@ -413,8 +418,13 @@ export default function CompareSidesGrid({
     // The player is what the comparison is about, so it comes first.
     ...playerFields,
     ...selfDates,
-    starters("own_starters", "Own lineup starters"),
-    starters("opp_starters", "Opponent lineup starters"),
+    // EuroLeague player readers have no starters split.
+    ...(playerMode && euro
+      ? []
+      : [
+          starters("own_starters", "Own lineup starters"),
+          starters("opp_starters", "Opponent lineup starters"),
+        ]),
     ...(playerMode ? [] : [select("teams", "Teams", teams, true)]),
     select("home_away", "Home/Away", [
       { value: "home", label: "Home" },
@@ -446,12 +456,22 @@ export default function CompareSidesGrid({
         ]
       : []),
     select("opponents", "Opponents", teams, true),
-    select(
-      "game_type",
-      "Game type",
-      catalogues.gameTypeChoices.filter((c) => c.value !== ""),
-      true,
-    ),
+    euro
+      ? select(
+          "phase",
+          "Phase",
+          phases.map((ph) => ({
+            value: ph,
+            label: (catalogues.phases as Record<string, string>)[ph] ?? ph,
+          })),
+          true,
+        )
+      : select(
+          "game_type",
+          "Game type",
+          catalogues.gameTypeChoices.filter((c) => c.value !== ""),
+          true,
+        ),
     ...(!playerMode && q.preset !== LAST_N_PRESET
       ? [
           select(

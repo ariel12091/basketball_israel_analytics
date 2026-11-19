@@ -47,7 +47,7 @@ export async function comparePageAnswer(
   search: URLSearchParams,
   league: League = "il",
 ): Promise<CompareTable> {
-  const q = resolveCompareQuery(pageQuery(league, search, compareDefaults));
+  const q = resolveCompareQuery(pageQuery(league, search, compareDefaults), league);
   if (q.drill_player) throw new ParamError("drill_player", "A player drill-down has no table");
   // Side headings spell out any filter a side carries (as in the chat).
   const filtered = [...search.keys()].some((k) => /^[ab]_/.test(k));

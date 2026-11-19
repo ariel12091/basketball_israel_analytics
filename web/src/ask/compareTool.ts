@@ -41,6 +41,9 @@ function pageQuery(s: URLSearchParams): { q: Query; filtered: boolean } {
     both: Record<string, string> = {},
     sided: Record<string, string> = {};
   for (const [k, v] of s) {
+    // The chat's Compare is the Israeli league's, which filters on game_type.
+    if (k === "phase" || k === "a_phase" || k === "b_phase")
+      throw new ParamError(k, `Unknown parameter ${k}`);
     if (SIDE_FIELDS.includes(k)) both[k] = v;
     else if (/^[ab]_/.test(k) && SIDE_FIELDS.includes(k.slice(2))) sided[k] = v;
     else if (Object.hasOwn(compareDefaults, k) || SHARED.includes(k)) given[k] = v;
@@ -95,7 +98,7 @@ export function compareLink(query: Record<string, string>): string | null {
     const { q } = pageQuery(new URLSearchParams(query));
     const out = new URLSearchParams();
     for (const [k, v] of Object.entries(q))
-      if (v && v !== compareDefaults[k] && !["team_id", "open_detail"].includes(k)) out.set(k, v);
+      if (v && v !== compareDefaults[k] && !["team_id", "open_detail", "league"].includes(k)) out.set(k, v);
     if (!q.preset) out.delete("preset_applied");
     return `/il/compare?${out}`;
   } catch (e) {

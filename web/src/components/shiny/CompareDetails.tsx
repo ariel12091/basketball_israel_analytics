@@ -2,7 +2,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import type { Row } from "@/rules/gameLogs";
 import type { Query } from "@/lib/tabQuery";
-import { compareSideParams } from "@/lib/compareQuery";
+import { compareLeague, compareSideParams } from "@/lib/compareQuery";
 import {
   detailSections,
   gridGapText,
@@ -431,7 +431,11 @@ export function PlayerVersus({
     sections = [
       {
         title: "Overall",
-        metrics: (data.PVP_STATS as MetricDef[]).map((m) => ({
+        // EuroLeague records no deflections, so no Disruptions (steals +
+        // deflections) either.
+        metrics: (data.PVP_STATS as MetricDef[])
+          .filter((m) => compareLeague(q) === "il" || !["dfl", "disruptions"].includes(m.col!))
+          .map((m) => ({
           definition: {
             ...m,
             fmt: m.type === "pct" ? "num" : q.rate === "Totals" ? "int" : "num",
