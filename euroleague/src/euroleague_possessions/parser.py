@@ -943,8 +943,13 @@ class PeriodParser:
         return result
 
 
-def group_events(events: pd.DataFrame) -> pd.DataFrame:
-    """Group all events while preserving the caller's original row order."""
+def group_events(events: pd.DataFrame, *, ft_model: bool = True) -> pd.DataFrame:
+    """Group all events while preserving the caller's original row order.
+
+    ``ft_model`` overlays the free-throw stoppage model's unique answers
+    (parser 0.3.0, ``ft_stoppages.apply_ft_stoppages``); ``False`` returns the
+    0.2.4 grouping, which the stoppage comparison scripts use as baseline.
+    """
 
     normalized = normalize_events(events)
     normalized["_input_row"] = range(len(normalized))
@@ -973,4 +978,9 @@ def group_events(events: pd.DataFrame) -> pd.DataFrame:
         }.items():
             result[column] = pd.Series(dtype=dtype)
 
-    return result.drop(columns="_input_row").reset_index(drop=True)
+    result = result.drop(columns="_input_row").reset_index(drop=True)
+    if ft_model and grouped_frames:
+        from .ft_stoppages import apply_ft_stoppages
+
+        result = apply_ft_stoppages(result)
+    return result

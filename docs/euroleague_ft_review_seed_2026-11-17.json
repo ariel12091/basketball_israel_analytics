@@ -1,0 +1,1635 @@
+{
+  "model_hash": "584fb9257694fbc8fe7064dfd1cded000f06971d592bc8eb971748c053c9b4fd",
+  "rows": [
+    {
+      "game": "E2025_104",
+      "period": 2,
+      "source_event_order": 139,
+      "synthetic_parent_order": 132.0,
+      "synthetic_ft_trip_id": "EL:2025:104:2:132:3",
+      "shadow_incident_id": "SFT:2025:104:2:134",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[139]"
+    },
+    {
+      "game": "E2025_116",
+      "period": 3,
+      "source_event_order": 364,
+      "synthetic_parent_order": 361.0,
+      "synthetic_ft_trip_id": "EL:2025:116:3:361:4",
+      "shadow_incident_id": "SFT:2025:116:3:360",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[364, 365]"
+    },
+    {
+      "game": "E2025_116",
+      "period": 3,
+      "source_event_order": 365,
+      "synthetic_parent_order": 361.0,
+      "synthetic_ft_trip_id": "EL:2025:116:3:361:4",
+      "shadow_incident_id": "SFT:2025:116:3:360",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[364, 365]"
+    },
+    {
+      "game": "E2025_119",
+      "period": 2,
+      "source_event_order": 260,
+      "synthetic_parent_order": 254.0,
+      "synthetic_ft_trip_id": "EL:2025:119:2:254:6",
+      "shadow_incident_id": "SFT:2025:119:2:257",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[260]"
+    },
+    {
+      "game": "E2025_121",
+      "period": 2,
+      "source_event_order": 226,
+      "synthetic_parent_order": 222.0,
+      "synthetic_ft_trip_id": "EL:2025:121:2:222:2",
+      "shadow_incident_id": "SFT:2025:121:2:224",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[226]"
+    },
+    {
+      "game": "E2025_134",
+      "period": 2,
+      "source_event_order": 207,
+      "synthetic_parent_order": 206.0,
+      "synthetic_ft_trip_id": "EL:2025:134:2:206:2",
+      "shadow_incident_id": "SFT:2025:134:2:203",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[207, 208]"
+    },
+    {
+      "game": "E2025_134",
+      "period": 2,
+      "source_event_order": 208,
+      "synthetic_parent_order": 206.0,
+      "synthetic_ft_trip_id": "EL:2025:134:2:206:2",
+      "shadow_incident_id": "SFT:2025:134:2:203",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[207, 208]"
+    },
+    {
+      "game": "E2025_14",
+      "period": 4,
+      "source_event_order": 384,
+      "synthetic_parent_order": 382.0,
+      "synthetic_ft_trip_id": "EL:2025:14:4:382:1",
+      "shadow_incident_id": "SFT:2025:14:4:380",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[384, 385, 386]"
+    },
+    {
+      "game": "E2025_14",
+      "period": 4,
+      "source_event_order": 385,
+      "synthetic_parent_order": 382.0,
+      "synthetic_ft_trip_id": "EL:2025:14:4:382:1",
+      "shadow_incident_id": "SFT:2025:14:4:380",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[384, 385, 386]"
+    },
+    {
+      "game": "E2025_14",
+      "period": 4,
+      "source_event_order": 386,
+      "synthetic_parent_order": 382.0,
+      "synthetic_ft_trip_id": "EL:2025:14:4:382:1",
+      "shadow_incident_id": "SFT:2025:14:4:380",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[384, 385, 386]"
+    },
+    {
+      "game": "E2025_149",
+      "period": 3,
+      "source_event_order": 397,
+      "synthetic_parent_order": 388.0,
+      "synthetic_ft_trip_id": "EL:2025:149:3:388:4",
+      "shadow_incident_id": "SFT:2025:149:3:389",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[397]"
+    },
+    {
+      "game": "E2025_150",
+      "period": 2,
+      "source_event_order": 180,
+      "synthetic_parent_order": 175.0,
+      "synthetic_ft_trip_id": "EL:2025:150:2:175:2",
+      "shadow_incident_id": "SFT:2025:150:2:176",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[180]"
+    },
+    {
+      "game": "E2025_158",
+      "period": 3,
+      "source_event_order": 324,
+      "synthetic_parent_order": 317.0,
+      "synthetic_ft_trip_id": "EL:2025:158:3:317:3",
+      "shadow_incident_id": "SFT:2025:158:3:317",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[324, 325]"
+    },
+    {
+      "game": "E2025_158",
+      "period": 3,
+      "source_event_order": 325,
+      "synthetic_parent_order": 317.0,
+      "synthetic_ft_trip_id": "EL:2025:158:3:317:3",
+      "shadow_incident_id": "SFT:2025:158:3:317",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[324, 325]"
+    },
+    {
+      "game": "E2025_171",
+      "period": 3,
+      "source_event_order": 350,
+      "synthetic_parent_order": 346.0,
+      "synthetic_ft_trip_id": "EL:2025:171:3:346:5",
+      "shadow_incident_id": "SFT:2025:171:3:348",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[350]"
+    },
+    {
+      "game": "E2025_176",
+      "period": 4,
+      "source_event_order": 522,
+      "synthetic_parent_order": 518.0,
+      "synthetic_ft_trip_id": "EL:2025:176:4:518:4",
+      "shadow_incident_id": "SFT:2025:176:4:516",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[522, 523]"
+    },
+    {
+      "game": "E2025_176",
+      "period": 4,
+      "source_event_order": 523,
+      "synthetic_parent_order": 518.0,
+      "synthetic_ft_trip_id": "EL:2025:176:4:518:4",
+      "shadow_incident_id": "SFT:2025:176:4:516",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[522, 523]"
+    },
+    {
+      "game": "E2025_18",
+      "period": 2,
+      "source_event_order": 228,
+      "synthetic_parent_order": 225.0,
+      "synthetic_ft_trip_id": "EL:2025:18:2:225:5",
+      "shadow_incident_id": "SFT:2025:18:2:226",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[228]"
+    },
+    {
+      "game": "E2025_194",
+      "period": 1,
+      "source_event_order": 58,
+      "synthetic_parent_order": 52.0,
+      "synthetic_ft_trip_id": "EL:2025:194:1:52:3",
+      "shadow_incident_id": "SFT:2025:194:1:55",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[58]"
+    },
+    {
+      "game": "E2025_2",
+      "period": 4,
+      "source_event_order": 524,
+      "synthetic_parent_order": 515.0,
+      "synthetic_ft_trip_id": "EL:2025:2:4:515:4",
+      "shadow_incident_id": "SFT:2025:2:4:518",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[524]"
+    },
+    {
+      "game": "E2025_21",
+      "period": 2,
+      "source_event_order": 253,
+      "synthetic_parent_order": 246.0,
+      "synthetic_ft_trip_id": "EL:2025:21:2:246:8",
+      "shadow_incident_id": "SFT:2025:21:2:246",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[253, 254]"
+    },
+    {
+      "game": "E2025_21",
+      "period": 2,
+      "source_event_order": 254,
+      "synthetic_parent_order": 246.0,
+      "synthetic_ft_trip_id": "EL:2025:21:2:246:8",
+      "shadow_incident_id": "SFT:2025:21:2:246",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[253, 254]"
+    },
+    {
+      "game": "E2025_215",
+      "period": 2,
+      "source_event_order": 217,
+      "synthetic_parent_order": 214.0,
+      "synthetic_ft_trip_id": "EL:2025:215:2:214:3",
+      "shadow_incident_id": "SFT:2025:215:2:215",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[217]"
+    },
+    {
+      "game": "E2025_221",
+      "period": 5,
+      "source_event_order": 622,
+      "synthetic_parent_order": 620.0,
+      "synthetic_ft_trip_id": "EL:2025:221:5:620:3",
+      "shadow_incident_id": "SFT:2025:221:5:620",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[622]"
+    },
+    {
+      "game": "E2025_226",
+      "period": 2,
+      "source_event_order": 191,
+      "synthetic_parent_order": 187.0,
+      "synthetic_ft_trip_id": "EL:2025:226:2:187:1",
+      "shadow_incident_id": "SFT:2025:226:2:189",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[191]"
+    },
+    {
+      "game": "E2025_227",
+      "period": 3,
+      "source_event_order": 312,
+      "synthetic_parent_order": 310.0,
+      "synthetic_ft_trip_id": "EL:2025:227:3:310:4",
+      "shadow_incident_id": "SFT:2025:227:3:307",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[312]"
+    },
+    {
+      "game": "E2025_23",
+      "period": 1,
+      "source_event_order": 42,
+      "synthetic_parent_order": 40.0,
+      "synthetic_ft_trip_id": "EL:2025:23:1:40:3",
+      "shadow_incident_id": "SFT:2025:23:1:39",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[42, 44]"
+    },
+    {
+      "game": "E2025_23",
+      "period": 1,
+      "source_event_order": 44,
+      "synthetic_parent_order": 40.0,
+      "synthetic_ft_trip_id": "EL:2025:23:1:40:3",
+      "shadow_incident_id": "SFT:2025:23:1:39",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[42, 44]"
+    },
+    {
+      "game": "E2025_237",
+      "period": 3,
+      "source_event_order": 326,
+      "synthetic_parent_order": 323.0,
+      "synthetic_ft_trip_id": "EL:2025:237:3:323:1",
+      "shadow_incident_id": "SFT:2025:237:3:325",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[326]"
+    },
+    {
+      "game": "E2025_254",
+      "period": 4,
+      "source_event_order": 406,
+      "synthetic_parent_order": 403.0,
+      "synthetic_ft_trip_id": "EL:2025:254:4:403:1",
+      "shadow_incident_id": "SFT:2025:254:4:402",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[406, 407]"
+    },
+    {
+      "game": "E2025_254",
+      "period": 4,
+      "source_event_order": 407,
+      "synthetic_parent_order": 403.0,
+      "synthetic_ft_trip_id": "EL:2025:254:4:403:1",
+      "shadow_incident_id": "SFT:2025:254:4:402",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[406, 407]"
+    },
+    {
+      "game": "E2025_254",
+      "period": 4,
+      "source_event_order": 428,
+      "synthetic_parent_order": 423.0,
+      "synthetic_ft_trip_id": "EL:2025:254:4:423:2",
+      "shadow_incident_id": "SFT:2025:254:4:425",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[428]"
+    },
+    {
+      "game": "E2025_274",
+      "period": 2,
+      "source_event_order": 225,
+      "synthetic_parent_order": 219.0,
+      "synthetic_ft_trip_id": "EL:2025:274:2:219:2",
+      "shadow_incident_id": "SFT:2025:274:2:222",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[225]"
+    },
+    {
+      "game": "E2025_275",
+      "period": 4,
+      "source_event_order": 599,
+      "synthetic_parent_order": 593.0,
+      "synthetic_ft_trip_id": "EL:2025:275:4:593:9",
+      "shadow_incident_id": "SFT:2025:275:4:593",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[599, 600]"
+    },
+    {
+      "game": "E2025_275",
+      "period": 4,
+      "source_event_order": 600,
+      "synthetic_parent_order": 593.0,
+      "synthetic_ft_trip_id": "EL:2025:275:4:593:9",
+      "shadow_incident_id": "SFT:2025:275:4:593",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[599, 600]"
+    },
+    {
+      "game": "E2025_291",
+      "period": 1,
+      "source_event_order": 104,
+      "synthetic_parent_order": 103.0,
+      "synthetic_ft_trip_id": "EL:2025:291:1:103:3",
+      "shadow_incident_id": "SFT:2025:291:1:100",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[104]"
+    },
+    {
+      "game": "E2025_292",
+      "period": 2,
+      "source_event_order": 208,
+      "synthetic_parent_order": 204.0,
+      "synthetic_ft_trip_id": "EL:2025:292:2:204:4",
+      "shadow_incident_id": "SFT:2025:292:2:206",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[208]"
+    },
+    {
+      "game": "E2025_295",
+      "period": 3,
+      "source_event_order": 286,
+      "synthetic_parent_order": 281.0,
+      "synthetic_ft_trip_id": "EL:2025:295:3:281:1",
+      "shadow_incident_id": "SFT:2025:295:3:280",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[286, 288]"
+    },
+    {
+      "game": "E2025_295",
+      "period": 3,
+      "source_event_order": 288,
+      "synthetic_parent_order": 281.0,
+      "synthetic_ft_trip_id": "EL:2025:295:3:281:1",
+      "shadow_incident_id": "SFT:2025:295:3:280",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[286, 288]"
+    },
+    {
+      "game": "E2025_295",
+      "period": 4,
+      "source_event_order": 444,
+      "synthetic_parent_order": 441.0,
+      "synthetic_ft_trip_id": "EL:2025:295:4:441:1",
+      "shadow_incident_id": "SFT:2025:295:4:443",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[444]"
+    },
+    {
+      "game": "E2025_301",
+      "period": 1,
+      "source_event_order": 85,
+      "synthetic_parent_order": 79.0,
+      "synthetic_ft_trip_id": "EL:2025:301:1:79:2",
+      "shadow_incident_id": "SFT:2025:301:1:77",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[85, 86]"
+    },
+    {
+      "game": "E2025_301",
+      "period": 1,
+      "source_event_order": 86,
+      "synthetic_parent_order": 79.0,
+      "synthetic_ft_trip_id": "EL:2025:301:1:79:2",
+      "shadow_incident_id": "SFT:2025:301:1:77",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[85, 86]"
+    },
+    {
+      "game": "E2025_305",
+      "period": 4,
+      "source_event_order": 574,
+      "synthetic_parent_order": 568.0,
+      "synthetic_ft_trip_id": "EL:2025:305:4:568:10",
+      "shadow_incident_id": "SFT:2025:305:4:568",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[574, 575]"
+    },
+    {
+      "game": "E2025_305",
+      "period": 4,
+      "source_event_order": 575,
+      "synthetic_parent_order": 568.0,
+      "synthetic_ft_trip_id": "EL:2025:305:4:568:10",
+      "shadow_incident_id": "SFT:2025:305:4:568",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[574, 575]"
+    },
+    {
+      "game": "E2025_309",
+      "period": 2,
+      "source_event_order": 216,
+      "synthetic_parent_order": 208.0,
+      "synthetic_ft_trip_id": "EL:2025:309:2:208:4",
+      "shadow_incident_id": "SFT:2025:309:2:211",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[216]"
+    },
+    {
+      "game": "E2025_318",
+      "period": 4,
+      "source_event_order": 459,
+      "synthetic_parent_order": 452.0,
+      "synthetic_ft_trip_id": "EL:2025:318:4:452:4",
+      "shadow_incident_id": "SFT:2025:318:4:452",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[459, 460]"
+    },
+    {
+      "game": "E2025_318",
+      "period": 4,
+      "source_event_order": 460,
+      "synthetic_parent_order": 452.0,
+      "synthetic_ft_trip_id": "EL:2025:318:4:452:4",
+      "shadow_incident_id": "SFT:2025:318:4:452",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[459, 460]"
+    },
+    {
+      "game": "E2025_322",
+      "period": 4,
+      "source_event_order": 420,
+      "synthetic_parent_order": 416.0,
+      "synthetic_ft_trip_id": "EL:2025:322:4:416:2",
+      "shadow_incident_id": "SFT:2025:322:4:416",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[420, 421]"
+    },
+    {
+      "game": "E2025_322",
+      "period": 4,
+      "source_event_order": 421,
+      "synthetic_parent_order": 416.0,
+      "synthetic_ft_trip_id": "EL:2025:322:4:416:2",
+      "shadow_incident_id": "SFT:2025:322:4:416",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[420, 421]"
+    },
+    {
+      "game": "E2025_324",
+      "period": 4,
+      "source_event_order": 602,
+      "synthetic_parent_order": 598.0,
+      "synthetic_ft_trip_id": "EL:2025:324:4:598:5",
+      "shadow_incident_id": "SFT:2025:324:4:598",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[602, 603]"
+    },
+    {
+      "game": "E2025_324",
+      "period": 4,
+      "source_event_order": 603,
+      "synthetic_parent_order": 598.0,
+      "synthetic_ft_trip_id": "EL:2025:324:4:598:5",
+      "shadow_incident_id": "SFT:2025:324:4:598",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[602, 603]"
+    },
+    {
+      "game": "E2025_327",
+      "period": 4,
+      "source_event_order": 589,
+      "synthetic_parent_order": 580.0,
+      "synthetic_ft_trip_id": "EL:2025:327:4:580:6",
+      "shadow_incident_id": "SFT:2025:327:4:579",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[589, 590]"
+    },
+    {
+      "game": "E2025_327",
+      "period": 4,
+      "source_event_order": 590,
+      "synthetic_parent_order": 580.0,
+      "synthetic_ft_trip_id": "EL:2025:327:4:580:6",
+      "shadow_incident_id": "SFT:2025:327:4:579",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[589, 590]"
+    },
+    {
+      "game": "E2025_329",
+      "period": 2,
+      "source_event_order": 150,
+      "synthetic_parent_order": 146.0,
+      "synthetic_ft_trip_id": "EL:2025:329:2:146:2",
+      "shadow_incident_id": "SFT:2025:329:2:146",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[150, 151]"
+    },
+    {
+      "game": "E2025_329",
+      "period": 2,
+      "source_event_order": 151,
+      "synthetic_parent_order": 146.0,
+      "synthetic_ft_trip_id": "EL:2025:329:2:146:2",
+      "shadow_incident_id": "SFT:2025:329:2:146",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[150, 151]"
+    },
+    {
+      "game": "E2025_341",
+      "period": 3,
+      "source_event_order": 424,
+      "synthetic_parent_order": 419.0,
+      "synthetic_ft_trip_id": "EL:2025:341:3:419:6",
+      "shadow_incident_id": "SFT:2025:341:3:420",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[424]"
+    },
+    {
+      "game": "E2025_341",
+      "period": 3,
+      "source_event_order": 456,
+      "synthetic_parent_order": 446.0,
+      "synthetic_ft_trip_id": "EL:2025:341:3:446:8",
+      "shadow_incident_id": "SFT:2025:341:3:446",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[456, 457]"
+    },
+    {
+      "game": "E2025_341",
+      "period": 3,
+      "source_event_order": 457,
+      "synthetic_parent_order": 446.0,
+      "synthetic_ft_trip_id": "EL:2025:341:3:446:8",
+      "shadow_incident_id": "SFT:2025:341:3:446",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[456, 457]"
+    },
+    {
+      "game": "E2025_344",
+      "period": 2,
+      "source_event_order": 162,
+      "synthetic_parent_order": 157.0,
+      "synthetic_ft_trip_id": "EL:2025:344:2:157:1",
+      "shadow_incident_id": "SFT:2025:344:2:157",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[162]"
+    },
+    {
+      "game": "E2025_349",
+      "period": 1,
+      "source_event_order": 65,
+      "synthetic_parent_order": 57.0,
+      "synthetic_ft_trip_id": "EL:2025:349:1:57:3",
+      "shadow_incident_id": "SFT:2025:349:1:59",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[65]"
+    },
+    {
+      "game": "E2025_35",
+      "period": 4,
+      "source_event_order": 409,
+      "synthetic_parent_order": 406.0,
+      "synthetic_ft_trip_id": "EL:2025:35:4:406:1",
+      "shadow_incident_id": "SFT:2025:35:4:407",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[409]"
+    },
+    {
+      "game": "E2025_370",
+      "period": 3,
+      "source_event_order": 406,
+      "synthetic_parent_order": 400.0,
+      "synthetic_ft_trip_id": "EL:2025:370:3:400:5",
+      "shadow_incident_id": "SFT:2025:370:3:400",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[406, 407]"
+    },
+    {
+      "game": "E2025_370",
+      "period": 3,
+      "source_event_order": 407,
+      "synthetic_parent_order": 400.0,
+      "synthetic_ft_trip_id": "EL:2025:370:3:400:5",
+      "shadow_incident_id": "SFT:2025:370:3:400",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[406, 407]"
+    },
+    {
+      "game": "E2025_371",
+      "period": 1,
+      "source_event_order": 135,
+      "synthetic_parent_order": 129.0,
+      "synthetic_ft_trip_id": "EL:2025:371:1:129:9",
+      "shadow_incident_id": "SFT:2025:371:1:129",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[135, 136]"
+    },
+    {
+      "game": "E2025_371",
+      "period": 1,
+      "source_event_order": 136,
+      "synthetic_parent_order": 129.0,
+      "synthetic_ft_trip_id": "EL:2025:371:1:129:9",
+      "shadow_incident_id": "SFT:2025:371:1:129",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[135, 136]"
+    },
+    {
+      "game": "E2025_374",
+      "period": 3,
+      "source_event_order": 417,
+      "synthetic_parent_order": 413.0,
+      "synthetic_ft_trip_id": "EL:2025:374:3:413:6",
+      "shadow_incident_id": "SFT:2025:374:3:412",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[417, 418]"
+    },
+    {
+      "game": "E2025_374",
+      "period": 3,
+      "source_event_order": 418,
+      "synthetic_parent_order": 413.0,
+      "synthetic_ft_trip_id": "EL:2025:374:3:413:6",
+      "shadow_incident_id": "SFT:2025:374:3:412",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[417, 418]"
+    },
+    {
+      "game": "E2025_374",
+      "period": 4,
+      "source_event_order": 487,
+      "synthetic_parent_order": 486.0,
+      "synthetic_ft_trip_id": "EL:2025:374:4:486:3",
+      "shadow_incident_id": "SFT:2025:374:4:485",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[487, 488]"
+    },
+    {
+      "game": "E2025_374",
+      "period": 4,
+      "source_event_order": 488,
+      "synthetic_parent_order": 486.0,
+      "synthetic_ft_trip_id": "EL:2025:374:4:486:3",
+      "shadow_incident_id": "SFT:2025:374:4:485",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[487, 488]"
+    },
+    {
+      "game": "E2025_374",
+      "period": 4,
+      "source_event_order": 504,
+      "synthetic_parent_order": 501.0,
+      "synthetic_ft_trip_id": "EL:2025:374:4:501:4",
+      "shadow_incident_id": "SFT:2025:374:4:503",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[504]"
+    },
+    {
+      "game": "E2025_390",
+      "period": 2,
+      "source_event_order": 212,
+      "synthetic_parent_order": 209.0,
+      "synthetic_ft_trip_id": "EL:2025:390:2:209:3",
+      "shadow_incident_id": "SFT:2025:390:2:211",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[212]"
+    },
+    {
+      "game": "E2025_398",
+      "period": 3,
+      "source_event_order": 413,
+      "synthetic_parent_order": 410.0,
+      "synthetic_ft_trip_id": "EL:2025:398:3:410:7",
+      "shadow_incident_id": "SFT:2025:398:3:412",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[413]"
+    },
+    {
+      "game": "E2025_4",
+      "period": 3,
+      "source_event_order": 344,
+      "synthetic_parent_order": 336.0,
+      "synthetic_ft_trip_id": "EL:2025:4:3:336:4",
+      "shadow_incident_id": "SFT:2025:4:3:336",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[344, 346]"
+    },
+    {
+      "game": "E2025_4",
+      "period": 3,
+      "source_event_order": 346,
+      "synthetic_parent_order": 336.0,
+      "synthetic_ft_trip_id": "EL:2025:4:3:336:4",
+      "shadow_incident_id": "SFT:2025:4:3:336",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[344, 346]"
+    },
+    {
+      "game": "E2025_71",
+      "period": 4,
+      "source_event_order": 571,
+      "synthetic_parent_order": 563.0,
+      "synthetic_ft_trip_id": "EL:2025:71:4:563:3",
+      "shadow_incident_id": "SFT:2025:71:4:566",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[571]"
+    },
+    {
+      "game": "E2025_8",
+      "period": 2,
+      "source_event_order": 336,
+      "synthetic_parent_order": 333.0,
+      "synthetic_ft_trip_id": "EL:2025:8:2:333:6",
+      "shadow_incident_id": "SFT:2025:8:2:332",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[336]"
+    },
+    {
+      "game": "E2025_82",
+      "period": 3,
+      "source_event_order": 332,
+      "synthetic_parent_order": 328.0,
+      "synthetic_ft_trip_id": "EL:2025:82:3:328:1",
+      "shadow_incident_id": "SFT:2025:82:3:331",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[332]"
+    },
+    {
+      "game": "E2025_98",
+      "period": 3,
+      "source_event_order": 375,
+      "synthetic_parent_order": 374.0,
+      "synthetic_ft_trip_id": "EL:2025:98:3:374:7",
+      "shadow_incident_id": "SFT:2025:98:3:373",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[375]"
+    },
+    {
+      "game": "E2026_1",
+      "period": 4,
+      "source_event_order": 629,
+      "synthetic_parent_order": 625.0,
+      "synthetic_ft_trip_id": "EL:2026:1:4:625:3",
+      "shadow_incident_id": "SFT:2026:1:4:625",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[629, 630]"
+    },
+    {
+      "game": "E2026_1",
+      "period": 4,
+      "source_event_order": 630,
+      "synthetic_parent_order": 625.0,
+      "synthetic_ft_trip_id": "EL:2026:1:4:625:3",
+      "shadow_incident_id": "SFT:2026:1:4:625",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[629, 630]"
+    },
+    {
+      "game": "E2026_24",
+      "period": 3,
+      "source_event_order": 457,
+      "synthetic_parent_order": 455.0,
+      "synthetic_ft_trip_id": "EL:2026:24:3:455:4",
+      "shadow_incident_id": "SFT:2026:24:3:453",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[457, 458]"
+    },
+    {
+      "game": "E2026_24",
+      "period": 3,
+      "source_event_order": 458,
+      "synthetic_parent_order": 455.0,
+      "synthetic_ft_trip_id": "EL:2026:24:3:455:4",
+      "shadow_incident_id": "SFT:2026:24:3:453",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[457, 458]"
+    },
+    {
+      "game": "E2026_27",
+      "period": 3,
+      "source_event_order": 359,
+      "synthetic_parent_order": 352.0,
+      "synthetic_ft_trip_id": "EL:2026:27:3:352:2",
+      "shadow_incident_id": "SFT:2026:27:3:351",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[359, 361]"
+    },
+    {
+      "game": "E2026_27",
+      "period": 3,
+      "source_event_order": 361,
+      "synthetic_parent_order": 352.0,
+      "synthetic_ft_trip_id": "EL:2026:27:3:352:2",
+      "shadow_incident_id": "SFT:2026:27:3:351",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[359, 361]"
+    },
+    {
+      "game": "E2026_31",
+      "period": 2,
+      "source_event_order": 238,
+      "synthetic_parent_order": 232.0,
+      "synthetic_ft_trip_id": "EL:2026:31:2:232:1",
+      "shadow_incident_id": "SFT:2026:31:2:233",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[238]"
+    },
+    {
+      "game": "E2026_31",
+      "period": 3,
+      "source_event_order": 369,
+      "synthetic_parent_order": 357.0,
+      "synthetic_ft_trip_id": "EL:2026:31:3:357:3",
+      "shadow_incident_id": "SFT:2026:31:3:357",
+      "shadow_status": "replacement_requires_evidence",
+      "baseline_partition": "[369]"
+    },
+    {
+      "game": "E2026_39",
+      "period": 3,
+      "source_event_order": 397,
+      "synthetic_parent_order": 394.0,
+      "synthetic_ft_trip_id": "EL:2026:39:3:394:3",
+      "shadow_incident_id": "SFT:2026:39:3:395",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[397]"
+    },
+    {
+      "game": "E2026_44",
+      "period": 2,
+      "source_event_order": 189,
+      "synthetic_parent_order": 183.0,
+      "synthetic_ft_trip_id": "EL:2026:44:2:183:3",
+      "shadow_incident_id": "SFT:2026:44:2:185",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[189]"
+    },
+    {
+      "game": "E2026_53",
+      "period": 3,
+      "source_event_order": 409,
+      "synthetic_parent_order": 403.0,
+      "synthetic_ft_trip_id": "EL:2026:53:3:403:4",
+      "shadow_incident_id": "SFT:2026:53:3:408",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[409]"
+    },
+    {
+      "game": "E2026_58",
+      "period": 3,
+      "source_event_order": 302,
+      "synthetic_parent_order": 298.0,
+      "synthetic_ft_trip_id": "EL:2026:58:3:298:2",
+      "shadow_incident_id": "SFT:2026:58:3:300",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[302]"
+    },
+    {
+      "game": "E2026_60",
+      "period": 4,
+      "source_event_order": 489,
+      "synthetic_parent_order": 482.0,
+      "synthetic_ft_trip_id": "EL:2026:60:4:482:4",
+      "shadow_incident_id": "SFT:2026:60:4:481",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[489, 491]"
+    },
+    {
+      "game": "E2026_60",
+      "period": 4,
+      "source_event_order": 491,
+      "synthetic_parent_order": 482.0,
+      "synthetic_ft_trip_id": "EL:2026:60:4:482:4",
+      "shadow_incident_id": "SFT:2026:60:4:481",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[489, 491]"
+    },
+    {
+      "game": "E2026_63",
+      "period": 2,
+      "source_event_order": 224,
+      "synthetic_parent_order": 221.0,
+      "synthetic_ft_trip_id": "EL:2026:63:2:221:3",
+      "shadow_incident_id": "SFT:2026:63:2:220",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[224, 225]"
+    },
+    {
+      "game": "E2026_63",
+      "period": 2,
+      "source_event_order": 225,
+      "synthetic_parent_order": 221.0,
+      "synthetic_ft_trip_id": "EL:2026:63:2:221:3",
+      "shadow_incident_id": "SFT:2026:63:2:220",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[224, 225]"
+    },
+    {
+      "game": "E2026_67",
+      "period": 1,
+      "source_event_order": 94,
+      "synthetic_parent_order": 93.0,
+      "synthetic_ft_trip_id": "EL:2026:67:1:93:2",
+      "shadow_incident_id": "SFT:2026:67:1:86",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[94, 96]"
+    },
+    {
+      "game": "E2026_67",
+      "period": 1,
+      "source_event_order": 96,
+      "synthetic_parent_order": 93.0,
+      "synthetic_ft_trip_id": "EL:2026:67:1:93:2",
+      "shadow_incident_id": "SFT:2026:67:1:86",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[94, 96]"
+    },
+    {
+      "game": "E2026_67",
+      "period": 2,
+      "source_event_order": 258,
+      "synthetic_parent_order": 248.0,
+      "synthetic_ft_trip_id": "EL:2026:67:2:248:5",
+      "shadow_incident_id": "SFT:2026:67:2:248",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[258, 259]"
+    },
+    {
+      "game": "E2026_67",
+      "period": 2,
+      "source_event_order": 259,
+      "synthetic_parent_order": 248.0,
+      "synthetic_ft_trip_id": "EL:2026:67:2:248:5",
+      "shadow_incident_id": "SFT:2026:67:2:248",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[258, 259]"
+    },
+    {
+      "game": "E2026_78",
+      "period": 4,
+      "source_event_order": 467,
+      "synthetic_parent_order": 463.0,
+      "synthetic_ft_trip_id": "EL:2026:78:4:463:1",
+      "shadow_incident_id": "SFT:2026:78:4:465",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[467]"
+    },
+    {
+      "game": "E2026_89",
+      "period": 2,
+      "source_event_order": 194,
+      "synthetic_parent_order": 189.0,
+      "synthetic_ft_trip_id": "EL:2026:89:2:189:2",
+      "shadow_incident_id": "SFT:2026:89:2:190",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[194]"
+    },
+    {
+      "game": "U2025_111",
+      "period": 4,
+      "source_event_order": 583,
+      "synthetic_parent_order": 577.0,
+      "synthetic_ft_trip_id": "EL:2025:111:4:577:6",
+      "shadow_incident_id": "SFT:2025:111:4:579",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[583]"
+    },
+    {
+      "game": "U2025_117",
+      "period": 1,
+      "source_event_order": 87,
+      "synthetic_parent_order": 85.0,
+      "synthetic_ft_trip_id": "EL:2025:117:1:85:3",
+      "shadow_incident_id": "SFT:2025:117:1:85",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[87]"
+    },
+    {
+      "game": "U2025_119",
+      "period": 3,
+      "source_event_order": 337,
+      "synthetic_parent_order": 334.0,
+      "synthetic_ft_trip_id": "EL:2025:119:3:334:1",
+      "shadow_incident_id": "SFT:2025:119:3:336",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[337]"
+    },
+    {
+      "game": "U2025_140",
+      "period": 2,
+      "source_event_order": 181,
+      "synthetic_parent_order": 178.0,
+      "synthetic_ft_trip_id": "EL:2025:140:2:178:2",
+      "shadow_incident_id": "SFT:2025:140:2:180",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[181]"
+    },
+    {
+      "game": "U2025_165",
+      "period": 2,
+      "source_event_order": 184,
+      "synthetic_parent_order": 180.0,
+      "synthetic_ft_trip_id": "EL:2025:165:2:180:3",
+      "shadow_incident_id": "SFT:2025:165:2:180",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[184, 186]"
+    },
+    {
+      "game": "U2025_165",
+      "period": 2,
+      "source_event_order": 186,
+      "synthetic_parent_order": 180.0,
+      "synthetic_ft_trip_id": "EL:2025:165:2:180:3",
+      "shadow_incident_id": "SFT:2025:165:2:180",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[184, 186]"
+    },
+    {
+      "game": "U2025_172",
+      "period": 1,
+      "source_event_order": 59,
+      "synthetic_parent_order": 53.0,
+      "synthetic_ft_trip_id": "EL:2025:172:1:53:3",
+      "shadow_incident_id": "SFT:2025:172:1:55",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[59]"
+    },
+    {
+      "game": "U2025_176",
+      "period": 4,
+      "source_event_order": 552,
+      "synthetic_parent_order": 548.0,
+      "synthetic_ft_trip_id": "EL:2025:176:4:548:6",
+      "shadow_incident_id": "SFT:2025:176:4:548",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[552, 553]"
+    },
+    {
+      "game": "U2025_176",
+      "period": 4,
+      "source_event_order": 553,
+      "synthetic_parent_order": 548.0,
+      "synthetic_ft_trip_id": "EL:2025:176:4:548:6",
+      "shadow_incident_id": "SFT:2025:176:4:548",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[552, 553]"
+    },
+    {
+      "game": "U2025_187",
+      "period": 3,
+      "source_event_order": 418,
+      "synthetic_parent_order": 411.0,
+      "synthetic_ft_trip_id": "EL:2025:187:3:411:5",
+      "shadow_incident_id": "SFT:2025:187:3:411",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[418]"
+    },
+    {
+      "game": "U2025_3",
+      "period": 1,
+      "source_event_order": 9,
+      "synthetic_parent_order": 7.0,
+      "synthetic_ft_trip_id": "EL:2025:3:1:7:1",
+      "shadow_incident_id": "SFT:2025:3:1:7",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[9, 10]"
+    },
+    {
+      "game": "U2025_3",
+      "period": 1,
+      "source_event_order": 10,
+      "synthetic_parent_order": 7.0,
+      "synthetic_ft_trip_id": "EL:2025:3:1:7:1",
+      "shadow_incident_id": "SFT:2025:3:1:7",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[9, 10]"
+    },
+    {
+      "game": "U2025_32",
+      "period": 1,
+      "source_event_order": 141,
+      "synthetic_parent_order": 136.0,
+      "synthetic_ft_trip_id": "EL:2025:32:1:136:7",
+      "shadow_incident_id": "SFT:2025:32:1:135",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[141, 142]"
+    },
+    {
+      "game": "U2025_32",
+      "period": 1,
+      "source_event_order": 142,
+      "synthetic_parent_order": 136.0,
+      "synthetic_ft_trip_id": "EL:2025:32:1:136:7",
+      "shadow_incident_id": "SFT:2025:32:1:135",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[141, 142]"
+    },
+    {
+      "game": "U2025_35",
+      "period": 4,
+      "source_event_order": 519,
+      "synthetic_parent_order": 515.0,
+      "synthetic_ft_trip_id": "EL:2025:35:4:515:2",
+      "shadow_incident_id": "SFT:2025:35:4:517",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[519]"
+    },
+    {
+      "game": "U2025_4",
+      "period": 2,
+      "source_event_order": 351,
+      "synthetic_parent_order": 340.0,
+      "synthetic_ft_trip_id": "EL:2025:4:2:340:7",
+      "shadow_incident_id": "SFT:2025:4:2:340",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[351]"
+    },
+    {
+      "game": "U2025_44",
+      "period": 4,
+      "source_event_order": 530,
+      "synthetic_parent_order": 527.0,
+      "synthetic_ft_trip_id": "EL:2025:44:4:527:2",
+      "shadow_incident_id": "SFT:2025:44:4:528",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[530]"
+    },
+    {
+      "game": "U2025_49",
+      "period": 2,
+      "source_event_order": 136,
+      "synthetic_parent_order": 130.0,
+      "synthetic_ft_trip_id": "EL:2025:49:2:130:2",
+      "shadow_incident_id": "SFT:2025:49:2:133",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[136]"
+    },
+    {
+      "game": "U2025_5",
+      "period": 3,
+      "source_event_order": 335,
+      "synthetic_parent_order": 330.0,
+      "synthetic_ft_trip_id": "EL:2025:5:3:330:1",
+      "shadow_incident_id": "SFT:2025:5:3:332",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[335]"
+    },
+    {
+      "game": "U2025_66",
+      "period": 3,
+      "source_event_order": 370,
+      "synthetic_parent_order": 365.0,
+      "synthetic_ft_trip_id": "EL:2025:66:3:365:2",
+      "shadow_incident_id": "SFT:2025:66:3:366",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[370]"
+    },
+    {
+      "game": "U2025_73",
+      "period": 3,
+      "source_event_order": 419,
+      "synthetic_parent_order": 413.0,
+      "synthetic_ft_trip_id": "EL:2025:73:3:413:5",
+      "shadow_incident_id": "SFT:2025:73:3:413",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[419, 420, 421]"
+    },
+    {
+      "game": "U2025_73",
+      "period": 3,
+      "source_event_order": 420,
+      "synthetic_parent_order": 413.0,
+      "synthetic_ft_trip_id": "EL:2025:73:3:413:5",
+      "shadow_incident_id": "SFT:2025:73:3:413",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[419, 420, 421]"
+    },
+    {
+      "game": "U2025_73",
+      "period": 3,
+      "source_event_order": 421,
+      "synthetic_parent_order": 413.0,
+      "synthetic_ft_trip_id": "EL:2025:73:3:413:5",
+      "shadow_incident_id": "SFT:2025:73:3:413",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[419, 420, 421]"
+    },
+    {
+      "game": "U2025_79",
+      "period": 1,
+      "source_event_order": 55,
+      "synthetic_parent_order": 43.0,
+      "synthetic_ft_trip_id": "EL:2025:79:1:43:2",
+      "shadow_incident_id": "SFT:2025:79:1:43",
+      "shadow_status": "replacement_requires_evidence",
+      "baseline_partition": "[55]"
+    },
+    {
+      "game": "U2025_86",
+      "period": 4,
+      "source_event_order": 450,
+      "synthetic_parent_order": 445.0,
+      "synthetic_ft_trip_id": "EL:2025:86:4:445:2",
+      "shadow_incident_id": "SFT:2025:86:4:446",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[450]"
+    },
+    {
+      "game": "U2025_86",
+      "period": 4,
+      "source_event_order": 465,
+      "synthetic_parent_order": 462.0,
+      "synthetic_ft_trip_id": "EL:2025:86:4:462:3",
+      "shadow_incident_id": "SFT:2025:86:4:462",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[465]"
+    },
+    {
+      "game": "U2025_9",
+      "period": 5,
+      "source_event_order": 605,
+      "synthetic_parent_order": 601.0,
+      "synthetic_ft_trip_id": "EL:2025:9:5:601:3",
+      "shadow_incident_id": "SFT:2025:9:5:600",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[605]"
+    },
+    {
+      "game": "U2025_98",
+      "period": 1,
+      "source_event_order": 54,
+      "synthetic_parent_order": 50.0,
+      "synthetic_ft_trip_id": "EL:2025:98:1:50:1",
+      "shadow_incident_id": "SFT:2025:98:1:53",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[54]"
+    },
+    {
+      "game": "U2026_100",
+      "period": 3,
+      "source_event_order": 390,
+      "synthetic_parent_order": 387.0,
+      "synthetic_ft_trip_id": "EL:2026:100:3:387:7",
+      "shadow_incident_id": "SFT:2026:100:3:388",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[390]"
+    },
+    {
+      "game": "U2026_108",
+      "period": 4,
+      "source_event_order": 551,
+      "synthetic_parent_order": 543.0,
+      "synthetic_ft_trip_id": "EL:2026:108:4:543:6",
+      "shadow_incident_id": "SFT:2026:108:4:543",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[551, 552]"
+    },
+    {
+      "game": "U2026_108",
+      "period": 4,
+      "source_event_order": 552,
+      "synthetic_parent_order": 543.0,
+      "synthetic_ft_trip_id": "EL:2026:108:4:543:6",
+      "shadow_incident_id": "SFT:2026:108:4:543",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[551, 552]"
+    },
+    {
+      "game": "U2026_109",
+      "period": 2,
+      "source_event_order": 134,
+      "synthetic_parent_order": 132.0,
+      "synthetic_ft_trip_id": "EL:2026:109:2:132:1",
+      "shadow_incident_id": "SFT:2026:109:2:132",
+      "shadow_status": "replacement_requires_evidence",
+      "baseline_partition": "[134]"
+    },
+    {
+      "game": "U2026_16",
+      "period": 1,
+      "source_event_order": 90,
+      "synthetic_parent_order": 87.0,
+      "synthetic_ft_trip_id": "EL:2026:16:1:87:1",
+      "shadow_incident_id": "SFT:2026:16:1:89",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[90]"
+    },
+    {
+      "game": "U2026_17",
+      "period": 2,
+      "source_event_order": 278,
+      "synthetic_parent_order": 273.0,
+      "synthetic_ft_trip_id": "EL:2026:17:2:273:6",
+      "shadow_incident_id": "SFT:2026:17:2:272",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[278, 279]"
+    },
+    {
+      "game": "U2026_17",
+      "period": 2,
+      "source_event_order": 279,
+      "synthetic_parent_order": 273.0,
+      "synthetic_ft_trip_id": "EL:2026:17:2:273:6",
+      "shadow_incident_id": "SFT:2026:17:2:272",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[278, 279]"
+    },
+    {
+      "game": "U2026_19",
+      "period": 2,
+      "source_event_order": 197,
+      "synthetic_parent_order": 193.0,
+      "synthetic_ft_trip_id": "EL:2026:19:2:193:4",
+      "shadow_incident_id": "SFT:2026:19:2:188",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[197, 198]"
+    },
+    {
+      "game": "U2026_19",
+      "period": 2,
+      "source_event_order": 198,
+      "synthetic_parent_order": 193.0,
+      "synthetic_ft_trip_id": "EL:2026:19:2:193:4",
+      "shadow_incident_id": "SFT:2026:19:2:188",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[197, 198]"
+    },
+    {
+      "game": "U2026_29",
+      "period": 3,
+      "source_event_order": 321,
+      "synthetic_parent_order": 319.0,
+      "synthetic_ft_trip_id": "EL:2026:29:3:319:3",
+      "shadow_incident_id": "SFT:2026:29:3:317",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[321, 322]"
+    },
+    {
+      "game": "U2026_29",
+      "period": 3,
+      "source_event_order": 322,
+      "synthetic_parent_order": 319.0,
+      "synthetic_ft_trip_id": "EL:2026:29:3:319:3",
+      "shadow_incident_id": "SFT:2026:29:3:317",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[321, 322]"
+    },
+    {
+      "game": "U2026_4",
+      "period": 4,
+      "source_event_order": 518,
+      "synthetic_parent_order": 517.0,
+      "synthetic_ft_trip_id": "EL:2026:4:4:517:2",
+      "shadow_incident_id": "SFT:2026:4:4:516",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[518]"
+    },
+    {
+      "game": "U2026_47",
+      "period": 4,
+      "source_event_order": 573,
+      "synthetic_parent_order": 567.0,
+      "synthetic_ft_trip_id": "EL:2026:47:4:567:4",
+      "shadow_incident_id": "SFT:2026:47:4:565",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[573, 574]"
+    },
+    {
+      "game": "U2026_47",
+      "period": 4,
+      "source_event_order": 574,
+      "synthetic_parent_order": 567.0,
+      "synthetic_ft_trip_id": "EL:2026:47:4:567:4",
+      "shadow_incident_id": "SFT:2026:47:4:565",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[573, 574]"
+    },
+    {
+      "game": "U2026_5",
+      "period": 4,
+      "source_event_order": 627,
+      "synthetic_parent_order": 623.0,
+      "synthetic_ft_trip_id": "EL:2026:5:4:623:8",
+      "shadow_incident_id": "SFT:2026:5:4:623",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[627, 628]"
+    },
+    {
+      "game": "U2026_5",
+      "period": 4,
+      "source_event_order": 628,
+      "synthetic_parent_order": 623.0,
+      "synthetic_ft_trip_id": "EL:2026:5:4:623:8",
+      "shadow_incident_id": "SFT:2026:5:4:623",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[627, 628]"
+    },
+    {
+      "game": "U2026_50",
+      "period": 4,
+      "source_event_order": 501,
+      "synthetic_parent_order": 497.0,
+      "synthetic_ft_trip_id": "EL:2026:50:4:497:1",
+      "shadow_incident_id": "SFT:2026:50:4:499",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[501]"
+    },
+    {
+      "game": "U2026_56",
+      "period": 2,
+      "source_event_order": 233,
+      "synthetic_parent_order": 232.0,
+      "synthetic_ft_trip_id": "EL:2026:56:2:232:4",
+      "shadow_incident_id": "SFT:2026:56:2:220",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[233, 234]"
+    },
+    {
+      "game": "U2026_56",
+      "period": 2,
+      "source_event_order": 234,
+      "synthetic_parent_order": 232.0,
+      "synthetic_ft_trip_id": "EL:2026:56:2:232:4",
+      "shadow_incident_id": "SFT:2026:56:2:220",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[233, 234]"
+    },
+    {
+      "game": "U2026_56",
+      "period": 4,
+      "source_event_order": 459,
+      "synthetic_parent_order": 458.0,
+      "synthetic_ft_trip_id": "EL:2026:56:4:458:5",
+      "shadow_incident_id": "SFT:2026:56:4:458",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[458, 459]"
+    },
+    {
+      "game": "U2026_56",
+      "period": 4,
+      "source_event_order": 464,
+      "synthetic_parent_order": 460.0,
+      "synthetic_ft_trip_id": "EL:2026:56:4:460:6",
+      "shadow_incident_id": "SFT:2026:56:4:458",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[464, 465]"
+    },
+    {
+      "game": "U2026_56",
+      "period": 4,
+      "source_event_order": 465,
+      "synthetic_parent_order": 460.0,
+      "synthetic_ft_trip_id": "EL:2026:56:4:460:6",
+      "shadow_incident_id": "SFT:2026:56:4:458",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[464, 465]"
+    },
+    {
+      "game": "U2026_6",
+      "period": 1,
+      "source_event_order": 25,
+      "synthetic_parent_order": 23.0,
+      "synthetic_ft_trip_id": "EL:2026:6:1:23:1",
+      "shadow_incident_id": "SFT:2026:6:1:21",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[25, 26]"
+    },
+    {
+      "game": "U2026_6",
+      "period": 1,
+      "source_event_order": 26,
+      "synthetic_parent_order": 23.0,
+      "synthetic_ft_trip_id": "EL:2026:6:1:23:1",
+      "shadow_incident_id": "SFT:2026:6:1:21",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[25, 26]"
+    },
+    {
+      "game": "U2026_6",
+      "period": 3,
+      "source_event_order": 409,
+      "synthetic_parent_order": 404.0,
+      "synthetic_ft_trip_id": "EL:2026:6:3:404:4",
+      "shadow_incident_id": "SFT:2026:6:3:405",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[409]"
+    },
+    {
+      "game": "U2026_6",
+      "period": 3,
+      "source_event_order": 428,
+      "synthetic_parent_order": 427.0,
+      "synthetic_ft_trip_id": "EL:2026:6:3:427:7",
+      "shadow_incident_id": "SFT:2026:6:3:425",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[427, 428]"
+    },
+    {
+      "game": "U2026_60",
+      "period": 4,
+      "source_event_order": 470,
+      "synthetic_parent_order": 465.0,
+      "synthetic_ft_trip_id": "EL:2026:60:4:465:2",
+      "shadow_incident_id": "SFT:2026:60:4:466",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[470]"
+    },
+    {
+      "game": "U2026_61",
+      "period": 4,
+      "source_event_order": 530,
+      "synthetic_parent_order": 527.0,
+      "synthetic_ft_trip_id": "EL:2026:61:4:527:8",
+      "shadow_incident_id": "SFT:2026:61:4:526",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[530, 531]"
+    },
+    {
+      "game": "U2026_61",
+      "period": 4,
+      "source_event_order": 531,
+      "synthetic_parent_order": 527.0,
+      "synthetic_ft_trip_id": "EL:2026:61:4:527:8",
+      "shadow_incident_id": "SFT:2026:61:4:526",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[530, 531]"
+    },
+    {
+      "game": "U2026_62",
+      "period": 2,
+      "source_event_order": 207,
+      "synthetic_parent_order": 200.0,
+      "synthetic_ft_trip_id": "EL:2026:62:2:200:1",
+      "shadow_incident_id": "SFT:2026:62:2:201",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[207]"
+    },
+    {
+      "game": "U2026_62",
+      "period": 2,
+      "source_event_order": 258,
+      "synthetic_parent_order": 254.0,
+      "synthetic_ft_trip_id": "EL:2026:62:2:254:3",
+      "shadow_incident_id": "SFT:2026:62:2:252",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[258, 259]"
+    },
+    {
+      "game": "U2026_62",
+      "period": 2,
+      "source_event_order": 259,
+      "synthetic_parent_order": 254.0,
+      "synthetic_ft_trip_id": "EL:2026:62:2:254:3",
+      "shadow_incident_id": "SFT:2026:62:2:252",
+      "shadow_status": "ambiguous",
+      "baseline_partition": "[258, 259]"
+    },
+    {
+      "game": "U2026_65",
+      "period": 1,
+      "source_event_order": 74,
+      "synthetic_parent_order": 68.0,
+      "synthetic_ft_trip_id": "EL:2026:65:1:68:2",
+      "shadow_incident_id": "SFT:2026:65:1:68",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[74, 75]"
+    },
+    {
+      "game": "U2026_65",
+      "period": 1,
+      "source_event_order": 75,
+      "synthetic_parent_order": 68.0,
+      "synthetic_ft_trip_id": "EL:2026:65:1:68:2",
+      "shadow_incident_id": "SFT:2026:65:1:68",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[74, 75]"
+    },
+    {
+      "game": "U2026_7",
+      "period": 2,
+      "source_event_order": 163,
+      "synthetic_parent_order": 159.0,
+      "synthetic_ft_trip_id": "EL:2026:7:2:159:1",
+      "shadow_incident_id": "SFT:2026:7:2:161",
+      "shadow_status": "no_fit",
+      "baseline_partition": "[163]"
+    }
+  ]
+}

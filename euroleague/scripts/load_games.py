@@ -53,11 +53,15 @@ REPO = Path(__file__).resolve().parent.parent
 # builds identical lineups. U 2026 10, 18 and 100 were corrected per row on
 # 2026-11-17 (KNOWN_SUBSTITUTION_CORRECTIONS / _MOVES, D37); the corrections are
 # keyed by game, so no other game changes and the version stays 0.2.4.
+# Parser 0.3.0 (free-throw stoppage model, ft_stoppages.apply_ft_stoppages)
+# changed the grouping or possession ends of 146 of the 786 cached games on
+# 2026-11-19; those are re-derived on 0.3.0 and every other game reproduces its
+# 0.2.4 output exactly, so the older versions now count as 0.3.0.
 EQUIVALENT_PARSER_VERSIONS: dict[tuple[str, int], dict[str, str]] = {
-    ("E", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},
-    ("U", 2025): {"0.2.1": "0.2.4", "0.2.3": "0.2.4"},
-    ("E", 2026): {"0.2.2": "0.2.4", "0.2.3": "0.2.4"},
-    ("U", 2026): {"0.2.2": "0.2.4", "0.2.3": "0.2.4"},
+    ("E", 2025): {"0.2.1": "0.3.0", "0.2.3": "0.3.0", "0.2.4": "0.3.0"},
+    ("U", 2025): {"0.2.1": "0.3.0", "0.2.3": "0.3.0", "0.2.4": "0.3.0"},
+    ("E", 2026): {"0.2.2": "0.3.0", "0.2.3": "0.3.0", "0.2.4": "0.3.0"},
+    ("U", 2026): {"0.2.2": "0.3.0", "0.2.3": "0.3.0", "0.2.4": "0.3.0"},
 }
 
 
