@@ -45,6 +45,7 @@ const STAT_FILTER =
 const KEYS: Record<string, { description: string; schema: Schema }> = {
   season: int("Season. Israeli League: the year the season ends (2025-26 is 2026). EuroLeague and EuroCup: the year it starts (2025-26 is 2025). Default: the current season."),
   view: str("The page's view (allowed values per route)."),
+  cols: str("Player Stats: the column set the page shows. Every answer carries all columns whichever is chosen.", { enum: ["main", "shooting", "all"] }),
   team: int("One team id (the team's rows; on Game Logs the team whose games are listed)."),
   teams: str("Team ids, comma separated."),
   start: date("First game date (YYYY-MM-DD); default the season's start."),
