@@ -22,14 +22,19 @@ const CSP = [
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: process.cwd() },
-  // PREVIEW PROTOTYPE (react/logos): team logos and headshots from
-  // basket.co.il, resized by the optimiser (served from /_next/image, so the
-  // CSP's img-src 'self' covers them). basket.co.il sends them no-cache, so
-  // keep each resized copy a month instead of re-transforming every few hours
-  // (Hobby's transformation quota); ~280 images x 2 densities.
+  // Team logos and headshots, resized by the optimiser (served from
+  // /_next/image, so the CSP's img-src 'self' covers them): basket.co.il for
+  // the Israeli league, the provider's two CDNs for EuroLeague and EuroCup
+  // (its headshots are ~500 KB PNGs, never sent as they are). basket.co.il
+  // sends no-cache, so keep each resized copy a month instead of
+  // re-transforming every few hours (Hobby's transformation quota): about 280
+  // Israeli and 1,500 EuroLeague/EuroCup images a season, each at most at two
+  // densities, and only the ones a table shows.
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "basket.co.il", pathname: "/pics/**" },
+      { protocol: "https", hostname: "media-cdn.cortextech.io", pathname: "/**" },
+      { protocol: "https", hostname: "media-cdn.incrowdsports.com", pathname: "/**" },
     ],
     minimumCacheTTL: 2678400,
   },

@@ -44,7 +44,6 @@ import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
-import { ImageScopeContext } from "@/lib/images";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
 import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
 import { ClearFiltersContext } from "./EmptyState";
@@ -345,7 +344,6 @@ export function TabFrame({
   };
 }) {
   const body = useShinyBody(league !== "il");
-  const imageScope = useMemo(() => ({ league, season }), [league, season]);
   const drawerLayout = layout === "drawer" && !!drawer;
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Every section starts open (user 2026-10-28): the drawer shows all filters.
@@ -442,7 +440,6 @@ export function TabFrame({
     toggleFilters: body.toggleFilters,
   };
   return (
-    <ImageScopeContext.Provider value={imageScope}>
       <ToolsSlotProvider>
       <TouchTipsContext.Provider value={body.touchTips}>
         <FrameContext.Provider value={frame}>
@@ -507,7 +504,6 @@ export function TabFrame({
         </FrameContext.Provider>
       </TouchTipsContext.Provider>
       </ToolsSlotProvider>
-    </ImageScopeContext.Provider>
   );
 }
 

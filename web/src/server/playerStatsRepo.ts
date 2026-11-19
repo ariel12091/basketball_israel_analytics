@@ -5,7 +5,7 @@ import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readTabReferences } from "./onoffRepo";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
-import { hebrewTeams } from "./teamNames";
+import { decorateTeams } from "./teamNames";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
@@ -137,8 +137,8 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
   );
   const version = await readVersion(q, c.league);
   return {
-    // Hebrew player and team names (applyPlayerNames, hebrewTeams).
-    rows: await hebrewTeams(
+    // Hebrew player and team names (applyPlayerNames, decorateTeams).
+    rows: await decorateTeams(
       q,
       c.league,
       c.season,

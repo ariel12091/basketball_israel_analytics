@@ -1,13 +1,13 @@
 /**
  * The order of the names in a lineup (docs/shared_definitions.md, "Lineup
- * name order"): shortest to tallest by basket.co.il's height, a tie broken by
+ * name order"): shortest to tallest (basket.co.il's height; EuroLeague's roster), a tie broken by
  * position (guards first) and then by name, a player with no height last
  * (user 2026-11-12). Display only. Gameflow (`bySize`) and every lineup list
  * (`applyPlayerNames`) call this one comparison.
  */
 export type PlayerSize = { height: number | null; position: string | null };
 
-/** basket.co.il's position codes, guards first. */
+/** basket.co.il's position codes, guards first (EuroLeague sends G / F / C). */
 const POSITION_RANK: Record<string, number> = { PG: 1, G: 2, "G-F": 3, F: 4, "F-C": 5, C: 6 };
 
 export function compareBySize(
@@ -24,7 +24,7 @@ export function compareBySize(
 }
 
 /** A lineup's members in size order -- or, when nobody in it has a height
- * (EuroLeague, players basket.co.il does not measure), in their own order. */
+ * (no profile row), in their own order. */
 export function orderBySize<T>(
   members: T[],
   size: (m: T) => PlayerSize | undefined,

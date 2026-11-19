@@ -3,6 +3,7 @@ import { gameLogs, type League } from "../rules/gameLogs";
 import { getSeason } from "./gameLogsRepo";
 import { parseParams } from "./params";
 import { applyTeamNamesHe, loadTeamNamesHe } from "./teamNames";
+import { applyTeamLogos, loadTeamLogos } from "./teamIdentity";
 
 /** The Game Logs answer for one request: the route's body, and the page's
  * first render (same parameters, same JSON). */
@@ -23,13 +24,14 @@ export async function gameLogsAnswer(league: League, search: URLSearchParams) {
   const teams = [...byId]
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  // Hebrew team and opponent names (server/teamNames.ts). The season pull is
-  // cached outside any snapshot, so the names come from their own read,
-  // cached per data version.
+  // Team and opponent logos (server/teamIdentity.ts) and Hebrew names
+  // (server/teamNames.ts). The season pull is cached outside any snapshot, so
+  // both come from their own reads, cached per data version.
+  const withLogos = applyTeamLogos(result.rows, await loadTeamLogos(league, Number(p.season)));
   const rows =
     league === "il"
-      ? applyTeamNamesHe(result.rows, await loadTeamNamesHe(league, Number(p.season)))
-      : result.rows;
+      ? applyTeamNamesHe(withLogos, await loadTeamNamesHe(league, Number(p.season)))
+      : withLogos;
   return {
     ...result,
     rows,
