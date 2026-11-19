@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { applyTeamNamesHe, hebrewTeams, readTeamNamesHe, teamNamesFromRows } from "./teamNames";
+import { applyTeamNamesHe, decorateTeams, readTeamNamesHe, teamNamesFromRows } from "./teamNames";
 import type { Query } from "./db";
 import { displaySpec } from "../ask/display";
 
@@ -63,19 +63,25 @@ describe("Hebrew team names for the Ask chat", () => {
         : [{ team_id: 4, name_he: "הפועל מידטאון י-ם", team_name: "HAPOEL JERUSALEM", team_name_schedule: "HAPOEL JERUSALEM", team_name_rosters: "HAPOEL JERUSALEM" }],
     ) as unknown as Query & ReturnType<typeof vi.fn>;
     const input: Record<string, unknown>[] = [{ team_id: 4, pts: 1 }, { opp_team_name: "Hapoel Jerusalem" }];
-    const rows = await hebrewTeams(q, "il", 2091, input);
+    const rows = await decorateTeams(q, "il", 2091, input);
     expect(rows[0].team_name_he).toBe("הפועל מידטאון י-ם");
     expect(rows[1].opp_team_name_he).toBe("הפועל מידטאון י-ם");
     const call = q.mock.calls.find((c) => String(c[0]).includes("schedule_team_dict"))!;
     expect(call[1]).toEqual([2091]);
-    await hebrewTeams(q, "il", 2091, [{ team_id: 4 }]);
+    await decorateTeams(q, "il", 2091, [{ team_id: 4 }]);
     expect(q.mock.calls.filter((c) => String(c[0]).includes("schedule_team_dict"))).toHaveLength(1);
   });
 
-  it("hebrewTeams leaves EuroLeague rows untouched", async () => {
-    const q = vi.fn() as unknown as Query;
-    const rows = [{ team_id: 4 }];
-    expect(await hebrewTeams(q, "euroleague", 2025, rows)).toBe(rows);
+  it("decorateTeams gives EuroLeague rows logos and no Hebrew names", async () => {
+    const q = vi.fn(async (sql: string) =>
+      sql.includes("load_runs") ? [{ value: "e1" }] : [{ team_id: 4, logo: "https://x/4.png" }],
+    ) as unknown as Query & ReturnType<typeof vi.fn>;
+    const rows = [{ team_id: 4, opp_team_id: 5 }];
+    expect(await decorateTeams(q, "euroleague", 2025, rows)).toEqual([
+      { team_id: 4, opp_team_id: 5, team_logo: "https://x/4.png" },
+    ]);
+    expect(q.mock.calls.some((c) => String(c[0]).includes("schedule_team_dict"))).toBe(false);
+    expect(q.mock.calls.find((c) => String(c[0]).includes("crest_url"))![1]).toEqual(["E"]);
   });
 
   it("offers team_name_he / opp_team_name_he as chat-only columns in Israeli specs only", () => {

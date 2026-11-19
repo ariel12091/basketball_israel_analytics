@@ -10,7 +10,7 @@ const names = new Map([
 ]);
 
 describe("Player display name owner (D27)", () => {
-  it("reads player_display_names_v for the Israeli league only", async () => {
+  it("reads player_display_names_v for the Israeli league", async () => {
     const q = vi.fn(async (sql: string) => sql.includes("etl_full_last_success") ? [{ value: "v1" }] : [
       { team_id: 1, player_id: 10, name: "Owner Ten", name_he: "בעלים עשר", height_m: "2.03", position_en: "F" },
       { team_id: 1, player_id: 11, name: "Owner Eleven", name_he: " " },
@@ -20,19 +20,33 @@ describe("Player display name owner (D27)", () => {
     const nameCall = q.mock.calls.find((c) => String(c[0]).includes("player_display_names_v"))!;
     expect(nameCall[0]).toContain("basketball_test.player_display_names_v");
     expect(nameCall[1]).toEqual([2026]);
-    expect([...m]).toEqual([
+    expect([...m].map(([k, v]) => [k, { ...v, photo: undefined }])).toEqual([
       // basket.co.il's height and position ride along (lineup order).
-      ["1:10", { en: "Owner Ten", he: "בעלים עשר", height: 2.03, position: "F" }],
-      ["1:11", { en: "Owner Eleven", he: null, height: null, position: null }],
+      ["1:10", { en: "Owner Ten", he: "בעלים עשר", height: 2.03, position: "F", photo: undefined }],
+      ["1:11", { en: "Owner Eleven", he: null, height: null, position: null, photo: undefined }],
     ]);
     // Cached per season: a second request does not re-read the view.
     await readPlayerNames(q as Query, "il", 2026);
     expect(q.mock.calls.filter((c) => String(c[0]).includes("player_display_names_v"))).toHaveLength(1);
-    const e = vi.fn<Query>(async () => []);
-    expect((await readPlayerNames(e as Query, "euroleague", 2025)).size).toBe(
-      0,
+  });
+
+  it("reads EuroLeague profiles per competition, with no name to rename", async () => {
+    const q = vi.fn(async (sql: string) => sql.includes("load_runs") ? [{ value: "e1" }] : [
+      { team_id: 7, player_id: 70, height_m: "2.20", position_en: "C", headshot_url: "https://x/70.png" },
+      { team_id: 7, player_id: 71, height_m: null, position_en: null, headshot_url: null },
+    ]) as unknown as Query & ReturnType<typeof vi.fn>;
+    const m = await readPlayerNames(q as Query, "eurocup", 2026);
+    const call = q.mock.calls.find((c) => String(c[0]).includes("player_season_profiles"))!;
+    expect(call[1]).toEqual([2026, "U"]);
+    expect(m.get("7:70")).toEqual({ en: null, he: null, height: 2.2, position: "C", photo: "https://x/70.png" });
+    const [row] = applyPlayerNames([{ team_id: 7, player_id: 70, player_name: "WALTER TAVARES" }], m);
+    // The reader's spelling stays; the headshot rides along.
+    expect(row).toMatchObject({ player_name: "WALTER TAVARES", player_photo: "https://x/70.png" });
+    const [lineup] = applyPlayerNames(
+      [{ team_id: 7, player_ids: "{70,71}", player_names_str: "WALTER TAVARES, A B" }],
+      new Map([["7:70", { en: null, he: null, height: 2.2, position: "C" }], ["7:71", { en: null, he: null, height: 1.9, position: "G" }]]),
     );
-    expect(e).not.toHaveBeenCalled();
+    expect(lineup.player_names_str).toBe("A B, WALTER TAVARES");
   });
 
   it("lists a lineup's names shortest to tallest, the Hebrew list in the same order", () => {

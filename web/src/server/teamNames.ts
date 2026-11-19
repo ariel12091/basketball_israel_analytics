@@ -3,6 +3,7 @@ import { Deadline, withSnapshot, type Query } from "./db";
 import type { Row } from "../rules/gameLogs";
 import { readVersion } from "./dataVersion";
 import { VersionedCache } from "./versionedCache";
+import { applyTeamLogos, readTeamLogos } from "./teamIdentity";
 
 /** Hebrew team names in the Israeli answers (team_name_he, opp_team_name_he):
  * basket.co.il's spelling, stored per season in
@@ -66,17 +67,19 @@ export async function readTeamNamesHe(q: Query, league: string, season: number):
   return read(q, season);
 }
 
-/** `rows` with team_name_he / opp_team_name_he added (Israeli league only):
- * the one call each answer function makes. */
-export async function hebrewTeams<T extends Record<string, unknown>>(
+/** `rows` with each team's logo (`team_logo`, `opp_team_logo`; every league,
+ * server/teamIdentity.ts) and team_name_he / opp_team_name_he (Israeli league
+ * only): the one call each answer function makes. */
+export async function decorateTeams<T extends Record<string, unknown>>(
   q: Query,
   league: string,
   season: number,
   rows: T[],
 ): Promise<T[]> {
-  // The rows' own type: the two string fields fit any record of cells.
-  if (league !== "il") return rows;
-  return applyTeamNamesHe(rows, await readTeamNamesHe(q, league, season)) as T[];
+  // The rows' own type: the added string fields fit any record of cells.
+  const withLogos = applyTeamLogos(rows, await readTeamLogos(q, league, season));
+  if (league !== "il") return withLogos;
+  return applyTeamNamesHe(withLogos, await readTeamNamesHe(q, league, season)) as T[];
 }
 
 /** The chat's team list (list_teams has no answer function): its own

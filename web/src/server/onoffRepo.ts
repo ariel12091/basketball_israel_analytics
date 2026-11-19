@@ -5,7 +5,7 @@ import { dbArgs, needsFilteredPath, type Context } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, readPlayerNames } from "./playerNames";
-import { hebrewTeams } from "./teamNames";
+import { decorateTeams } from "./teamNames";
 import {
   addFfRanks,
   cleanDisplayNames,
@@ -184,8 +184,8 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   }
   const meta = await readTabReferences(q, c, version);
   return {
-    // Hebrew player and team names (applyPlayerNames, hebrewTeams).
-    rows: await hebrewTeams(
+    // Hebrew player and team names (applyPlayerNames, decorateTeams).
+    rows: await decorateTeams(
       q,
       c.league,
       c.season,

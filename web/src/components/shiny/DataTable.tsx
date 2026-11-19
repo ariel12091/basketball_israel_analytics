@@ -42,7 +42,6 @@ import { orderKey } from "@/rules/order";
 import { csvText } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
 import { NameImage, nameCellImage } from "./NameImage";
-import { useImageScope } from "@/lib/images";
 import { InToolsSlot } from "./toolsSlot";
 
 export type Cell = {
@@ -410,7 +409,6 @@ export default function DataTable({
   }, [exportRef, columns, sortedRows]);
 
   const touchTips = useContext(TouchTipsContext);
-  const imageScope = useImageScope();
   const [tip, setTip] = useState<{ label: string; text: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -750,7 +748,7 @@ export default function DataTable({
                     {columns.map((c, j) => {
                       const cell = cellOf(row, c);
                       const img = names.some((n) => n.id === c.id)
-                        ? nameCellImage(imageScope, c.id, row)
+                        ? nameCellImage(c.id, row)
                         : null;
                       const content = img ? (
                         <span className="ibpl-name-with-img">

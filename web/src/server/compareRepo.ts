@@ -7,7 +7,7 @@ import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
-import { hebrewTeams } from "./teamNames";
+import { decorateTeams } from "./teamNames";
 import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
 import { playerIds } from "../rules/lineups";
 import data from "../data/compareUi.json";
@@ -300,7 +300,7 @@ async function read(s: URLSearchParams, p: Params) {
     const version = await readVersion(q, "il");
     if (p.kind === "player_defaults")
       return {
-        rows: await hebrewTeams(
+        rows: await decorateTeams(
           q,
           "il",
           p.c.season,
@@ -313,8 +313,8 @@ async function read(s: URLSearchParams, p: Params) {
       };
     if (p.kind !== "refs")
       return {
-        // Hebrew player and team names (applyPlayerNames, hebrewTeams).
-        rows: await hebrewTeams(
+        // Hebrew player and team names (applyPlayerNames, decorateTeams).
+        rows: await decorateTeams(
           q,
           "il",
           p.c.season,
