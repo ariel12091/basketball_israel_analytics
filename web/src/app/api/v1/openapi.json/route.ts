@@ -1,10 +1,11 @@
 import { openApiSpec } from "@/server/openapi";
 import { handleError } from "@/server/api";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
 
 /** GET /api/v1/openapi.json: the OpenAPI 3.1 description of /api/v1,
  * generated from the code that serves it (server/openapi.ts). */
-export async function GET() {
+async function get() {
   try {
     return Response.json(openApiSpec(), {
       headers: {
@@ -18,3 +19,5 @@ export async function GET() {
     return handleError(error);
   }
 }
+
+export const GET = logged("openapi.json", get);

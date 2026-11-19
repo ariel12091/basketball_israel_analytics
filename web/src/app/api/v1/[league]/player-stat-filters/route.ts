@@ -2,13 +2,14 @@ import { handleError, rawQueryGuard } from "@/server/api";
 import { leagueParam } from "@/server/params";
 import { parseContext } from "@/server/contextParams";
 import { playerStatFrame } from "@/server/playerStatFilterRepo";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 /** GET /api/v1/{league}/player-stat-filters?<game context>
  * The per-game Player Stats of every team-player for the On/Off Player Stats
  * chips (inventory ON-12); read only while such a chip is active. */
-export async function GET(
+async function get(
   request: Request,
   context: { params: Promise<{ league: string }> },
 ) {
@@ -30,3 +31,5 @@ export async function GET(
     return handleError(error);
   }
 }
+
+export const GET = logged("player-stat-filters", get);

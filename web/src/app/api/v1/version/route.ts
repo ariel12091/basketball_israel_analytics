@@ -1,8 +1,9 @@
 import { withSnapshot, Deadline } from "@/server/db";
 import { readVersion } from "@/server/gameLogsRepo";
 import { handleError } from "@/server/api";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
-export async function GET() {
+async function get() {
   try {
     return Response.json(
       await withSnapshot(new Deadline(), async (q) => {
@@ -29,3 +30,5 @@ export async function GET() {
     return handleError(error);
   }
 }
+
+export const GET = logged("version", get);

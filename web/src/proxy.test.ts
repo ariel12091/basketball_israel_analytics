@@ -44,3 +44,14 @@ it("invalid limiter configuration fails closed while assets and static guide rem
   expect(proxy(request("/api/v1/il/guide")).status).toBe(200);
   expect(proxy(request("/api/v1/ask")).status).toBe(200);
 });
+it("logs refusals once a minute per reader, with the count, and never the IP", async () => {
+  vi.resetModules(); vi.stubEnv("DASHBOARD_IP_RATE_LIMIT", "1");
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { proxy } = await import("./proxy");
+  for (let i = 0; i < 4; i++) proxy(request("/il/lineups", undefined, "203.0.113.9"));
+  expect(warn).toHaveBeenCalledTimes(1);
+  const line = JSON.parse(String(warn.mock.calls[0][0]));
+  expect(line).toEqual({ kind: "rate_limited", reader: "il:lineups", status: 429, since_last: 0 });
+  expect(String(warn.mock.calls[0][0])).not.toContain("203.0.113.9");
+  warn.mockRestore();
+});

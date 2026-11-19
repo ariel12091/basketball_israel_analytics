@@ -7,6 +7,7 @@ import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { onoffAnswer } from "@/server/onoffApi";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("onoff");
 // First table rendered on the server from the same answer the API gives (see
@@ -25,11 +26,10 @@ export default async function OnOffPage({
   const data =
     (await headers()).get("x-ibpl-client-data") === "1"
       ? null
-      : await onoffAnswer(l, new URL(path, "http://local").searchParams).catch(
-          () => {
-            throw new FirstReadFailed();
-          },
-        );
+      : await onoffAnswer(l, new URL(path, "http://local").searchParams).catch((e) => {
+          pageFailed("onoff", l)(e);
+          throw new FirstReadFailed();
+        });
   return (
     <Suspense fallback={null}>
       <OnOffClient key={league} league={l} initial={{ url: path, data }} />

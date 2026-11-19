@@ -19,6 +19,7 @@ import {
   HEAVY_QUEUE_MS,
   CONNECT_MS,
 } from "./deadline";
+import { logEvent } from "../lib/logEvent";
 export { Deadline, DeadlineError, BusyError } from "./deadline";
 export type Query = <R = Record<string, unknown>>(
   sql: string,
@@ -265,7 +266,7 @@ export function withSnapshot<T>(
       application_name: "ibpl-web",
     });
     pool.on("error", (error: Error & { code?: string }) => {
-      console.error("Database idle client failed", error.code ?? error.name);
+      logEvent("db_client_error", { code: error.code, name: error.name }, "error");
     });
     database = new SnapshotDatabase(pool, max, queueMax, heavyMax);
   }

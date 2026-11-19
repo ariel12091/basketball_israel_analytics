@@ -5,6 +5,7 @@ import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
 import GameflowClient from "@/components/GameflowClient";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("gameflow");
 export default async function GameflowPage({
@@ -31,7 +32,7 @@ export default async function GameflowPage({
     data =
       (await headers()).get("x-ibpl-client-data") === "1"
         ? null
-        : await gameflowAnswer(l, s).catch(() => null);
+        : await gameflowAnswer(l, s).catch(pageFailed("gameflow", l));
   return (
     <GameflowClient
       league={l}

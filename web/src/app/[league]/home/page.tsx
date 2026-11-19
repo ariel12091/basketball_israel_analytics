@@ -8,6 +8,7 @@ import { defaultSeason, type SearchParams } from "@/lib/tabQuery";
 import type { League } from "@/rules/gameLogs";
 import ui from "@/data/shinyUi.json";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("home");
 // Like Shiny's startup team: one automatic choice per season in this worker.
@@ -44,9 +45,7 @@ export default async function HomePage({
   const url = league === "il" && team ? homePath(season, team) : null;
   const data =
     url && (await headers()).get("x-ibpl-client-data") !== "1"
-      ? await homeAnswer(new URLSearchParams({ season, team_id: team })).catch(
-          () => null,
-        )
+      ? await homeAnswer(new URLSearchParams({ season, team_id: team })).catch(pageFailed("home", league))
       : null;
   return (
     <Suspense fallback={null}>

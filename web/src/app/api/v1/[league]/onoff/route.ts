@@ -10,6 +10,7 @@ import { answerCsv } from "@/server/csvAnswer";
 import { leagueParam } from "@/server/params";
 import { onoffAnswer } from "@/server/onoffApi";
 import { onoffPageAnswer } from "@/server/pageAnswers";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -17,7 +18,7 @@ export const maxDuration = 30;
  * The ranked population of one view for the game context (inventory ON-01..ON-11):
  * ranks are computed before any team or possession narrowing, which the page
  * applies (helpers.R onoff_filter_*_rows); shape=table applies it here. */
-export async function GET(
+async function get(
   request: Request,
   context: { params: Promise<{ league: string }> },
 ) {
@@ -38,3 +39,5 @@ export async function GET(
     return handleError(error);
   }
 }
+
+export const GET = logged("onoff", get);
