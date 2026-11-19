@@ -73,7 +73,7 @@ export function CompareGn({
   return (
     <CompareSelect
       id={`cmp_${prefix}gn_${edge}`}
-      label={edge === "min" ? GN_LABELS.min : GN_LABELS.max}
+      label={gnLabels(q)[edge]}
       placeholder="Any"
       value={q[key]}
       choices={rounds.map((n) => ({ value: String(n), label: String(n) }))}
@@ -81,10 +81,11 @@ export function CompareGn({
     />
   );
 }
-const GN_LABELS = {
-  min: "From Game Number (GN)",
-  max: "To Game Number (GN)",
-};
+// The Israeli schedule numbers games (GN); EuroLeague numbers rounds.
+const gnLabels = (q: Query) =>
+  compareLeague(q) === "il"
+    ? { min: "From Game Number (GN)", max: "To Game Number (GN)" }
+    : { min: "From Round", max: "To Round" };
 export function CompareDates({
   q,
   set,
@@ -285,7 +286,7 @@ export default function CompareSidesGrid({
           },
           ...(["min", "max"] as const).map((edge): Field => ({
             key: `${edge}_gn`,
-            label: GN_LABELS[edge],
+            label: gnLabels(q)[edge],
             diff: [`${edge}_gn`],
             control: (side) => (
               <CompareGn

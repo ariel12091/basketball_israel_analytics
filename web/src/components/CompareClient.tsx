@@ -521,7 +521,11 @@ function CompareTab({
               id="cmp_preset"
               label="Quick preset"
               value={q.preset}
-              choices={presetChoices}
+              choices={
+                euro
+                  ? presetChoices.map((c) => ({ ...c, label: c.label.replace(/\bGN\b|Game Number/, "Round") }))
+                  : presetChoices
+              }
               placeholder="-- Custom --"
               onChange={(v) => set(applyPreset(q, v))}
             />
@@ -554,7 +558,7 @@ function CompareTab({
           {q.preset === "gn_split" ? (
             <CompareSelect
               id="cmp_split_gn"
-              label="Split GN"
+              label={euro ? "Split round" : "Split GN"}
               value={q.split_gn}
               choices={rounds.map((n) => ({
                 value: String(n),
@@ -624,7 +628,7 @@ function CompareTab({
       </div>
       <ChipsRow
         p="cmp"
-        seasonChip={seasonLabel(q.season)}
+        seasonChip={seasonLabel(q.season, !euro)}
         active={!!q.stats || chips.length > 0}
         onClearAll={reset}
         chips={playerMode ? [] : chips}
