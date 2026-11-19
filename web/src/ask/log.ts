@@ -1,9 +1,11 @@
-// One server log line per answered question (spec section 8): what was asked,
-// which tools ran, whether the answer passed, and what it cost. No IP or ids.
+// One server log line per answered question (spec section 8): which tools
+// ran, whether the answer passed, and what it cost. Not the question itself
+// (2026-11-19, user): a visitor's words are stored only when they flag an
+// answer and agree to send it (/api/v1/ask/feedback). No IP or ids.
 import type { AskAnswer } from "./turn";
 
 export function logTurn(entry: {
-  question: string;
+  questionChars: number;
   provider: string;
   model: string;
   answer: AskAnswer | null;
@@ -14,7 +16,7 @@ export function logTurn(entry: {
   console.log(
     JSON.stringify({
       kind: "ask_turn",
-      question: entry.question,
+      questionChars: entry.questionChars,
       provider: entry.provider,
       model: entry.model,
       tools: a?.results.map((r) => ({ tool: r.call.tool, league: r.call.league, query: r.call.query })) ?? [],

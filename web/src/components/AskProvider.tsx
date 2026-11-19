@@ -33,6 +33,9 @@ type Ask = {
   /** `fresh` starts a new conversation (the Home search box). */
   ask: (question: string, opts?: { fresh?: boolean }) => Promise<void>;
   reset: () => void;
+  /** "Wrong answer?": sends this turn's question, answer and lookups, and the
+   * visitor's note, only when they press Send (/api/v1/ask/feedback). */
+  sendFeedback: (turn: AskTurnView, note: string) => Promise<string | null>;
   league: League;
   /** An inline Ask box calls this on mount; the returned cleanup undoes it. */
   hideFab: () => () => void;
@@ -209,6 +212,33 @@ export default function AskProvider({
     dispatch({ type: "reset" });
   }, [cancelActive]);
 
+  const sendFeedback = useCallback(
+    async (turn: AskTurnView, note: string): Promise<string | null> => {
+      const a = turn.answer;
+      if (!a) return "Nothing to send";
+      try {
+        const res = await fetch("/api/v1/ask/feedback", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            league,
+            question: turn.question,
+            answer: a.text,
+            calls: a.calls ?? a.results.map((r) => r.call),
+            note: note.trim() || undefined,
+            clientId: clientId.current || "unknown",
+          }),
+        });
+        if (res.ok) return null;
+        const body = await res.json().catch(() => ({}));
+        return String(body.error ?? "Could not send; try again");
+      } catch {
+        return "Network error; try again";
+      }
+    },
+    [league],
+  );
+
   const value = useMemo<Ask>(
     () => ({
       enabled,
@@ -218,11 +248,12 @@ export default function AskProvider({
       turns,
       ask,
       reset,
+      sendFeedback,
       league,
       hideFab,
       fabHidden: inlineBoxes > 0,
     }),
-    [enabled, followups, open, turns, ask, reset, league, hideFab, inlineBoxes],
+    [enabled, followups, open, turns, ask, reset, sendFeedback, league, hideFab, inlineBoxes],
   );
   return (
     <Context.Provider value={value}>

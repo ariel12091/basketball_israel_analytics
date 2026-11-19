@@ -250,6 +250,14 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .ibpl-ask-question { font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
 .ibpl-ask-status { color: var(--ibpl-text-muted); font-size: 0.85rem; margin: 0; }
 .ibpl-ask-error { color: var(--ibpl-neg, #e06c5a); margin: 4px 0; }
+/* "Wrong answer?" (AskPanel WrongAnswer): small and muted until opened. */
+.ibpl-ask-flag { display: block; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--ibpl-text-muted); font-size: 0.8rem; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.ibpl-ask-flag:hover { color: var(--ibpl-text-body); }
+.ibpl-ask-flag-done { color: var(--ibpl-text-muted); font-size: 0.8rem; margin: 6px 0 0; }
+.ibpl-ask-flag-form { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--ibpl-border); border-radius: 8px; }
+.ibpl-ask-answer .ibpl-ask-flag-consent { font-size: 0.8125rem; color: var(--ibpl-text-muted); margin-bottom: 6px; line-height: 1.4; }
+.ibpl-ask-flag-actions { display: flex; gap: 8px; margin-top: 6px; }
+@media (pointer: coarse) { .ibpl-ask-flag { position: relative; } .ibpl-ask-flag::after { content: ""; position: absolute; inset: -12px -8px; } }
 /* Readable text: a Hebrew-capable face, larger size and line height, and the
    answer's own line breaks (lists) kept. */
 /* The app's DM Sans for Latin text; DM Sans has no Hebrew letters, so the

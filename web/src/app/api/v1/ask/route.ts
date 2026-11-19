@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { checkLimit } from "@/ask/limits";
 import { logTurn } from "@/ask/log";
+import { clientIp, sameSite } from "@/ask/requestGuards";
 import { currentProvider } from "@/ask/provider";
 import { TOOLS, type ToolName } from "@/ask/registry";
 import { MAX_CALLS, askTurn, type AskAnswer } from "@/ask/turn";
@@ -49,18 +50,9 @@ const json = (
 export async function POST(request: Request) {
   if (process.env.ASK_ENABLED !== "true")
     return json(404, { error: "Not found" });
-  // Browsers send Origin on every POST: refuse questions another site's page
-  // sends on a visitor's behalf (they would spend this site's tokens).
-  const origin = request.headers.get("origin");
-  const host =
-    request.headers.get("x-forwarded-host") ??
-    request.headers.get("host") ??
-    new URL(request.url).host;
-  let sameSite = false;
-  try {
-    sameSite = !origin || new URL(origin).host === host;
-  } catch {}
-  if (!sameSite) return json(403, { error: "Forbidden" });
+  // Refuse questions another site's page sends on a visitor's behalf (they
+  // would spend this site's tokens).
+  if (!sameSite(request)) return json(403, { error: "Forbidden" });
   let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await request.json());
@@ -71,9 +63,7 @@ export async function POST(request: Request) {
     return json(400, {
       error: "This conversation is full; start a new question",
     });
-  const ip =
-    (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    "unknown";
+  const ip = clientIp(request);
   const limit = checkLimit([`client:${body.clientId}`, `ip:${ip}`], Date.now());
   if (!limit.ok)
     return json(
@@ -149,7 +139,7 @@ export async function POST(request: Request) {
             controller.close();
           }
           logTurn({
-            question: body.question,
+            questionChars: body.question.length,
             provider: provider.name,
             model: provider.model,
             answer,
