@@ -42,6 +42,16 @@ applied.
 > (table remarks 1-2), the event × team-perspective fact decision (remark 7),
 > the correction layer (remark 10), and the storage discipline.
 
+## Adding a table (2026-11-19)
+
+Every base table in the schema must be listed in
+`assert_shadow_schema_compatible()` (`postgres_backend.py`) and in
+`LineupUnitWiringTest.BASE_TABLES`: an unknown table makes the loader refuse
+every publication. Apply the migration and merge that line the same day
+(migration 067, `player_season_profiles`, did both). Player height, position
+and headshot come from the provider's `people` roster, which `euroleague_api`
+0.1.1 does not wrap (`roster_collector.py`; refreshed after each load).
+
 ## What the plan was (superseded — see the notice above)
 
 Six ordered steps: apply migration 003 (app-facing MVs), re-stage the three

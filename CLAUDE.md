@@ -20,6 +20,16 @@ and rollback.
 - Budget: Fast Origin Transfer is 10 GB/month; tab pages are CDN-cached for
   an hour, and each Preview load test costs ~0.35 GB.
 
+- Since 2026-11-19 (read `web/CLAUDE.md` for each): every logo, headshot and
+  height comes from the database in both leagues (`images.json` is gone);
+  Compare works in every league through the EuroLeague tab readers; API errors,
+  slow answers, failed page loads and rate limits write JSON log lines
+  (`vercel logs --since 10m --query 'environment:production' --json`); the Ask
+  chat logs no question text and stores only answers a visitor flags.
+- R `fast-tests` sometimes hangs in `setup-r` (twice on 2026-11-19, 25+ min,
+  no test ran): `gh run cancel <id>`, then `gh run rerun <id>`. Never let a
+  script merge on a check that ended because you cancelled it.
+
 ### Shiny retirement checklist (do at the cut-over)
 
 - The web unit tests' number oracles are Shiny's recorded output
@@ -514,6 +524,7 @@ Production ETL is scheduled nightly in GitHub Actions via `.github/workflows/etl
 2. All Shiny client inputs are untrusted — hidden columns/controls are not a security boundary
 3. Parameterized SQL only (`$1, $2` placeholders) — never `sprintf()`/`paste0()` for user values
 4. Fail-closed on unexpected input
+5. **The web app writes in one place only:** `app_feedback.submit_ask_feedback()` (SECURITY DEFINER, own schema `app_feedback`; `app_readonly` has USAGE + EXECUTE there and no table privilege, because `basketball_test` grants it SELECT on every relation). Any new write from the app goes through a function like it, never a table grant (`sql/migrations/2026-11-19_ask_feedback.sql`).
 
 ## Code Conventions
 

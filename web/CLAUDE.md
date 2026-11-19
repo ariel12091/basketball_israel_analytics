@@ -94,6 +94,41 @@ Spec: `docs/superpowers/specs/2026-11-17-player-stats-views-design.md`.
 - `e2e/player-stats.spec.ts` is not run in CI (only the live smoke is); its
   column-view test was written while C: was full and has not been run yet.
 
+## Logos, headshots and heights (since 2026-11-19, PRs #91 #93 #95)
+
+All from the database, both leagues; `images.json` and
+`scripts/export_web_images.R` are deleted.
+- Rows carry the URLs: `team_logo` / `opp_team_logo` (`applyTeamLogos()`,
+  `server/teamIdentity.ts`, added by `decorateTeams()` in `teamNames.ts` and
+  by Game Logs) and `player_photo` (`applyPlayerNames()`). `NameImage` reads
+  the row; a new table gets images by calling those two, nothing else.
+- `readPlayerNames()` has EuroLeague/EuroCup entries from
+  `euroleague.player_season_profiles` (migration 067) with `en: null`: they
+  rename nothing and carry height, position (G/F/C) and headshot, so
+  EuroLeague lineups list shortest to tallest too. EuroLeague lineup strings
+  are "FIRST LAST" in `player_ids` order, safe to split on ", ".
+- Israeli headshots: `basket_player_registration.photo_url`, joined in
+  `player_display_names_v` on identity and season, not team (a traded
+  player keeps it on both teams); written by the Basket refresh.
+- Provider headshots are ~500 KB PNGs: they must go through the optimiser
+  (`next.config.ts` allows `media-cdn.cortextech.io`,
+  `media-cdn.incrowdsports.com`). Hobby's transformation quota applies.
+
+## Compare in every league (since 2026-11-19, PR #98)
+
+- EuroLeague and EuroCup sides call the EuroLeague tabs' own readers
+  (`readFacts`, `readEuroLineupRows`, `readPlayerFacts`, `euroOnOffCompute`,
+  `euroFourFactors`); the Israeli path keeps `compareUi.json`'s SQL. A
+  change to one of those readers changes Compare: the live pin "EuroLeague
+  Compare sides equal their tabs" (`e2e/live-smoke.spec.ts`) holds them equal.
+- The league travels on the resolved query (`resolveCompareQuery(raw,
+  league)`, read with `compareLeague(q)`) and in `CompareLeagueContext` for
+  the data hooks. CompareTab's `set()` drops `league` before patching: it is
+  never a URL key.
+- EuroLeague hides what it has no data for: Players Shot Profile, Players
+  starters fields, Deflections and Disruptions; it says Phase and Round. The
+  chat's Compare tool stays Israeli and refuses `phase`.
+
 ## Logs (since 2026-11-19)
 
 One JSON line per event in Vercel's runtime log (`lib/logEvent.ts`); Hobby
@@ -131,6 +166,20 @@ answer and press Send.
   `SELECT * FROM app_feedback.ask_feedback WHERE reviewed_at IS NULL`.
 - Limits: 5 flags an hour per browser and per address (in memory), 200 an
   hour in total (the function).
+
+## Working notes (2026-11-19)
+
+- Read a protected Preview or Production answer with
+  `node C:/nvm4w/nodejs/node_modules/vercel/dist/vc.js curl --yes <path> --deployment <url> -- -s -o <file>`
+  (`vercel.cmd` mangles `&`). Runtime logs: `vc.js logs --since 10m --query 'environment:production' --json`.
+- Lineups tables flag rows the other way round: `is_total === 0` is the TOTAL
+  row (`sub_lineup_hash: "TOTAL"`), every lineup has 1.
+- In e2e, `page.request` skips `e2e/preview.ts`'s routes, so it must send
+  `x-vercel-protection-bypass` itself; use it for large JSON (a season's
+  lineups overflow the inspector cache behind `page.goto(...).json()`).
+- A live pin runs on every Preview push: keep its answers small (a filter,
+  a context) or it spends Fast Origin Transfer and minutes.
+- `readTabReferences()` returns `{ teams: {id, name}[], rounds, phases, seasons }`.
 
 ## Current resume point (2026-10-22)
 
