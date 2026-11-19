@@ -201,21 +201,13 @@ BEGIN
       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
-  -- complex_flags scoped to clutch-filtered rows; parent foul can still precede
-  -- clutch window because we only scope the child rows (clean_stats), not parent lookup.
-  complex_flags AS (
-    SELECT DISTINCT ON (cs.id)
-      cs.id AS main_id,
-      t2.type AS parent_type,
-      t2.parameters_type AS parent_param
-    FROM clean_stats cs
-    JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
-      ON t2.id = cs.parent_action_id
-      AND t2.game_id = cs.game_id
-      AND t2.type = 'foul'::text
-    WHERE cs.parent_action_id IS NOT NULL
-    ORDER BY cs.id
-  ),
+  -- The parent foul of each clutch-filtered row, looked up per row (one index
+  -- probe on dfppl_id_game_type_idx). The parent can precede the clutch window:
+  -- only the child rows (clean_stats) are scoped, not the lookup. A foul has one
+  -- row per perspective and both carry the same type, so LIMIT 1 picks either.
+  -- Never a CTE joined back to clean_stats: the planner estimates clean_stats at
+  -- one row and rescans the CTE per row (137M comparisons, the Compare 504 of
+  -- 2026-11-20 under a starters filter).
   combined_data AS (
     SELECT
       cs.team_id,
@@ -233,7 +225,15 @@ BEGIN
       cf.parent_type,
       cf.parent_param
     FROM clean_stats cs
-    LEFT JOIN complex_flags cf ON cs.id = cf.main_id
+    LEFT JOIN LATERAL (
+      SELECT t2.type AS parent_type, t2.parameters_type AS parent_param
+      FROM basketball_test.df_pts_poss_lineups_longer_mv t2
+      WHERE cs.parent_action_id IS NOT NULL
+        AND t2.id = cs.parent_action_id
+        AND t2.game_id = cs.game_id
+        AND t2.type = 'foul'::text
+      LIMIT 1
+    ) cf ON TRUE
   ),
   team_agg AS (
     SELECT
