@@ -9,8 +9,9 @@ import {
 import { answerCsv } from "@/server/csvAnswer";
 import { leagueParam } from "@/server/params";
 import { gameLogsAnswer } from "@/server/gameLogsApi";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
-export async function GET(
+async function get(
   request: Request,
   context: { params: Promise<{ league: string }> },
 ) {
@@ -30,3 +31,5 @@ export async function GET(
     return handleError(error);
   }
 }
+
+export const GET = logged("game-logs", get);

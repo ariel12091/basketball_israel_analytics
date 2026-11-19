@@ -7,6 +7,7 @@ import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { gameLogsAnswer } from "@/server/gameLogsApi";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("game-logs");
 // The first table is rendered on the server from the same answer the API
@@ -32,7 +33,8 @@ export default async function GameLogsPage({
       : await gameLogsAnswer(
           l,
           new URL(path, "http://local").searchParams,
-        ).catch(() => {
+        ).catch((e) => {
+          pageFailed("game-logs", l)(e);
           throw new FirstReadFailed();
         });
   return (

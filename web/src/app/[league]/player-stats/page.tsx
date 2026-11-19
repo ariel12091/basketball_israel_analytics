@@ -7,6 +7,7 @@ import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("player-stats");
 export default async function PlayerStatsPage({
@@ -26,7 +27,8 @@ export default async function PlayerStatsPage({
       : await playerStatsAnswer(
           l,
           new URL(path, "http://local").searchParams,
-        ).catch(() => {
+        ).catch((e) => {
+          pageFailed("player-stats", l)(e);
           throw new FirstReadFailed();
         });
   return (

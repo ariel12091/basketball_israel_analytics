@@ -7,6 +7,7 @@ import type { SearchParams } from "@/lib/tabQuery";
 import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
 import { lineupsPageAnswer } from "@/server/pageAnswers";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("lineups");
 export default async function LineupsPage({
@@ -26,7 +27,8 @@ export default async function LineupsPage({
       : await lineupsPageAnswer(
           l,
           new URL(path, "http://local").searchParams,
-        ).catch(() => {
+        ).catch((e) => {
+          pageFailed("lineups", l)(e);
           throw new FirstReadFailed();
         });
   return (

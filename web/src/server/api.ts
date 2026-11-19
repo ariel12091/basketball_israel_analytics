@@ -1,4 +1,6 @@
-import { BusyError, DeadlineError } from "./deadline";
+import { BusyError } from "./deadline";
+import { logEvent } from "../lib/logEvent";
+import { failureOf, requestContext } from "./requestLog";
 import { enterRequestedVersion } from "./dataVersion";
 import { queryFromSearch, type Query } from "../lib/tabQuery";
 import type { League } from "../rules/gameLogs";
@@ -87,14 +89,8 @@ export function answerFormat(search: URLSearchParams): "json" | "csv" {
   throw new ParamError("format", "format is json or csv");
 }
 
-export class ParamError extends Error {
-  constructor(
-    public param: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ParamError } from "./paramError";
+import { ParamError } from "./paramError";
 export function rawQueryGuard(url: URL) {
   const raw = url.search.slice(1);
   if (Buffer.byteLength(raw, "utf8") > 4096)
@@ -116,14 +112,20 @@ export function rawQueryGuard(url: URL) {
     seen.add(name);
   }
 }
+/** The API's error answer, and its `api_error` log line with the route,
+ * league and time from the request context (server/requestLog.ts). A refused
+ * parameter is logged without its name or value (a visitor may have typed
+ * either). */
 export function handleError(e: unknown): Response {
+  const f = failureOf(e);
+  const status = f.reason === "param" ? 400 : f.reason === "timeout" ? 504 : 503;
+  logEvent(
+    "api_error",
+    { ...requestContext(), status, reason: f.reason, code: f.code, name: f.name },
+    f.reason === "param" ? "log" : f.reason === "busy" || f.reason === "timeout" ? "warn" : "error",
+  );
   if (e instanceof ParamError) return apiError(400, e.param, e.message);
   if (e instanceof BusyError) return apiError(503, null, e.message);
-  if (e instanceof DeadlineError || (e as { code?: string })?.code === "57014")
-    return apiError(504, null, "Request deadline exceeded");
-  console.error(
-    "Game Logs request failed",
-    e instanceof Error ? e.name : "UnknownError",
-  );
+  if (f.reason === "timeout") return apiError(504, null, "Request deadline exceeded");
   return apiError(503, null, "Data temporarily unavailable");
 }

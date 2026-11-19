@@ -1,9 +1,10 @@
 import { handleError, rawQueryGuard } from "@/server/api";
 import { leagueParam } from "@/server/params";
 import { guideAnswer } from "@/server/guideApi";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
 export const maxDuration = 30;
-export async function GET(
+async function get(
   request: Request,
   context: { params: Promise<{ league: string }> },
 ) {
@@ -21,3 +22,5 @@ export async function GET(
     return handleError(e);
   }
 }
+
+export const GET = logged("guide", get);

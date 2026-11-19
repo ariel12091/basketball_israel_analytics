@@ -94,6 +94,26 @@ Spec: `docs/superpowers/specs/2026-11-17-player-stats-views-design.md`.
 - `e2e/player-stats.spec.ts` is not run in CI (only the live smoke is); its
   column-view test was written while C: was full and has not been run yet.
 
+## Logs (since 2026-11-19)
+
+One JSON line per event in Vercel's runtime log (`lib/logEvent.ts`); Hobby
+keeps them only briefly, so they serve incidents, not trends.
+- Privacy rule (user): a line names the route or page, league, status,
+  timing and the kind of failure. Never an IP, cookie, session or client id,
+  a query string, a refused parameter's name, a database error's message
+  (only its SQLSTATE `code`), or anything a visitor typed.
+- `api_error` (`handleError`): route, league, status, `reason` (param, busy,
+  timeout, database, error), `code`, `ms`. Every API route's GET is wrapped
+  in `logged(route, handler)` (`server/requestLog.ts`), which carries the
+  route and league in AsyncLocalStorage; wrap a new route the same way.
+- `slow_request`: an answer over `SLOW_MS` (4 s), with its route and time.
+- `page_load_failed`: a server-rendered page's first load failed and it
+  shows its error card; use `.catch(pageFailed(page, league))`, never a
+  bare `.catch(() => null)`.
+- `rate_limited` (`proxy.ts`): at most one line a minute per reader and
+  status, with `since_last`, the refusals since the previous line.
+- `db_client_error`, `ask_turn`, `ask_feedback`: see below and `server/db.ts`.
+
 ## Ask chat: logs and "Wrong answer?" (since 2026-11-19)
 
 Privacy rule (user): a visitor's words are stored only when they flag an

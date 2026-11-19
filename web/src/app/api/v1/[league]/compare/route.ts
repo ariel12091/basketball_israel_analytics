@@ -10,9 +10,10 @@ import {
 import { answerCsv } from "@/server/csvAnswer";
 import { compareAnswer } from "@/server/compareRepo";
 import { comparePageAnswer } from "@/server/comparePage";
+import { logged } from "@/server/requestLog";
 export const runtime = "nodejs";
 export const maxDuration = 30;
-export async function GET(
+async function get(
   request: Request,
   context: { params: Promise<{ league: string }> },
 ) {
@@ -36,3 +37,5 @@ export async function GET(
     return handleError(e);
   }
 }
+
+export const GET = logged("compare", get);

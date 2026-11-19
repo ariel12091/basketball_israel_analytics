@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WindowLimiter } from "./lib/windowLimiter";
+import { logEvent } from "./lib/logEvent";
 
 // Best-effort admission per warm proxy instance, not a distributed quota.
 // The database's own queue/deadlines remain independent safeguards.
@@ -18,6 +19,21 @@ const readers = new Set([
   "compare",
 ]);
 const cookie = "ibpl_session";
+// `rate_limited` lines: at most one a minute per reader and outcome, with the
+// number of refusals since the last line, so a flood cannot flood the log.
+// Names the reader only (never the IP or session).
+const refused = new Map<string, { at: number; n: number }>();
+function logRefusal(reader: string, status: number, now: number) {
+  const key = `${reader}:${status}`,
+    seen = refused.get(key);
+  if (seen && now - seen.at < 60_000) {
+    seen.n += 1;
+    return;
+  }
+  if (refused.size > 200) refused.clear();
+  refused.set(key, { at: now, n: 0 });
+  logEvent("rate_limited", { reader, status, since_last: seen?.n ?? 0 }, "warn");
+}
 function limit(name: string, fallback: number) {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isInteger(value) || value < 1 || value > 10_000)
@@ -85,6 +101,7 @@ export function proxy(request: NextRequest) {
       Date.now(),
     );
   } catch {
+    logRefusal(reader, 503, Date.now());
     return rejection(
       request,
       503,
@@ -93,6 +110,7 @@ export function proxy(request: NextRequest) {
     );
   }
   if (!result.ok) {
+    logRefusal(reader, 429, Date.now());
     return rejection(
       request,
       429,

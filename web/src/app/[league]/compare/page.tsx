@@ -16,6 +16,7 @@ import { compareAnswer } from "@/server/compareRepo";
 import type { CompareSeed } from "@/components/shiny/CompareData";
 import { compareDefaultPlayers } from "@/lib/compareAsync";
 import { pageMetadata } from "@/lib/pageTitle";
+import { pageFailed } from "@/server/requestLog";
 
 export const generateMetadata = pageMetadata("compare");
 export default async function ComparePage({
@@ -34,7 +35,7 @@ export default async function ComparePage({
   let selection: CompareSelection | undefined;
   if ((await headers()).get("x-ibpl-client-data") !== "1") {
     const refs = new URLSearchParams({ season: q.season, kind: "refs" });
-    const data = await compareAnswer(refs).catch(() => null);
+    const data = await compareAnswer(refs).catch(pageFailed("compare", "il"));
     if (data) initial[comparePath(refs)] = data;
     if (
       q.view === "Players" &&
@@ -47,7 +48,7 @@ export default async function ComparePage({
         season: q.season,
         kind: "player_defaults",
       });
-      const scores = await compareAnswer(defaults).catch(() => null);
+      const scores = await compareAnswer(defaults).catch(pageFailed("compare", "il"));
       if (scores) {
         initial[comparePath(defaults)] = scores;
         const ids = compareDefaultPlayers(
@@ -86,7 +87,7 @@ export default async function ComparePage({
             if (!teams) return;
             s.set("teams", teams);
           } else if (kind === "players" && q.entity) s.set("teams", q.entity);
-          const answer = await compareAnswer(s).catch(() => null);
+          const answer = await compareAnswer(s).catch(pageFailed("compare", "il"));
           if (answer) initial[comparePath(s)] = answer;
         }),
       );
