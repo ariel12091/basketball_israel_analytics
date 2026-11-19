@@ -307,6 +307,8 @@ test("live: /api/v1/openapi.json describes the API", async ({ page }, info) => {
 test("live: EuroLeague Compare sides equal their tabs", async ({ page }, info) => {
   test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
   test.skip(info.project.name !== "desktop", "API check, once per run");
+  // 27 reads, three of them a whole season's lineups per competition.
+  test.setTimeout(300_000);
   type Rows = Record<string, unknown>[];
   // The request client, not page.goto: a whole season's lineups is too large
   // for the browser inspector's cache, which evicts the body. It skips the
