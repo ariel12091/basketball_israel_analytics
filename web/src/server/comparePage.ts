@@ -15,7 +15,7 @@ import {
   shortSideLabel,
 } from "@/lib/compareQuery";
 import type { Query } from "@/lib/tabQuery";
-import type { Row } from "@/rules/gameLogs";
+import type { League, Row } from "@/rules/gameLogs";
 import {
   contextText,
   detailSections,
@@ -43,12 +43,15 @@ export type CompareTable = {
 };
 
 /** shape=table: the table a freshly opened Compare link shows. */
-export async function comparePageAnswer(search: URLSearchParams): Promise<CompareTable> {
-  const q = resolveCompareQuery(pageQuery("il", search, compareDefaults));
+export async function comparePageAnswer(
+  search: URLSearchParams,
+  league: League = "il",
+): Promise<CompareTable> {
+  const q = resolveCompareQuery(pageQuery(league, search, compareDefaults), league);
   if (q.drill_player) throw new ParamError("drill_player", "A player drill-down has no table");
   // Side headings spell out any filter a side carries (as in the chat).
   const filtered = [...search.keys()].some((k) => /^[ab]_/.test(k));
-  return compareTableFor((s) => compareAnswer(s), q, filtered);
+  return compareTableFor((s) => compareAnswer(s, league), q, filtered);
 }
 
 /** The table for a resolved page query; `filtered`: a side carries its own

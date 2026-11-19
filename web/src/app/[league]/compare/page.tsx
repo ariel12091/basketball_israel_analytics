@@ -17,6 +17,7 @@ import type { CompareSeed } from "@/components/shiny/CompareData";
 import { compareDefaultPlayers } from "@/lib/compareAsync";
 import { pageMetadata } from "@/lib/pageTitle";
 import { pageFailed } from "@/server/requestLog";
+import type { League } from "@/rules/gameLogs";
 
 export const generateMetadata = pageMetadata("compare");
 export default async function ComparePage({
@@ -26,17 +27,20 @@ export default async function ComparePage({
   params: Promise<{ league: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  if ((await params).league !== "il") notFound();
+  const league = (await params).league;
+  if (!["il", "euroleague", "eurocup"].includes(league)) notFound();
+  const l = league as League;
   let q = resolveCompareQuery(
-    queryFromSearch("il", await searchParams, compareDefaults),
+    queryFromSearch(l, await searchParams, compareDefaults),
+    l,
   );
   if (!["Teams", "Lineups", "Players"].includes(q.view)) notFound();
   const initial: CompareSeed = {};
   let selection: CompareSelection | undefined;
   if ((await headers()).get("x-ibpl-client-data") !== "1") {
     const refs = new URLSearchParams({ season: q.season, kind: "refs" });
-    const data = await compareAnswer(refs).catch(pageFailed("compare", "il"));
-    if (data) initial[comparePath(refs)] = data;
+    const data = await compareAnswer(refs, l).catch(pageFailed("compare", l));
+    if (data) initial[comparePath(refs, l)] = data;
     if (
       q.view === "Players" &&
       q.auto_players === "true" &&
@@ -48,9 +52,9 @@ export default async function ComparePage({
         season: q.season,
         kind: "player_defaults",
       });
-      const scores = await compareAnswer(defaults).catch(pageFailed("compare", "il"));
+      const scores = await compareAnswer(defaults, l).catch(pageFailed("compare", l));
       if (scores) {
-        initial[comparePath(defaults)] = scores;
+        initial[comparePath(defaults, l)] = scores;
         const ids = compareDefaultPlayers(
           scores.rows,
           data.players.map((r) => Number(r.player_id)),
@@ -87,15 +91,15 @@ export default async function ComparePage({
             if (!teams) return;
             s.set("teams", teams);
           } else if (kind === "players" && q.entity) s.set("teams", q.entity);
-          const answer = await compareAnswer(s).catch(pageFailed("compare", "il"));
-          if (answer) initial[comparePath(s)] = answer;
+          const answer = await compareAnswer(s, l).catch(pageFailed("compare", l));
+          if (answer) initial[comparePath(s, l)] = answer;
         }),
       );
     }
   }
   return (
     <Suspense fallback={null}>
-      <CompareClient initial={initial} selection={selection} />
+      <CompareClient league={l} initial={initial} selection={selection} />
     </Suspense>
   );
 }

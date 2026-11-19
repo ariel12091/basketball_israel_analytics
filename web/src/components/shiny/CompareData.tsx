@@ -1,15 +1,20 @@
 "use client";
+import { createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { League } from "@/rules/gameLogs";
 import { comparePath } from "@/lib/compareQuery";
 import { noteVersion, withVersion } from "@/lib/dataVersion";
 import type { ComparePayload } from "@/server/compareRepo";
 export type CompareSeed = Record<string, ComparePayload>;
+/** The league every Compare read on the page is for (CompareClient). */
+export const CompareLeagueContext = createContext<League>("il");
 export function useCompareData(
   params: URLSearchParams,
   seed: CompareSeed,
   enabled = true,
 ) {
-  const url = comparePath(params);
+  const league = useContext(CompareLeagueContext);
+  const url = comparePath(params, league);
   return useQuery({
     queryKey: ["compare", url],
     enabled,
@@ -20,7 +25,7 @@ export function useCompareData(
     queryFn: async ({ signal }) => {
       const response = await fetch(withVersion(url), { signal });
       const data = await response.json();
-      noteVersion("il", data.meta?.version);
+      noteVersion(league, data.meta?.version);
       if (!response.ok)
         throw new Error(data.error ?? "Unable to load comparison");
       if (data.meta?.key !== params.toString())

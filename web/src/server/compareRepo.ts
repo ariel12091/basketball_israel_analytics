@@ -9,7 +9,12 @@ import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import { decorateTeams } from "./teamNames";
 import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
-import { playerIds } from "../rules/lineups";
+import { euroLineupRates, playerIds } from "../rules/lineups";
+import type { League } from "../rules/gameLogs";
+import { readFacts } from "./teamRatingsRepo";
+import { readEuroLineupRows } from "./lineupsRepo";
+import { readPlayerFacts } from "./playerStatsRepo";
+import { euroFourFactors, euroOnOffCompute, readTabReferences } from "./onoffRepo";
 import data from "../data/compareUi.json";
 import ui from "../data/shinyUi.json";
 /** The Compare route's side readers (kind=...); also in the OpenAPI spec. */
@@ -25,11 +30,11 @@ export const KINDS = [
   "player_ff",
   "onoff",
 ];
-export function parseCompare(s: URLSearchParams) {
+export function parseCompare(s: URLSearchParams, league: League = "il") {
   const kind = s.get("kind") ?? "ratings";
   if (!KINDS.includes(kind))
     throw new ParamError("kind", "Invalid Compare reader");
-  const p = parseLineups(s, "il");
+  const p = parseLineups(s, league);
   // Compare's collect_side_params() supplies both endpoints of a starter
   // bound. Preserve that signature, including the preset-cache classifier.
   for (const side of ["off", "def"] as const) {
@@ -158,7 +163,54 @@ export function presetVariant(p: Params): string | null {
         : null;
   return null;
 }
+/** The lineup sides' local player predicate (Tab 7: on = all of, any = at
+ * least one of, off = none of), shared by both leagues. */
+function lineupMembers(rows: Row[], p: Params): Row[] {
+  return rows.filter((r) => {
+    const ids = playerIds(r.player_ids ?? r.sub_lineup_hash);
+    return (
+      p.on.every((x) => ids.includes(x)) &&
+      (!p.any.length || p.any.some((x) => ids.includes(x))) &&
+      !p.off.some((x) => ids.includes(x))
+    );
+  });
+}
+
+/** EuroLeague and EuroCup sides: the EuroLeague tabs' own readers with this
+ * side's context (one implementation per number, shared_definitions rule 1;
+ * a pin in e2e/live-smoke.spec.ts holds each equal to its tab). */
+async function readEuroCompareFacts(q: Query, p: Params): Promise<Row[]> {
+  const c = p.c;
+  if (p.kind === "ratings" || p.kind === "four_factors")
+    // Every team, as the Israeli side's readers return them.
+    return readFacts(
+      q,
+      { ...p, c: { ...c, teams: [] }, view: "summary", side: "offense", display: "per_game" },
+      p.kind,
+    );
+  if (["lineups", "lineup_ff", "shooting"].includes(p.kind)) {
+    const rows = euroLineupRates(
+      await readEuroLineupRows(q, { ...p, size: p.kind === "shooting" ? 5 : p.size }),
+    );
+    const teams = new Set(c.teams.map(Number));
+    return lineupMembers(
+      teams.size ? rows.filter((r) => teams.has(Number(r.team_id))) : rows,
+      p,
+    );
+  }
+  if (p.kind === "players") {
+    const st = c.starters;
+    if ([st.offMin, st.offMax, st.defMin, st.defMax].some((x) => x != null))
+      throw new ParamError("starters", "Starters splits of player stats are not available for EuroLeague");
+    return addUsagePct(normalizeTsRows(await readPlayerFacts(q, p)));
+  }
+  if (p.kind === "player_ff") return euroFourFactors(q, c, c.teams);
+  if (p.kind === "onoff") return euroOnOffCompute(q, c, c.teams);
+  return [];
+}
+
 export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
+  if (p.c.league !== "il") return p.empty ? [] : readEuroCompareFacts(q, p);
   const c = p.c,
     a = dbArgs(c),
     d = compareDynamicArgs(p),
@@ -191,14 +243,7 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       p.kind === "lineup_ff" ? sql.lineup_ff : sql.lineups,
       compareLineupArgs(p),
     );
-    return rows.filter((r) => {
-      const ids = playerIds(r.player_ids ?? r.sub_lineup_hash);
-      return (
-        p.on.every((x) => ids.includes(x)) &&
-        (!p.any.length || p.any.some((x) => ids.includes(x))) &&
-        !p.off.some((x) => ids.includes(x))
-      );
-    });
+    return lineupMembers(rows, p);
   }
   if (p.kind === "players") {
     const args = [
@@ -296,35 +341,40 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
   return [];
 }
 async function read(s: URLSearchParams, p: Params) {
+  const league = p.c.league;
   return withSnapshot(new Deadline(25000, 20000), async (q) => {
-    const version = await readVersion(q, "il");
+    const version = await readVersion(q, league);
     if (p.kind === "player_defaults")
       return {
         rows: await decorateTeams(
           q,
-          "il",
+          league,
           p.c.season,
-          await q<Row>(
-            call("get_player_traditional_from_games", playerTypes),
-            [p.c.season, ...Array(17).fill(null)],
-          ),
+          league === "il"
+            ? await q<Row>(
+                call("get_player_traditional_from_games", playerTypes),
+                [p.c.season, ...Array(17).fill(null)],
+              )
+            : // The season's whole population, as the Israeli defaults read it.
+              await readPlayerFacts(q, { ...p, c: { ...p.c, teams: [] } }),
         ),
         meta: { version, key: s.toString() },
       };
     if (p.kind !== "refs")
       return {
-        // Hebrew player and team names (applyPlayerNames, decorateTeams).
+        // Player and team names, logos and headshots (applyPlayerNames, decorateTeams).
         rows: await decorateTeams(
           q,
-          "il",
+          league,
           p.c.season,
           applyPlayerNames(
             await readCompareFacts(q, p),
-            await readPlayerNames(q, "il", p.c.season),
+            await readPlayerNames(q, league, p.c.season),
           ),
         ),
         meta: { version, key: s.toString() },
       };
+    if (league !== "il") return euroRefs(q, p, s, version);
     const catalogue = (
       ui.ilTeams as Record<string, { id: number; name: string }[]>
     )[String(p.c.season)];
@@ -356,13 +406,33 @@ async function read(s: URLSearchParams, p: Params) {
     };
   });
 }
+/** The EuroLeague pickers: Tab 8's references (teams, rounds, phases) and
+ * the season's players as Player Stats lists them. */
+async function euroRefs(q: Query, p: Params, s: URLSearchParams, version: string) {
+  const c = p.c,
+    comp = c.league === "eurocup" ? "U" : "E";
+  const refs = await readTabReferences(q, c, version);
+  const players = await q<Row>(
+    "SELECT DISTINCT fr.team_id,fr.player_id,euroleague.person_display_name(p.display_name) AS name FROM euroleague.full_rosters fr JOIN euroleague.players p ON p.player_id=fr.player_id JOIN euroleague.schedule s ON s.game_id=fr.game_id WHERE s.competition=$1::text AND s.season=$2::int4 AND lower(p.provider_player_id) NOT IN ('team','total') ORDER BY name",
+    [comp, c.season],
+  );
+  return {
+    rows: [] as Row[],
+    teams: refs.teams.map((t) => ({ team_id: t.id, team_name: t.name })) as Row[],
+    players: namedPicker(players, await readPlayerNames(q, c.league, c.season), "name"),
+    rounds: refs.rounds,
+    phases: refs.phases,
+    seasons: refs.seasons,
+    meta: { version, key: s.toString() },
+  };
+}
 export type ComparePayload = Awaited<ReturnType<typeof read>>;
 const cache = new VersionedCache<ComparePayload>(
   64,
   (value) => value.meta.version,
 );
-export function compareAnswer(s: URLSearchParams) {
-  const p = parseCompare(s),
+export function compareAnswer(s: URLSearchParams, league: League = "il") {
+  const p = parseCompare(s, league),
     key = s.toString();
-  return cache.get("il", key, () => read(s, p));
+  return cache.get(league, key, () => read(s, p));
 }

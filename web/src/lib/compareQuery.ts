@@ -3,7 +3,11 @@ import type { Query, Patch } from "./tabQuery";
 import { defaultDates } from "./tabQuery";
 import { addDays, parsePlainDate } from "./plainDate";
 import data from "../data/compareUi.json";
-import type { Row } from "../rules/gameLogs";
+import catalogues from "../data/catalogues.json";
+import type { League, Row } from "../rules/gameLogs";
+/** The league a resolved Compare query is for (resolveCompareQuery adds it;
+ * it never reaches the URL). */
+export const compareLeague = (q: Query): League => (q.league as League) || "il";
 export type CompareSelection = { season: string; a: string; b: string };
 export function withCompareSelection(
   q: Query,
@@ -47,6 +51,8 @@ export const SIDE_FIELDS = [
   "clutch_minutes",
   "opponents",
   "game_type",
+  // EuroLeague and EuroCup filter on the provider's phase text instead.
+  "phase",
   "opp_rank_side",
   "opp_rank_n",
   "opp_rank_metric",
@@ -162,7 +168,7 @@ export function applyPreset(q: Query, preset: string): Patch {
     Object.assign(out, {
       start: null,
       end: null,
-      split_date: q.split_date || defaultDates("il", q.season).end,
+      split_date: q.split_date || defaultDates(compareLeague(q), q.season).end,
     });
   if (preset === "gn_split") Object.assign(out, { min_gn: null, max_gn: null });
   // Last N and a game-number range exclude each other (setup_gn_last_n_sync).
@@ -188,7 +194,7 @@ export function editCompareSide(
   if (
     q.view === "Players" &&
     q.auto_players === "true" &&
-    ["game_type", "opponents", "home_away", "outcome", "clutch"].includes(key)
+    ["game_type", "phase", "opponents", "home_away", "outcome", "clutch"].includes(key)
   )
     Object.assign(out, {
       player_a: null,
@@ -202,7 +208,7 @@ export function compareSideParams(
   side: CompareSide,
   kind: string,
 ): URLSearchParams {
-  const b = defaultDates("il", q.season),
+  const b = defaultDates(compareLeague(q), q.season),
     s = new URLSearchParams({ season: q.season, kind });
   const self = q.view === "Players" && q.player_compare === "self";
   let start = (self ? q[`${side}_start`] : q.start) || b.start,
@@ -266,7 +272,8 @@ export function compareSideParams(
   }
   return s;
 }
-export const comparePath = (s: URLSearchParams) => `/api/v1/il/compare?${s}`;
+export const comparePath = (s: URLSearchParams, league: League = "il") =>
+  `/api/v1/${league}/compare?${s}`;
 /** URL form of Shiny's pending_compare_preset payload from Home storylines. */
 export function comparePresetHref(
   season: string,
@@ -275,7 +282,10 @@ export function comparePresetHref(
 ) {
   return `/il/compare?${new URLSearchParams({ season, preset, team_id: teamId, open_detail: "true" })}`;
 }
-export function resolveCompareQuery(q: Query): Query {
+export function resolveCompareQuery(raw: Query, league: League = "il"): Query {
+  const q: Query = { ...raw, league };
+  // A Shot Profile link opened in EuroLeague shows the overall view.
+  if (league !== "il" && q.player_view === "shot_profile") q.player_view = "overall";
   if (q.preset && q.preset_applied !== "true") {
     const team = /^[1-9]\d*$/.test(q.team_id) ? q.team_id : "";
     return {
@@ -320,8 +330,10 @@ export function shortSideLabel(q: Query, s: CompareSide) {
     return s === "a" ? `Last ${q.a_last_n || LAST_N_DEFAULT}` : "Season";
   if (q.preset === "top_bottom_rank" && q[`${s}_opp_rank_n`])
     return `vs ${s === "a" ? "Top" : "Bottom"} ${q[`${s}_opp_rank_n`]}`;
+  // EuroLeague numbers rounds where the Israeli schedule numbers games.
+  const gn = compareLeague(q) === "il" ? "GN" : "Rd";
   if (q.preset === "gn_split" && q.split_gn)
-    return s === "a" ? `GN 1-${q.split_gn}` : `GN ${Number(q.split_gn) + 1}+`;
+    return s === "a" ? `${gn} 1-${q.split_gn}` : `${gn} ${Number(q.split_gn) + 1}+`;
   if (q.preset === "date_split" && q.split_date) {
     const d = parsePlainDate(q.split_date);
     if (!d) return s.toUpperCase();
@@ -379,11 +391,15 @@ export function fullSideLabel(
     .filter(Boolean);
   // Winner Cup is two codes with one label.
   if (gameTypes.length) parts.push([...new Set(gameTypes)].join("+"));
+  const phases = ids("phase").map((ph) => (catalogues.phases as Record<string, string>)[ph] ?? ph);
+  if (phases.length) parts.push(phases.join("+"));
   if (q.view !== "Players") {
     if (q.preset === "date_split" && q.split_date)
       parts.push(`${side === "a" ? "Before" : "After"} ${q.split_date}`);
     if (q.preset === "gn_split" && q.split_gn)
-      parts.push(`${side === "a" ? "Before" : "After"} GN ${q.split_gn}`);
+      parts.push(
+        `${side === "a" ? "Before" : "After"} ${compareLeague(q) === "il" ? "GN" : "Rd"} ${q.split_gn}`,
+      );
   }
   if (q.preset === LAST_N_PRESET && side === "b") parts.unshift("Season");
   return parts.join(" | ") || `Side ${side.toUpperCase()}`;

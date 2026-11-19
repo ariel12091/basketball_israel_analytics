@@ -55,10 +55,8 @@ const EL_TAIL = [...Array(8).fill("int4"), "text", "text", "int4"];
 async function read(q: Query, p: LineupParams) {
   const { c, size, view } = p,
     euro = c.league !== "il",
-    comp = c.league === "eurocup" ? "U" : "E",
     a = dbArgs(c);
   const version = await readVersion(q, c.league);
-  const filtered = needsFilteredPath(c) || p.maxMargin != null;
   let rows: Row[];
   if (!euro) {
     rows = await q<Row>(
@@ -98,12 +96,28 @@ async function read(q: Query, p: LineupParams) {
         a.defMax,
       ],
     );
-  } else if (!filtered) {
-    rows = await q<Row>(
+  } else rows = await readEuroLineupRows(q, p);
+  // The Euro filtered reader returns player_ids as a PostgreSQL array; preserve
+  // it for the same local membership predicate as the season view.
+  rows = lineupThreePtLuck(
+    rankLineups(euro ? euroLineupRates(rows) : rows, euro),
+  );
+  return finish(q, p, rows, version, euro);
+}
+
+/** Tab 10's EuroLeague lineup rows for the context, as stored (before
+ * euroLineupRates): the season table, or the per-game, standard-clutch or
+ * custom-clutch reader. Compare's EuroLeague lineup sides read them too. */
+export async function readEuroLineupRows(q: Query, p: LineupParams): Promise<Row[]> {
+  const { c, size } = p,
+    comp = c.league === "eurocup" ? "U" : "E",
+    a = dbArgs(c);
+  if (!(needsFilteredPath(c) || p.maxMargin != null))
+    return q<Row>(
       "SELECT * FROM euroleague.sub_lineups_stats_mv WHERE competition=$1::text AND game_year=$2::int4 AND unit_size=$3::int4",
       [comp, c.season, size],
     );
-  } else {
+  {
     const kind =
       p.maxMargin == null &&
       p.maxTime == null &&
@@ -146,7 +160,7 @@ async function read(q: Query, p: LineupParams) {
       kind === "pergame"
         ? []
         : [p.maxMargin, p.marginStatus, p.maxTime, p.otMargin];
-    rows = await q<Row>(
+    return q<Row>(
       call(`euroleague.fetch_lineups_${kind}`, [
         ...EL_HEAD,
         ...(kind === "pergame" ? [] : ["int4", "text", "int4", "bool"]),
@@ -155,12 +169,12 @@ async function read(q: Query, p: LineupParams) {
       [...head, ...extra, ...tail],
     );
   }
-  // The Euro filtered reader returns player_ids as a PostgreSQL array; preserve
-  // it for the same local membership predicate as the season view.
-  rows = lineupThreePtLuck(
-    rankLineups(euro ? euroLineupRates(rows) : rows, euro),
-  );
-  rows = applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season));
+}
+
+async function finish(q: Query, p: LineupParams, ranked: Row[], version: string, euro: boolean) {
+  const { c, size, view } = p;
+  const filtered = needsFilteredPath(c) || p.maxMargin != null;
+  let rows = applyPlayerNames(ranked, await readPlayerNames(q, c.league, c.season));
   // The Hebrew team name (server/teamNames.ts), Israeli league only.
   rows = await decorateTeams(q, c.league, c.season, rows);
   const meta = await readTabReferences(q, c, version);

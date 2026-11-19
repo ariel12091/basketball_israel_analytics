@@ -80,7 +80,6 @@ const TABS: Tab[] = [
     label: "Compare",
     icon: "bi-arrow-left-right",
     path: "compare",
-    ilOnly: true,
   },
 ];
 

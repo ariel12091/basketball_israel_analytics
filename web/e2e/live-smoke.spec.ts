@@ -300,3 +300,59 @@ test("live: /api/v1/openapi.json describes the API", async ({ page }, info) => {
   for (const route of ["team-ratings", "player-stats", "onoff", "lineups", "compare", "game-logs", "gameflow", "home", "guide"])
     expect(spec.paths, route).toHaveProperty([`/api/v1/{league}/${route}`]);
 });
+
+// No twin without a pin (docs/shared_definitions.md rule 4): a EuroLeague
+// Compare side reads the EuroLeague tab's own reader, so with the same
+// filters it returns the tab's numbers, row for row.
+test("live: EuroLeague Compare sides equal their tabs", async ({ page }, info) => {
+  test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
+  test.skip(info.project.name !== "desktop", "API check, once per run");
+  // Lineups only under clutch (hundreds of rows; a season's 5,000 per
+  // competition would cost Fast Origin Transfer on every Preview push).
+  test.setTimeout(180_000);
+  type Rows = Record<string, unknown>[];
+  // The request client, not page.goto: a whole season's lineups is too large
+  // for the browser inspector's cache, which evicts the body. It skips the
+  // page routes, so it sends the Preview bypass itself (e2e/preview.ts).
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const rows = async (path: string): Promise<Rows> => {
+    const r = await page.request.get(`/api/v1/${path}`, {
+      headers: secret ? { "x-vercel-protection-bypass": secret } : {},
+    });
+    expect(r.status(), path).toBe(200);
+    return ((await r.json()) as { rows: Rows }).rows;
+  };
+  const same = (a: Rows, b: Rows, key: (r: Record<string, unknown>) => string, cols: string[], what: string) => {
+    const tab = new Map(b.map((r) => [key(r), r]));
+    expect(a.length, what).toBe(tab.size);
+    for (const r of a)
+      for (const c of cols) expect(r[c], `${what} ${key(r)} ${c}`).toEqual(tab.get(key(r))?.[c]);
+  };
+  for (const league of ["euroleague", "eurocup"])
+    for (const extra of ["", "&home_away=home", "&clutch=true"]) {
+      const s = `season=2025${extra}`;
+      same(
+        await rows(`${league}/compare?kind=ratings&${s}`),
+        await rows(`${league}/team-ratings?${s}`),
+        (r) => String(r.team_id),
+        ["off_ppp", "def_ppp", "net_rtg"],
+        `${league}${extra} ratings`,
+      );
+      if (extra === "&clutch=true")
+        same(
+        await rows(`${league}/compare?kind=lineups&size=5&${s}`),
+        (await rows(`${league}/lineups?size=5&auto=false&min_poss=0&${s}`)).filter((r) => r.sub_lineup_hash !== "TOTAL"),
+        (r) => String(r.sub_lineup_hash),
+        ["total_poss", "off_pts", "def_pts"],
+        `${league}${extra} lineups`,
+      );
+      const players = (await rows(`${league}/player-stats?${s}`)).filter((r) => !r.is_multi_team_total);
+      same(
+        await rows(`${league}/compare?kind=players&${s}`),
+        players,
+        (r) => `${r.team_id}:${r.player_id}`,
+        ["gp", "pts", "reb", "ast"],
+        `${league}${extra} players`,
+      );
+    }
+});

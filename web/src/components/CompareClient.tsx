@@ -4,7 +4,7 @@ import { ViewIntro } from "./shiny/TableKey";
 import layout from "@/data/layoutUi.json";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Row } from "@/rules/gameLogs";
+import type { League, Row } from "@/rules/gameLogs";
 import {
   compareDefaults,
   compareSideParams,
@@ -35,6 +35,7 @@ import type { Patch } from "@/lib/tabQuery";
 import {
   useCompareData,
   CompareStatus,
+  CompareLeagueContext,
   type CompareSeed,
 } from "./shiny/CompareData";
 import CompareSidesGrid, {
@@ -67,29 +68,37 @@ import { comparePairReady, compareDefaultPlayers } from "@/lib/compareAsync";
 import LineupNames from "./shiny/LineupNames";
 import { seasonLabel } from "./shiny/Navbar";
 const EMPTY_ROWS: Row[] = [];
+const EMPTY_PHASES: string[] = [];
 export default function CompareClient({
+  league = "il",
   initial = {},
   selection,
 }: {
+  league?: League;
   initial?: CompareSeed;
   selection?: CompareSelection;
 }) {
   const [client] = useState(() => new QueryClient());
   return (
     <QueryClientProvider client={client}>
-      <CompareTab initial={initial} selection={selection} />
+      <CompareLeagueContext.Provider value={league}>
+        <CompareTab league={league} initial={initial} selection={selection} />
+      </CompareLeagueContext.Provider>
     </QueryClientProvider>
   );
 }
 function CompareTab({
+  league,
   initial,
   selection,
 }: {
+  league: League;
   initial: CompareSeed;
   selection?: CompareSelection;
 }) {
-  const { query: raw, set: patch } = useTabQuery("il", compareDefaults),
-    q = withCompareSelection(resolveCompareQuery(raw), selection);
+  const euro = league !== "il";
+  const { query: raw, set: patch } = useTabQuery(league, compareDefaults),
+    q = withCompareSelection(resolveCompareQuery(raw, league), selection);
   // The filters start folded on phones and open on wider screens (web.css), so
   // this says only whether the user flipped that. Page-local: not a filter.
   const [filtersFlipped, setFiltersFlipped] = useState(false);
@@ -108,8 +117,11 @@ function CompareTab({
           "entity",
         ].includes(k),
     );
+    // `league` is the page's, never a URL key.
+    const { league: _league, ...current } = q;
+    void _league;
     patch({
-      ...q,
+      ...current,
       ...p,
       ...(changedContext ? { drill_player: null } : {}),
       preset_applied: "true",
@@ -127,15 +139,18 @@ function CompareTab({
     () =>
       (
         refs.data?.teams ??
-        (ui.ilTeams as Record<string, { id: number; name: string }[]>)[
-          season
-        ]?.map((t) => ({ team_id: t.id, team_name: t.name })) ??
+        (euro
+          ? undefined
+          : (ui.ilTeams as Record<string, { id: number; name: string }[]>)[
+              season
+            ]?.map((t) => ({ team_id: t.id, team_name: t.name }))) ??
         []
       ).map((t) => ({ value: String(t.team_id), label: String(t.team_name) })),
-    [refs.data?.teams, season],
+    [refs.data?.teams, season, euro],
   );
   const players = refs.data?.players ?? EMPTY_ROWS,
-    rounds = refs.data?.rounds ?? [];
+    rounds = refs.data?.rounds ?? [],
+    phases = (refs.data as { phases?: string[] } | undefined)?.phases ?? EMPTY_PHASES;
   const playerMode = q.view === "Players",
     lineup = q.view === "Lineups",
     teamPlayers = q.cmp_view === "players" && !playerMode;
@@ -481,7 +496,7 @@ function CompareTab({
   }));
   const chips = contextChips({
     p: "cmp",
-    league: "il",
+    league,
     query: {
       ...q,
       ...(q.preset === "date_split" ? { start: "", end: "" } : {}),
@@ -506,7 +521,11 @@ function CompareTab({
               id="cmp_preset"
               label="Quick preset"
               value={q.preset}
-              choices={presetChoices}
+              choices={
+                euro
+                  ? presetChoices.map((c) => ({ ...c, label: c.label.replace(/\bGN\b|Game Number/, "Round") }))
+                  : presetChoices
+              }
               placeholder="-- Custom --"
               onChange={(v) => set(applyPreset(q, v))}
             />
@@ -539,7 +558,7 @@ function CompareTab({
           {q.preset === "gn_split" ? (
             <CompareSelect
               id="cmp_split_gn"
-              label="Split GN"
+              label={euro ? "Split round" : "Split GN"}
               value={q.split_gn}
               choices={rounds.map((n) => ({
                 value: String(n),
@@ -593,6 +612,7 @@ function CompareTab({
       teams={teams}
       players={players}
       rounds={rounds}
+      phases={phases}
       onToggle={() => setFiltersFlipped(!filtersFlipped)}
     />
   );
@@ -608,7 +628,7 @@ function CompareTab({
       </div>
       <ChipsRow
         p="cmp"
-        seasonChip={seasonLabel(q.season)}
+        seasonChip={seasonLabel(q.season, !euro)}
         active={!!q.stats || chips.length > 0}
         onClearAll={reset}
         chips={playerMode ? [] : chips}
@@ -743,7 +763,13 @@ function CompareTab({
           {playerMode ? (
             <>
               {metricButtons(
-                data.PLAYER_VIEWS as Record<string, string>,
+                // EuroLeague records no shot types or zones (On/Off has no
+                // Shot Profile there either).
+                Object.fromEntries(
+                  Object.entries(data.PLAYER_VIEWS as Record<string, string>).filter(
+                    ([, v]) => !euro || v !== "shot_profile",
+                  ),
+                ),
                 q.player_view,
                 (v) => set({ player_view: v }),
               )}
@@ -989,11 +1015,11 @@ function CompareTab({
   );
   return (
     <TabFrame
-      league="il"
+      league={league}
       tab="compare"
       paneValue="compare"
       season={q.season}
-      seasons={ui.ilSeasons}
+      seasons={euro ? ui.euroStaticSeasons : ui.ilSeasons}
       onSeason={(s) => {
         autoBoot.current = false;
         defaultsChosen.current = false;
