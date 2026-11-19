@@ -162,3 +162,24 @@ test_that("a failed person-key step does not stop the identity link or the name 
   expect_length(at, 1)
   expect_true(any(grepl("continue-on-error: true", wf[at:(at + 2)], fixed = TRUE)))
 })
+
+test_that("cached team cards and profiles give one headshot row each, labelled by source", {
+  dir <- tempfile("basket-cache")
+  dir.create(file.path(dir, "teams", "2027"), recursive = TRUE)
+  dir.create(file.path(dir, "profiles", "2027"), recursive = TRUE)
+  writeLines(paste0("<div>", entry(26032, "he", 1, "a b", "x", "1.83", "02/12/1997"), "</div>"),
+             file.path(dir, "teams", "2027", "2112-he.html"), useBytes = TRUE)
+  writeLines('<div class="player_img"><img src="/pics/p.jpg" /></div>',
+             file.path(dir, "profiles", "2027", "26032.html"))
+  # The site's placeholder is no photo.
+  writeLines('<div class="player_img"><img src="img/default_player.jpg" /></div>',
+             file.path(dir, "profiles", "2027", "27214.html"))
+  photos <- basket_cached_photos(dir, 2027)
+  expect_equal(photos$photo_source, c("roster", "profile"))
+  expect_equal(photos$basket_player_id, c(26032L, 26032L))
+  expect_equal(photos$basket_team_id, c(2112L, NA_integer_))
+  expect_equal(photos$photo_url, c("https://basket.co.il/x.jpg", "https://basket.co.il/pics/p.jpg"))
+  expect_equal(nrow(basket_cached_photos(dir, 2026)), 0L)
+  # The SQL that picks one per registration ranks the roster card first.
+  expect_match(BASKET_PHOTO_PICK_SQL, "(s.photo_source = 'roster') DESC", fixed = TRUE)
+})

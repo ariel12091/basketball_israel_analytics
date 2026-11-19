@@ -5,7 +5,6 @@ import { playerIds } from "../rules/lineups";
 import { orderBySize } from "../rules/playerSize";
 import { readVersion } from "./dataVersion";
 import { VersionedCache } from "./versionedCache";
-import images from "../data/images.json";
 
 /** The "Player display name" owner (docs/shared_definitions.md, D27):
  * `player_display_names_v`, one English and one Hebrew name per (team, player)
@@ -28,20 +27,18 @@ export type PlayerNames = Map<string, PlayerName>;
 const key = (team: unknown, player: unknown) =>
   `${Number(team)}:${Number(player)}`;
 
-// The view owns basket.co.il's height and position too (2026-11-12,
-// sql/migrations/2026-11-12_player_display_names_size.sql): the lineups'
+// The view owns basket.co.il's height, position (2026-11-12,
+// sql/migrations/2026-11-12_player_display_names_size.sql) and headshot
+// (2026-11-19, sql/migrations/2026-11-19_basket_registration_photo.sql): the lineups'
 // height order reads them here, as every other consumer will.
 const SQL =
-  "SELECT team_id,player_id,display_name AS name,display_name_he AS name_he,height_m,position_en FROM basketball_test.player_display_names_v WHERE game_year=$1 AND display_name IS NOT NULL";
+  "SELECT team_id,player_id,display_name AS name,display_name_he AS name_he,height_m,position_en,photo_url FROM basketball_test.player_display_names_v WHERE game_year=$1 AND display_name IS NOT NULL";
 // EuroLeague and EuroCup: the season roster's profile per (team, player).
 const EURO_SQL = `SELECT pr.team_id, pr.player_id, pr.height_m, pr.position_en, pr.headshot_url
 FROM euroleague.player_season_profiles pr
 JOIN euroleague.teams t ON t.team_id = pr.team_id
 WHERE pr.season = $1 AND t.competition = $2`;
 const COMPETITION: Record<string, string> = { euroleague: "E", eurocup: "U" };
-// Israeli headshots: no database column yet, so they still come from
-// web/src/data/images.json (scripts/export_web_images.R), on the server.
-const IL_PHOTOS = images.photos as Record<string, Record<string, string>>;
 const blank = (v: unknown) => v == null || String(v).trim() === "";
 const text = (v: unknown) => (blank(v) ? null : String(v));
 const cache = new VersionedCache<{
@@ -75,7 +72,7 @@ export async function readPlayerNames(
                   he: text(r.name_he),
                   height: height(r.height_m),
                   position: text(r.position_en),
-                  photo: IL_PHOTOS[String(season)]?.[key(r.team_id, r.player_id)] ?? null,
+                  photo: text(r.photo_url),
                 },
               ])
           : (await q<Row>(EURO_SQL, [season, competition])).map((r): [string, PlayerName] => [
