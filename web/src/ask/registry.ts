@@ -166,7 +166,7 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
           const s = {
             get: (k: string) => (k === "auto" ? "true" : (q[k] ?? null)),
           } as unknown as URLSearchParams;
-          lineupPageOptions(s, l, "summary");
+          lineupPageOptions(s, "summary");
         },
         (l, q) => new URL(lineupsPagePath(l, q, true), "http://page.local").searchParams,
       ),

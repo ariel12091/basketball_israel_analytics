@@ -76,7 +76,7 @@ const KEYS: Record<string, { description: string; schema: Schema }> = {
   show_ineligible: bool("Player Stats: show players under the games minimum in gray instead of hiding them."),
   min_all: int("On/Off: the fewest possessions on and off the floor (with auto=false; otherwise auto sets it)."),
   min_on: int("On/Off: the fewest possessions on the floor (with auto=false; otherwise auto sets it)."),
-  auto: bool("Automatic possession minimum, as a freshly opened page link applies it. On/Off: auto=false keeps min_on / min_all. Lineups: auto=true replaces min_poss."),
+  auto: bool("Automatic possession minimum, as a freshly opened page link applies it. On/Off: auto=false keeps min_on / min_all. Lineups: auto=true replaces min_poss, and sending neither means auto."),
   size: str("Lineups: players per group.", { enum: ["2", "3", "4", "5"] }),
   min_poss: int("The fewest possessions a row needs."),
   players_on: str("Lineups: player ids who must all be on the floor (with team)."),
@@ -144,7 +144,8 @@ const DEFAULTS: Record<string, Record<string, string>> = {
   "team-ratings": queryFromSearch("il", {}, TEAM_QUERY_DEFAULTS),
   "player-stats": queryFromSearch("il", {}, PLAYER_QUERY_DEFAULTS),
   onoff: queryFromSearch("il", {}, onoffQueryDefaults("il")),
-  lineups: queryFromSearch("il", {}, LINEUP_QUERY_DEFAULTS),
+  // No min_poss default: without it (or auto) the minimum is automatic.
+  lineups: { ...queryFromSearch("il", {}, LINEUP_QUERY_DEFAULTS), min_poss: "" },
   "game-logs": queryFromSearch("il", {}, {}),
   compare: queryFromSearch("il", {}, compareDefaults),
 };

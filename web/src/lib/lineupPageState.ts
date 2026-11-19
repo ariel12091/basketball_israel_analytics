@@ -1,17 +1,19 @@
 // The Lineups table's page state as lineupsPagePath (tabQuery.ts) writes it:
 // read once here for the server (lineupsPageAnswer) and the browser tests'
 // substituted answers, so both apply lineupPage to the same options.
-import type { League } from "../rules/gameLogs";
 import { playerIds, type LineupView } from "../rules/lineups";
 import { parseStats } from "./tabQuery";
 import ui from "../data/shinyUi.json";
 
 export function lineupPageOptions(
   search: URLSearchParams,
-  league: League,
   view: LineupView,
 ) {
-  const auto = search.get("auto") === "true";
+  // A request that names neither starts as the page does: automatic
+  // minimum. The page itself always sends one of the two.
+  const auto =
+    search.get("auto") === "true" ||
+    (search.get("auto") === null && search.get("min_poss") === null);
   return {
     team: search.get("team") ?? "",
     selection: {
@@ -25,8 +27,7 @@ export function lineupPageOptions(
     min: auto
       ? null
       : Number(
-          search.get("min_poss") ??
-            (league === "il" ? ui.lineupDefaults.minPoss : 0),
+          search.get("min_poss") ?? ui.lineupDefaults.minPoss,
         ),
     stats: parseStats(search.get("stats") ?? ""),
   };

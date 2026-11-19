@@ -66,7 +66,7 @@ export function pageAnswer(
     url.searchParams.get("view") === "four_factors" ? "four_factors" : "summary";
   const page = lineupPage(
     answer.rows,
-    lineupPageOptions(url.searchParams, m[1] as League, view),
+    lineupPageOptions(url.searchParams, view),
   );
   return {
     ...answer,

@@ -85,7 +85,7 @@ export async function lineupsPageAnswer(
   const answer = await lineupsAnswer(league, search);
   const page = lineupPage(
     answer.rows,
-    lineupPageOptions(search, league, p.view as LineupView),
+    lineupPageOptions(search, p.view as LineupView),
   );
   return {
     ...answer,
