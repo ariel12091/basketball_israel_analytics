@@ -407,6 +407,8 @@ class LineupUnitWiringTest(unittest.TestCase):
         # Migration 063 made the Lineups relation a table; the guard refused
         # every publication until it was listed (found 2026-11-17).
         "sub_lineups_stats_mv",
+        # Migration 067: written by roster_collector after each load.
+        "player_season_profiles",
     }
 
     def test_schema_allowlist_accepts_the_unit_relations(self) -> None:

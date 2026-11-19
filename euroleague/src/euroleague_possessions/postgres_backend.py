@@ -404,6 +404,9 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         # _mv suffix from when it was a materialized view; it is a table now,
         # and was missing here, which refused every publication after 063.
         "sub_lineups_stats_mv",
+        # Migration 067 (2026-11-19): player height, position and headshot per
+        # season and club, written by roster_collector, never by the loader.
+        "player_season_profiles",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
