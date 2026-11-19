@@ -4,9 +4,12 @@ __pycache__/
 data/raw/
 data/staging/
 data/exports/
+data/diagnostics/ft_stoppage_measure/
+data/diagnostics/ft_stoppage_shadow/
 *.csv
 # The register of accepted defects is reviewed in git (RUNBOOK).
 !data_quality/accepted_defects.csv
+!tests/fixtures/ft_stoppage_reordered.csv
 *.parquet
 *.jsonl
 
