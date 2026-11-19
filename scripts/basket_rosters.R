@@ -287,6 +287,68 @@ write_basket_rosters <- function(con, rows, game_year) {
   })
 }
 
+# Headshots for basket_player_registration.photo_url (2026-11-19), read off
+# the cache the two scrapers fill: each team page's roster cards
+# (teams/<season>/<team>-he.html) and each profile page
+# (profiles/<season>/<PlayerId>.html). One photo per registration: a roster
+# card first (the card on the player's own team page when he has two), else
+# the profile's. Only found photos are written, so a photo the site stops
+# showing is kept.
+read_cached_page <- function(path) paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+basket_cached_photos <- function(cache_dir, seasons) {
+  rows <- list()
+  for (season in as.integer(seasons)) {
+    teams <- list.files(file.path(cache_dir, "teams", season), pattern = "^[0-9]+-he\\.html$",
+                        full.names = TRUE)
+    for (f in teams) {
+      out <- parse_basket_roster_photos(read_cached_page(f))
+      if (nrow(out)) rows[[length(rows) + 1]] <- data.frame(
+        game_year = season, basket_player_id = out$basket_player_id,
+        basket_team_id = as.integer(sub("-he\\.html$", "", basename(f))),
+        photo_url = out$photo_url, photo_source = "roster", stringsAsFactors = FALSE)
+    }
+    profiles <- list.files(file.path(cache_dir, "profiles", season), pattern = "^[0-9]+\\.html$",
+                           full.names = TRUE)
+    if (length(profiles)) {
+      url <- vapply(profiles, function(f) parse_basket_profile_photo(read_cached_page(f)),
+                    character(1), USE.NAMES = FALSE)
+      keep <- !is.na(url)
+      if (any(keep)) rows[[length(rows) + 1]] <- data.frame(
+        game_year = season,
+        basket_player_id = as.integer(sub("\\.html$", "", basename(profiles[keep]))),
+        basket_team_id = NA_integer_, photo_url = url[keep], photo_source = "profile",
+        stringsAsFactors = FALSE)
+    }
+  }
+  if (!length(rows)) return(data.frame(game_year = integer(), basket_player_id = integer(),
+    basket_team_id = integer(), photo_url = character(), photo_source = character()))
+  do.call(rbind, rows)
+}
+
+# The photo each registration gets from a staged basket_photo_stage: one per
+# (game_year, basket_player_id), in the order described above.
+BASKET_PHOTO_PICK_SQL <- paste(
+  "SELECT DISTINCT ON (s.game_year, s.basket_player_id) s.game_year, s.basket_player_id, s.photo_url",
+  "FROM basket_photo_stage s",
+  "JOIN", BASKET_REGISTRATION_TABLE, "r USING (game_year, basket_player_id)",
+  "ORDER BY s.game_year, s.basket_player_id, (s.photo_source = 'roster') DESC,",
+  "(s.basket_team_id IS NOT DISTINCT FROM r.basket_team_id) DESC, s.basket_team_id")
+
+# Inside the caller's transaction; returns the number of registrations changed.
+write_basket_photos <- function(con, photos) {
+  DBI::dbExecute(con, paste("CREATE TEMP TABLE basket_photo_stage (game_year int4, basket_player_id int4,",
+                            "basket_team_id int4, photo_url text, photo_source text) ON COMMIT DROP"))
+  if (nrow(photos)) DBI::dbAppendTable(con, DBI::Id(table = "basket_photo_stage"),
+                                       photos[c("game_year", "basket_player_id", "basket_team_id",
+                                                "photo_url", "photo_source")])
+  DBI::dbExecute(con, paste0(
+    "UPDATE ", BASKET_REGISTRATION_TABLE, " r SET photo_url = p.photo_url, updated_at = now() ",
+    "FROM (", BASKET_PHOTO_PICK_SQL, ") p ",
+    "WHERE r.game_year = p.game_year AND r.basket_player_id = p.basket_player_id ",
+    "AND r.photo_url IS DISTINCT FROM p.photo_url"))
+}
+
 main_rosters <- function() {
   args <- commandArgs(trailingOnly = TRUE)
   known <- grepl("^--(?:season|pause-seconds|cache-dir|max-attempts|initial-backoff)=", args, perl = TRUE) |
@@ -340,6 +402,12 @@ main_rosters <- function() {
   links <- roster_profile_links(keys, pause_seconds = pause_seconds, fetch_profile = fetch)
   written <- DBI::dbWithTransaction(con, write_basket_links(con, links))
   cat(sprintf("profile links written for %d team-page players\n", written))
+  # Headshots from the pages just fetched (team pages) and the profiles the
+  # shooting-history scrape cached before this step (basket-refresh.yml).
+  photos <- basket_cached_photos(cache_dir, season)
+  set <- DBI::dbWithTransaction(con, write_basket_photos(con, photos))
+  cat(sprintf("photos: %d cached (%d team cards), %d registrations changed\n",
+              nrow(photos), sum(photos$photo_source == "roster"), set))
   invisible(rows)
 }
 
