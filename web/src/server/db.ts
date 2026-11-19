@@ -34,7 +34,13 @@ type Waiting = {
 /** A heavy read is one that holds a connection for seconds (filtered 2-4
  * player Lineups); at most `heavyMax` run at once per instance, so they can
  * never take every slot from the quick reads (load test 2026-11-02). */
-export type SnapshotOptions = { heavy?: boolean };
+export type SnapshotOptions = {
+  heavy?: boolean;
+  /** A writing transaction (READ WRITE): only the Ask feedback route, whose
+   * one statement calls app_feedback.submit_ask_feedback(), the single
+   * function app_readonly may write through. Every read stays READ ONLY. */
+  write?: boolean;
+};
 function validateLimits(max: number, queueMax: number, heavyMax = max) {
   if (!Number.isInteger(max) || max < 1 || max > 20)
     throw new Error("Invalid DB_POOL_MAX");
@@ -137,6 +143,7 @@ export class SnapshotDatabase {
     options: SnapshotOptions = {},
   ): Promise<T> {
     const heavy = options.heavy === true;
+    const mode = options.write === true ? "READ WRITE" : "READ ONLY";
     await this.enter(deadline, heavy);
     let client: PoolClient | undefined,
       released = false,
@@ -182,7 +189,7 @@ export class SnapshotDatabase {
             );
             if (budget <= 0) throw new DeadlineError();
             await client.query(
-              `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET LOCAL statement_timeout = '${budget}ms'; SET LOCAL idle_in_transaction_session_timeout = '5s'`,
+              `BEGIN ISOLATION LEVEL REPEATABLE READ ${mode}; SET LOCAL statement_timeout = '${budget}ms'; SET LOCAL idle_in_transaction_session_timeout = '5s'`,
             );
             if (stopped) return;
             clearTimeout(first);

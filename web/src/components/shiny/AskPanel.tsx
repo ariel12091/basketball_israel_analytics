@@ -224,8 +224,69 @@ function Turn({ turn }: { turn: AskTurnView }) {
               {i === 0 ? "Open the page" : "Related page"}
             </Link>
           ))}
+          <WrongAnswer turn={turn} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** "Wrong answer?": nothing is sent until the visitor reads what will be and
+ * presses Send (user 2026-11-19: never store a question without asking). */
+function WrongAnswer({ turn }: { turn: AskTurnView }) {
+  const ask = useAsk()!;
+  const [state, setState] = useState<"idle" | "open" | "sending" | "sent">("idle");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  if (state === "sent")
+    return (
+      <p className="ibpl-ask-flag-done" role="status">
+        Thanks, sent.
+      </p>
+    );
+  if (state === "idle")
+    return (
+      <button type="button" className="ibpl-ask-flag" onClick={() => setState("open")}>
+        Wrong answer?
+      </button>
+    );
+  const send = async () => {
+    setState("sending");
+    setError(null);
+    const failed = await ask.sendFeedback(turn, note);
+    if (failed) {
+      setError(failed);
+      setState("open");
+    } else setState("sent");
+  };
+  return (
+    <div className="ibpl-ask-flag-form">
+      <p className="ibpl-ask-flag-consent">
+        Send this question and the chat&apos;s answer so the answers can be improved? Nothing else about
+        you is sent.
+      </p>
+      <textarea
+        className="form-control form-control-sm"
+        rows={2}
+        maxLength={500}
+        placeholder="What was wrong? (optional)"
+        aria-label="What was wrong (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      {error && (
+        <p className="ibpl-ask-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="ibpl-ask-flag-actions">
+        <button type="button" className="btn btn-sm btn-primary" disabled={state === "sending"} onClick={() => void send()}>
+          {state === "sending" ? "Sending…" : "Send"}
+        </button>
+        <button type="button" className="btn btn-sm btn-link" onClick={() => setState("idle")}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

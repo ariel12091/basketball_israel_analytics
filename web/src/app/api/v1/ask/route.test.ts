@@ -99,6 +99,9 @@ describe("POST /api/v1/ask", () => {
       await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
       expect(signal.aborted).toBe(true);
       await vi.waitFor(() => expect(logs.filter((l) => l.includes("ask_turn"))).toHaveLength(1));
+      // The question itself is never logged (only its length).
+      expect(logs.join(" ")).not.toContain("top lineups of Maccabi");
+      expect(JSON.parse(logs.find((l) => l.includes("ask_turn"))!)).toMatchObject({ questionChars: 22 });
       finish({ text: "late", toolCalls: [], usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } });
       await Promise.resolve();
       expect(logs.filter((l) => l.includes("ask_turn"))).toHaveLength(1);
@@ -146,10 +149,11 @@ describe("POST /api/v1/ask", () => {
     });
   });
 
-  it("log line has no ip or clientId", async () => {
+  it("log line has no question, ip or clientId", async () => {
     await (await post(body({ clientId: "secret-client" }), "7.7.7.7")).text();
     const line = logs.find((l) => l.includes("ask_turn"))!;
-    expect(JSON.parse(line)).toMatchObject({ kind: "ask_turn", question: "top lineups of Maccabi", fallback: false });
+    expect(JSON.parse(line)).toMatchObject({ kind: "ask_turn", questionChars: 22, fallback: false });
+    expect(line).not.toContain("top lineups of Maccabi");
     expect(line).not.toContain("secret-client");
     expect(line).not.toContain("7.7.7.7");
   });

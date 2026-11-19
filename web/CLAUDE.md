@@ -94,6 +94,24 @@ Spec: `docs/superpowers/specs/2026-11-17-player-stats-views-design.md`.
 - `e2e/player-stats.spec.ts` is not run in CI (only the live smoke is); its
   column-view test was written while C: was full and has not been run yet.
 
+## Ask chat: logs and "Wrong answer?" (since 2026-11-19)
+
+Privacy rule (user): a visitor's words are stored only when they flag an
+answer and press Send.
+- The per-question log line (`ask/log.ts`, `ask_turn`) carries tools,
+  timing, cost and `questionChars`, never the question, IP or ids.
+- "Wrong answer?" under each answer (`AskPanel` `WrongAnswer`) opens a
+  consent line and an optional note; Send posts to `/api/v1/ask/feedback`,
+  which calls `app_feedback.submit_ask_feedback()` in the one writing
+  transaction the app opens (`withSnapshot(..., { write: true })`).
+- `app_feedback` is its own schema (`sql/migrations/2026-11-19_ask_feedback.sql`,
+  `scripts/apply_ask_feedback.R`): app_readonly may only EXECUTE the function,
+  never read the table, because `basketball_test` grants it SELECT on every
+  relation. Read the flags as the owner:
+  `SELECT * FROM app_feedback.ask_feedback WHERE reviewed_at IS NULL`.
+- Limits: 5 flags an hour per browser and per address (in memory), 200 an
+  hour in total (the function).
+
 ## Current resume point (2026-10-22)
 
 Gameflow is implemented for all competitions: Game Logs links and direct SSR
