@@ -286,3 +286,29 @@ before both fixes: 29 of 32,731 FT rows changed -- E2026_89 row 194 now assigned
 28 rows in 14 trips where a stale basket made the model withhold the possession end
 now get one. All 29 endpoints equal the production parser's `final_end_poss`
 (15 False, 14 True). 26 tests pass; register 133/163, 0 new losses.
+
+**Unsportsmanlike and-ones (user, 2026-11-19: "Unsportsmanlike does not finish possession").**
+A made basket with an unsportsmanlike/flagrant foul on the scorer is one possession that
+continues after the free throw. 22 in the cached games; the live parser ends the possession
+at the basket in 21 (21 extra possessions). The Israeli `compute_possessions()` already
+gives no end in a shot group holding a special foul (read from code, not measured), so this
+is a twin drift. The shadow model suppresses the basket end in all 22. Four other cases
+(E2025_211, E2026_99, U2026_4, U2026_53) are a U-foul on a different player by the team that
+had the ball, with its turnover: those are real ends. Corrected simulation (suppression
+applied even where the FT endpoint is withheld): same-team repeats 173 -> 144, ends -30.
+Left: 2 phantom turnovers on the fouling team in U-foul and-ones (U2026_5 Q3 08:14,
+U2026_68 Q1 07:15), the D31 shape; EuroLeague has no D31 rule yet. Handle both in the
+possession-end integration.
+
+**Box-score possession check (2026-11-19).** Estimate FGA - OREB + TO + 0.44 FTA from
+`totr` vs counted ends, 1,566 team-games: counted is 0.6-0.9 below in every competition,
+SD 1.1-1.3 (expected: 0.44 FTA and period-end possessions). 13 team-games are >= 3 from
+their competition's mean gap; in all 13 turnovers match the box exactly and the two teams'
+counts are level (gap 0-1, except E2025_14 at 3), so the formula, not the count, is off.
+The sharper check is the gap between the two teams in a game: 0: 284, 1: 347, 2: 137,
+3: 12, 4: 1, 5: 2. Worst: U2026_5 (5), U2026_65 (5), U2026_6 (4). U2026_5: the provider
+charges Trento a turnover on 3 of its own technical/coach fouls while Tenerife had the ball
+(Q3 00:36, Q4 09:13, Q4 01:13), plus the flagrant and-one phantom at Q3 08:14; the box score
+counts them too. That shape (phantom TO on the fouling team's special foul) exists only in
+that game in the cached data; with the 2 U-and-one phantoms it is 5 rows for a D31-style
+rule. U2026_6 and U2026_65 not read yet.

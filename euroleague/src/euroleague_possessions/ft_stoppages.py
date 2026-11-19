@@ -583,3 +583,130 @@ def infer_ft_stoppages(events: pd.DataFrame, *, search_budget: int = 20000) -> p
         result[column] = pd.array(result[column], dtype="Int64")
     result["shadow_ft_end_poss"] = pd.array(result["shadow_ft_end_poss"], dtype="boolean")
     return result.drop(columns="_shadow_input").reset_index(drop=True)
+
+
+def _miss_end_reason(rows, final):
+    for later in rows[final + 1:]:
+        if later.play_type in ADMINISTRATIVE | {"AS", "RV"}:
+            continue
+        return "final_ft_miss_end" if later.play_type in PERIOD_END else "final_ft_miss_defensive_rebound"
+    return "final_ft_miss_end"
+
+
+def apply_ft_stoppages(grouped: pd.DataFrame) -> pd.DataFrame:
+    """Overlay the stoppage model's unique answers on the parser's grouping (parser 0.3.0).
+
+    Only incidents whose every FT is uniquely assigned are taken, and for an
+    ordinary trip only when the model proposes its possession end; anything else
+    keeps the parser's answer. Special-foul trips keep the parser's FT ends (they
+    keep the ball, D29/D36) but take the model's parent, trip and suppressed
+    basket. A trip identical to the parser's keeps its id, status and trace.
+    """
+    if grouped.empty:
+        return grouped
+    out = grouped.reset_index(drop=True).copy()
+    base = out.copy()
+    shadow = infer_ft_stoppages(out).reset_index(drop=True)
+    if not (shadow["source_event_order"].to_numpy() == out["source_event_order"].to_numpy()).all():
+        raise RuntimeError("stoppage model changed row order")
+    out["synthetic_parent_order"] = out["synthetic_parent_order"].astype("Int64")
+    for _, period in out.groupby(["season", "gamecode", "period"], sort=False):
+        ordered = period.sort_values("source_event_order", kind="stable")
+        rows = list(ordered.itertuples(index=False))
+        idx = list(ordered.index)
+        pos = {int(r.source_event_order): k for k, r in enumerate(rows)}
+        sh = shadow.loc[idx]
+        ft = sh[sh["play_type"].isin(FT_TYPES) & sh["shadow_incident_id"].notna()]
+        for _, incident in ft.groupby("shadow_incident_id", sort=False):
+            if not incident["shadow_status"].eq("unique").all():
+                continue
+            trips = []
+            for trip_id, trip in incident.groupby("shadow_ft_trip_id", sort=False):
+                members = sorted(int(o) for o in trip["source_event_order"])
+                foul = rows[pos[int(trip["shadow_foul_order"].iloc[0])]]
+                special = is_special_foul(foul.play_type)
+                end = trip.loc[trip["source_event_order"] == members[-1], "shadow_ft_end_poss"].iloc[0]
+                if not special and pd.isna(end):
+                    trips = None
+                    break
+                trips.append((members, int(trip["shadow_parent_order"].iloc[0]),
+                              int(trip["shadow_foul_order"].iloc[0]), special,
+                              None if pd.isna(end) else bool(end),
+                              trip["shadow_suppressed_basket_order"].dropna()))
+            if not trips:
+                continue
+            # Dead-ball FTs right after a made basket (same second, nothing live
+            # between) are one possession rooted on the basket: keep the parser's.
+            kept = []
+            for trip in trips:
+                members, parent, foul_order = trip[0], trip[1], trip[2]
+                old = base.at[idx[pos[members[-1]]], "synthetic_parent_order"]
+                old_row = rows[pos[int(old)]] if pd.notna(old) and int(old) in pos else None
+                foul = rows[pos[foul_order]]
+                if (old_row is not None and int(old) != parent and parent == foul_order
+                        and old_row.play_type in MADE_SHOTS
+                        and old_row.team_code == rows[pos[members[0]]].team_code
+                        and old_row.clock and old_row.clock == foul.clock):
+                    continue
+                kept.append(trip)
+            trips = kept
+            if not trips:
+                continue
+            old_roots = {int(base.at[idx[pos[o]], "synthetic_parent_order"])
+                         for members, *_ in trips for o in members
+                         if pd.notna(base.at[idx[pos[o]], "synthetic_parent_order"])}
+            for members, parent, foul_order, special, end, suppressed in trips:
+                at = [idx[pos[o]] for o in members]
+                old_ids = set(base.loc[at, "synthetic_ft_trip_id"])
+                old_id = next(iter(old_ids)) if len(old_ids) == 1 else None
+                period_base = base.loc[idx]
+                same_members = old_id is not None and sorted(
+                    int(o) for o in period_base.loc[period_base["synthetic_ft_trip_id"] == old_id,
+                                                    "source_event_order"]) == members
+                same = bool(same_members and base.loc[at, "synthetic_parent_order"].notna().all()
+                            and set(base.loc[at, "synthetic_parent_order"].astype(int)) == {parent})
+                new_end = {i: False for i in at}
+                if special:
+                    new_end = {i: bool(base.at[i, "final_end_poss"]) for i in at}
+                else:
+                    new_end[at[-1]] = end
+                ends_same = all(bool(base.at[i, "final_end_poss"]) == new_end[i] for i in at)
+                if same and ends_same and suppressed.empty:
+                    continue
+                trip_id = old_id if same else (
+                    f"EL:{rows[0].season}:{rows[0].gamecode}:{rows[0].period}:{parent}:F{foul_order}")
+                for i in at:
+                    out.at[i, "synthetic_parent_order"] = parent
+                    out.at[i, "synthetic_ft_trip_id"] = trip_id
+                    if bool(out.at[i, "final_end_poss"]) != new_end[i]:
+                        out.at[i, "final_end_poss"] = new_end[i]
+                        if not new_end[i]:
+                            out.at[i, "end_reason"] = None
+                        elif parent != foul_order:
+                            out.at[i, "end_reason"] = "and_one_final_ft"
+                        elif out.at[i, "play_type"] == "FTM":
+                            out.at[i, "end_reason"] = "ordinary_ft_trip_final_make"
+                        else:
+                            out.at[i, "end_reason"] = _miss_end_reason(rows, pos[int(out.at[i, "source_event_order"])])
+                    if not (same and ends_same):
+                        out.at[i, "grouping_status"] = "provisional"
+                        out.at[i, "decision_trace"] = f"{out.at[i, 'decision_trace']} | ft_stoppage_model"
+                for basket in suppressed:
+                    b = idx[pos[int(basket)]]
+                    if bool(out.at[b, "final_end_poss"]):
+                        out.at[b, "final_end_poss"] = False
+                        out.at[b, "end_reason"] = None
+                        out.at[b, "decision_trace"] = f"{out.at[b, 'decision_trace']} | ft_stoppage_model.and_one_basket"
+            new_roots = {p for _, p, *_ in trips}
+            for root in old_roots - new_roots:
+                if root not in pos:
+                    continue
+                b = idx[pos[root]]
+                still = out.loc[idx][out.loc[idx, "play_type"].isin(FT_TYPES)
+                                     & (out.loc[idx, "synthetic_parent_order"] == root)]
+                if (out.at[b, "play_type"] in MADE_SHOTS and still.empty
+                        and not bool(out.at[b, "final_end_poss"])):
+                    out.at[b, "final_end_poss"] = True
+                    out.at[b, "end_reason"] = "made_field_goal"
+                    out.at[b, "decision_trace"] = f"{out.at[b, 'decision_trace']} | ft_stoppage_model.basket_not_and_one"
+    return out

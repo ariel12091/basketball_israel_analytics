@@ -46,6 +46,25 @@ class StoppageTest(unittest.TestCase):
         self.assertEqual(result.iloc[-1].shadow_parent_order, 4)
         self.assertEqual(result.iloc[-1].shadow_foul_order, 5)
 
+    # Parser 0.3.0: the model's answers overlaid on the parser's grouping.
+    def test_unsportsmanlike_and_one_does_not_end_the_possession(self):
+        # User, 2026-11-19: "Unsportsmanlike does not finish possession".
+        from euroleague_possessions.parser import group_events
+        result = group_events(events(("2FGM", "B", "p", "03:19"), ("CMU", "A", "d", "03:19"),
+            ("RV", "B", "p", "03:19"), ("FTM", "B", "p", "03:19"),
+            ("3FGM", "B", "q", "03:09")))
+        self.assertEqual(result.final_end_poss.tolist(), [False, False, False, False, True])
+        self.assertEqual(result.synthetic_parent_order.iloc[3], 0)
+
+    def test_basket_from_an_earlier_play_keeps_its_end(self):
+        # U2025_25 Q2: basket at 03:40, a foul 31 s later, two FTs.
+        from euroleague_possessions.parser import group_events
+        result = group_events(events(("2FGM", "B", "p", "03:40"), ("CM", "A", "d", "03:09"),
+            ("RV", "B", "q", "03:09"), ("FTM", "B", "q", "03:09"), ("FTM", "B", "q", "03:09")))
+        self.assertTrue(result.final_end_poss.iloc[0])
+        self.assertEqual(result.synthetic_parent_order.iloc[3:].tolist(), [1, 1])
+        self.assertEqual(result.final_end_poss.iloc[3:].tolist(), [False, True])
+
     # Replacement shooters (approved 2026-11-17): the fouled player's OUT and the
     # shooter's IN in the same stoppage let the substitute shoot.
     def test_substitute_shoots_whole_trip_for_fouled_player_who_left(self):

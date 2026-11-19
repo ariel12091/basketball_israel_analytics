@@ -28,7 +28,7 @@ def digest(path):
 def compare(path, baseline_rows=None):
     raw = read_cached_pbp(path)
     if baseline_rows is None:
-        result = infer_ft_stoppages(group_events(raw))
+        result = infer_ft_stoppages(group_events(raw, ft_model=False))
     else:
         # Canonical fields may be reused only with identical input and all
         # baseline implementation hashes. Shadow inference still reads every
