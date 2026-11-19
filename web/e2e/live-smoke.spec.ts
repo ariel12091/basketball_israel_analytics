@@ -308,10 +308,16 @@ test("live: EuroLeague Compare sides equal their tabs", async ({ page }, info) =
   test.skip(process.env.LIVE_DB_SMOKE !== "1", "Read-only database smoke is opt-in");
   test.skip(info.project.name !== "desktop", "API check, once per run");
   type Rows = Record<string, unknown>[];
+  // The request client, not page.goto: a whole season's lineups is too large
+  // for the browser inspector's cache, which evicts the body. It skips the
+  // page routes, so it sends the Preview bypass itself (e2e/preview.ts).
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   const rows = async (path: string): Promise<Rows> => {
-    const r = await page.goto(`/api/v1/${path}`);
-    expect(r!.status(), path).toBe(200);
-    return ((await r!.json()) as { rows: Rows }).rows;
+    const r = await page.request.get(`/api/v1/${path}`, {
+      headers: secret ? { "x-vercel-protection-bypass": secret } : {},
+    });
+    expect(r.status(), path).toBe(200);
+    return ((await r.json()) as { rows: Rows }).rows;
   };
   const same = (a: Rows, b: Rows, key: (r: Record<string, unknown>) => string, cols: string[], what: string) => {
     const tab = new Map(b.map((r) => [key(r), r]));
