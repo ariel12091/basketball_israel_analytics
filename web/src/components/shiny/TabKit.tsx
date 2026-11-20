@@ -12,6 +12,7 @@
 // - ViewContent: the static explainer/example/legend blocks (shiny/Blocks).
 import {
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -54,6 +55,16 @@ export type { DrawerSection } from "./FilterDrawer";
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
 export const PHASES = catalogues.phases as Record<string, string>;
 export const GAME_TYPES = catalogues.gameTypes as Record<string, string>;
+/** What an Israeli page with no Game type set includes: the season's game
+ * types in the Game type menu's order, by their short names ("Regular season
+ * + Winner Cup"); codes sharing a menu choice are named once. */
+export function seasonTypesLabel(codes: string[]): string {
+  const have = new Set(codes);
+  return catalogues.gameTypeChoices
+    .filter((c) => c.value && c.value.split(",").some((v) => have.has(v)))
+    .map((c) => GAME_TYPES[c.value] ?? c.label)
+    .join(" + ");
+}
 const IL_TEAMS = ui.ilTeams as Record<string, { id: number; name: string }[]>;
 
 /** tt(): a label with its FILTER_TOOLTIPS definition. */
@@ -898,7 +909,8 @@ export function Chip({
 }: {
   label: string;
   focus?: string;
-  onClear: () => void;
+  /** Absent: the chip only describes the default and has nothing to clear. */
+  onClear?: () => void;
   className?: string;
 }) {
   const { reveal } = useFrame();
@@ -921,16 +933,26 @@ export function Chip({
       ) : (
         label
       )}
-      <button
-        className="chip-x"
-        type="button"
-        aria-label={`Clear ${label}`}
-        onClick={onClear}
-      >
-        ×
-      </button>
+      {onClear && (
+        <button
+          className="chip-x"
+          type="button"
+          aria-label={`Clear ${label}`}
+          onClick={onClear}
+        >
+          ×
+        </button>
+      )}
     </span>
   );
+}
+
+const SCOPE_CHIP = "type-default";
+/** How many of contextChips() are filters: the chip naming what the default
+ * includes is not one, so it never lights the Filters button. */
+export function activeChipCount(chips: ReactNode[]): number {
+  return chips.filter((c) => !(isValidElement(c) && c.key === SCOPE_CHIP))
+    .length;
 }
 
 /** build_filter_chips() for the game context, in its order. `datesAlways`:
@@ -946,6 +968,7 @@ export function contextChips({
   teamKey,
   teamFocus,
   datesFocus,
+  seasonTypes = [],
 }: {
   p: string;
   league: League;
@@ -956,6 +979,8 @@ export function contextChips({
   teamKey: "team" | "teams";
   teamFocus: string;
   datesFocus: string;
+  /** Israeli game type codes the season has played (meta.gameTypes). */
+  seasonTypes?: string[];
 }): ReactNode[] {
   const euro = league !== "il";
   const name = (id: string) => teams.find((t) => t.value === id)?.label ?? id;
@@ -985,6 +1010,16 @@ export function contextChips({
         label={types
           .map((t) => (euro ? (PHASES[t] ?? t) : (GAME_TYPES[t] ?? t)))
           .join(", ")}
+      />,
+    );
+  else if (!euro && seasonTypesLabel(seasonTypes))
+    // The default includes every game type the season has played, the
+    // pre-season Winner Cup too; say so, and let the pencil open Game type.
+    chips.push(
+      <Chip
+        key={SCOPE_CHIP}
+        focus={`${p}_${typeKey}`}
+        label={`Games: ${seasonTypesLabel(seasonTypes)}`}
       />,
     );
   const picked = list(query[teamKey] ?? "");

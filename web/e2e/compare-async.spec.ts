@@ -133,7 +133,7 @@ test("Compare ignores an old side after the date filters change", async ({
   await intercept(page, async (route) => {
     const p = new URL(route.request().url()).searchParams;
     if (p.get("kind") === "refs") return answer(route, []);
-    if (p.get("start") === "2025-10-01" && p.get("home_away") === "away")
+    if (p.get("start") === "2025-09-01" && p.get("home_away") === "away")
       await old;
     return answer(route, [
       row(p.get("start") === "2025-11-01" ? "Current team" : "Old team", 5),
@@ -469,7 +469,7 @@ test("Players self comparison uses separate date windows", async ({
   ).toHaveCount(2);
   await expect(page.locator(".ibpl-pvp-badge").first()).toHaveText("+10.0");
   expect(requests.some((p) => p.get("start") === "2025-11-01")).toBe(true);
-  expect(requests.some((p) => p.get("start") === "2025-10-01")).toBe(true);
+  expect(requests.some((p) => p.get("start") === "2025-09-01")).toBe(true);
   if (info.project.name === "phone")
     await page
       .getByRole("button", { name: "Show Filters", exact: true })
@@ -483,7 +483,7 @@ test("Players self comparison uses separate date windows", async ({
     page
       .getByRole("group", { name: "B", exact: true })
       .getByRole("textbox", { name: "Date range start", exact: true }),
-  ).toHaveValue("2025-10-01");
+  ).toHaveValue("2025-09-01");
 });
 
 test("Team player drilldown changes rates, marks missing sides and clears on context edits", async ({

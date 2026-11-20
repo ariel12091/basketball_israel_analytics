@@ -55,6 +55,18 @@ export async function gameLogsAnswer(league: League, search: URLSearchParams) {
           schedule.map((row) => String(row.phase ?? "")).filter(Boolean),
         ),
       ].sort(),
+      // The season's game types, for the chip that names what a default
+      // page includes (Israeli league only).
+      gameTypes:
+        league === "il"
+          ? [
+              ...new Set(
+                schedule
+                  .map((row) => String(row.game_type ?? ""))
+                  .filter(Boolean),
+              ),
+            ].sort()
+          : [],
     },
   };
 }

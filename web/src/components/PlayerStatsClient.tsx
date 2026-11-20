@@ -41,6 +41,7 @@ import {
   type DrawerSection,
   ChipsRow,
   Chip,
+  activeChipCount,
   contextChips,
   seasonChipLabel,
   StatFilters,
@@ -113,6 +114,7 @@ export default function PlayerStatsClient({
     datesAlways: true,
     teamKey: "teams",
     teamFocus: "ts_teams",
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: "ts_dates",
   });
   if (query.players)
@@ -143,7 +145,7 @@ export default function PlayerStatsClient({
   const viewKey = keyFromBlocks(introBlocks);
   // The date chip is always shown (Shiny); it is not a filter until the
   // dates move off the season's bounds.
-  const activeCount = chips.length - (!query.start && !query.end ? 1 : 0);
+  const activeCount = activeChipCount(chips) - (!query.start && !query.end ? 1 : 0);
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",

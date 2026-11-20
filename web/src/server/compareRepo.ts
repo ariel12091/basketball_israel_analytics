@@ -417,11 +417,13 @@ async function read(s: URLSearchParams, p: Params) {
       "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year=$1 AND gn IS NOT NULL ORDER BY gn",
       [p.c.season],
     );
+    const { gameTypes } = await readTabReferences(q, p.c, version);
     return {
       rows: [],
       teams,
       players: named,
       rounds: rounds.map((r) => Number(r.gn)),
+      gameTypes,
       meta: { version, key: s.toString() },
     };
   });

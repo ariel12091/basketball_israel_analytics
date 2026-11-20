@@ -4,8 +4,8 @@ import type { Query } from "./db";
 describe("Player Stats existing SQL contracts (helpers.R)", () => {
   for (const league of ["il", "euroleague", "eurocup"] as const)
     it(`${league}: team-only requests over the whole season keep the season MV fast path`, async () => {
-      // Israeli pages default to 1 October (defaultDates); the whole season
-      // (from 1 September) is what the season view answers.
+      // The whole season (Israeli: from 1 September), explicit or by default,
+      // is what the season view answers.
       const whole = league === "il" ? "&start=2025-09-01&end=2026-07-01" : "";
       const query = vi.fn<Query>(async () => []),
         p = parsePlayerStats(

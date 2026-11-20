@@ -21,9 +21,8 @@ const cases = JSON.parse(
   }
 >;
 const normalized = (sql: string) => sql.replace(/\s/g, "").toLowerCase();
-// Shiny's default dates are the whole season; the web's default window starts
-// on 1 October (defaultDates). The goldens record Shiny's calls, so give each
-// golden query the dates Shiny used.
+// The goldens record Shiny's calls, made with Shiny's whole-season dates; give
+// each golden query those dates explicitly (the web's default is the same).
 const shinyQuery = (query: Record<string, string>) => {
   const b = seasonBounds("il", Number(query.season));
   return new URLSearchParams({ start: b.start, end: b.end, ...query });

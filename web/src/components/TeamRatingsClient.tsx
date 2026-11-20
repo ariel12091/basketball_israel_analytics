@@ -24,6 +24,7 @@ import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
   Chip,
+  activeChipCount,
   contextChips,
   GameFiltersAccordion,
   OutputArea,
@@ -48,6 +49,7 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    gameTypes?: string[];
     seasons?: string[];
   };
 };
@@ -117,6 +119,7 @@ export default function TeamRatingsClient({
     datesAlways: !euro,
     teamKey: "teams",
     teamFocus: `${p}_teams`,
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: `${p}_dates`,
   });
   if (query.clutch === "true")
@@ -138,7 +141,7 @@ export default function TeamRatingsClient({
   // The Israeli tab's date chip is always shown (Shiny); it is not a filter
   // until the dates move off the season's bounds.
   const activeCount =
-    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+    activeChipCount(chips) - (!euro && !query.start && !query.end ? 1 : 0);
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",

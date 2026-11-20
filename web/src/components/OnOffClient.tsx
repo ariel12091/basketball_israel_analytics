@@ -35,6 +35,7 @@ import { type Block } from "./shiny/Blocks";
 import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
+  activeChipCount,
   contextChips,
   GameFiltersAccordion,
   list,
@@ -66,6 +67,7 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    gameTypes?: string[];
     seasons?: string[];
   };
 };
@@ -306,6 +308,7 @@ export default function OnOffClient({
     datesAlways: false,
     teamKey: "teams",
     teamFocus: euro ? "euro_teams" : "teams",
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: euro ? "euro_date_range" : "date_range",
   });
   const startersActive =
@@ -422,7 +425,7 @@ export default function OnOffClient({
       sidebar={null}
       drawer={{
         sections: drawerSections,
-        activeCount: chips.length,
+        activeCount: activeChipCount(chips),
         // Shiny's always-visible Reset also restored hand-set minimums.
         resettable:
           allStats.length > 0 ||
@@ -446,9 +449,9 @@ export default function OnOffClient({
             p={p === "on" ? "on" : "euro"}
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
-            activeCount={chips.length}
+            activeCount={activeChipCount(chips)}
             extra={statFilters}
-            active={chips.length > 0 || allStats.length > 0}
+            active={activeChipCount(chips) > 0 || allStats.length > 0}
             onClearAll={reset}
             controls={
               <>

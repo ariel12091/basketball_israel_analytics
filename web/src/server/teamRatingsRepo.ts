@@ -2,7 +2,7 @@ import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { parseLineups } from "./lineupParams";
 import { ParamError } from "./api";
-import { dbArgs, defaultDates, needsFilteredPath, seasonBounds } from "./contextParams";
+import { dbArgs, needsFilteredPath, seasonBounds } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { decorateTeams } from "./teamNames";
@@ -248,10 +248,9 @@ async function read(q: Query, p: Params) {
     c.rankN != null ||
     p.maxMargin != null ||
     (euro && c.teams.length > 0);
-  // Rank arrows on the whole season and on the default window (from 1 October).
+  // Rank arrows on the whole season, the default window.
   const showDelta =
-    (c.start === bounds.start ||
-      c.start === defaultDates(c.league, c.season).start) &&
+    c.start === bounds.start &&
     c.end === bounds.end &&
     c.minGn == null &&
     c.maxGn == null &&
