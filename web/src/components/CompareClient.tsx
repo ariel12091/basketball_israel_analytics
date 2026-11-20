@@ -26,6 +26,7 @@ import {
   TabFrame,
   StatFilters,
   parseStats,
+  activeChipCount,
   contextChips,
   ChipsRow,
   Chip,
@@ -508,6 +509,7 @@ function CompareTab({
     teamKey: "teams",
     teamFocus: "cmp_a_teams",
     datesFocus: "cmp_dates",
+    seasonTypes: (refs.data as { gameTypes?: string[] } | undefined)?.gameTypes,
   });
   // The settings both sides share sit in a bar under the view tabs, the quick
   // preset first and largest: it is this page's most used control (user
@@ -629,10 +631,10 @@ function CompareTab({
       <ChipsRow
         p="cmp"
         seasonChip={seasonLabel(q.season, !euro)}
-        active={!!q.stats || chips.length > 0}
+        active={!!q.stats || activeChipCount(chips) > 0}
         onClearAll={reset}
         chips={playerMode ? [] : chips}
-        activeCount={playerMode ? 0 : chips.length}
+        activeCount={playerMode ? 0 : activeChipCount(chips)}
         controls={
           !playerMode && (
             <>

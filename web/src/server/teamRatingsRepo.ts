@@ -2,7 +2,7 @@ import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { parseLineups } from "./lineupParams";
 import { ParamError } from "./api";
-import { dbArgs, defaultDates, needsFilteredPath, seasonBounds } from "./contextParams";
+import { dbArgs, needsFilteredPath, seasonBounds } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { decorateTeams } from "./teamNames";
@@ -11,6 +11,8 @@ import {
   teamPace,
   traditionalMode,
   teamShotProfile,
+  teamShootingLuck,
+  leagueShootingRates,
   type TeamView,
 } from "../rules/teamRatings";
 import type { Row, League } from "../rules/gameLogs";
@@ -167,6 +169,23 @@ export async function readFacts(
     ...tail,
   ]);
 }
+/** Summary view: the shooting luck on each team's Net Rtg (rules/teamRatings
+ * teamShootingLuck). The league rates are every team's under the same
+ * filters; a EuroLeague team filter narrows the rows in SQL, so the rates
+ * then come from the same reader without it. */
+export async function applyShootingLuck(
+  q: Query,
+  p: Params,
+  rows: Row[],
+  kind: "ratings" | "dashboard",
+): Promise<Row[]> {
+  if (p.view !== "summary") return rows;
+  const league =
+    p.c.league !== "il" && p.c.teams.length
+      ? await readFacts(q, { ...p, c: { ...p.c, teams: [] } }, kind)
+      : rows;
+  return teamShootingLuck(rows, leagueShootingRates(league));
+}
 /** Tab 3's effective schedule anchor and Tab 9's previous league matchday. */
 async function previousEnd(q: Query, p: Params): Promise<string | null> {
   const c = p.c,
@@ -229,10 +248,9 @@ async function read(q: Query, p: Params) {
     c.rankN != null ||
     p.maxMargin != null ||
     (euro && c.teams.length > 0);
-  // Rank arrows on the whole season and on the default window (from 1 October).
+  // Rank arrows on the whole season, the default window.
   const showDelta =
-    (c.start === bounds.start ||
-      c.start === defaultDates(c.league, c.season).start) &&
+    c.start === bounds.start &&
     c.end === bounds.end &&
     c.minGn == null &&
     c.maxGn == null &&
@@ -272,6 +290,7 @@ async function read(q: Query, p: Params) {
     p.view === "traditional"
       ? traditionalMode(current, p.display)
       : teamPace(current, minutes, euro);
+  rows = await applyShootingLuck(q, p, rows, dashboard ? "dashboard" : "ratings");
   if (p.view === "shot_profile") {
     const ff = filtered
       ? await readFacts(q, p, dynamicClutch ? "dashboard" : "four_factors")

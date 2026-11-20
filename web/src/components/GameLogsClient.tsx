@@ -14,6 +14,7 @@ import DateRangeInput from "./shiny/DateRangeInput";
 import GameLogsTable from "./shiny/GameLogsTable";
 import {
   ChipsRow,
+  activeChipCount,
   contextChips,
   FILTER_TIPS,
   GameFiltersAccordion,
@@ -47,6 +48,7 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    gameTypes?: string[];
     seasons?: string[];
     shot_averages: Record<string, Record<string, number>> | null;
   };
@@ -125,6 +127,7 @@ export default function GameLogsClient({
     datesAlways: !euro,
     teamKey,
     teamFocus: euro ? `${p}_teams` : `${p}_team`,
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: `${p}_dates`,
   });
   const html = euro ? ui.euro : ui.il;
@@ -165,7 +168,7 @@ export default function GameLogsClient({
   // The Israeli tab always shows its date chip (Shiny); it is not a filter
   // until the dates move off the season's bounds.
   const activeCount =
-    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+    activeChipCount(chips) - (!euro && !query.start && !query.end ? 1 : 0);
   const drawerSections: DrawerSection[] = [
     {
       id: "teams",

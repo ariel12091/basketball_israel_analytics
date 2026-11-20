@@ -14,12 +14,17 @@ import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
-import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import TableLegend, {
+  keyFromBlocks,
+  TableTags,
+  ViewIntro,
+} from "./shiny/TableKey";
 import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
   Chip,
+  activeChipCount,
   contextChips,
   GameFiltersAccordion,
   OutputArea,
@@ -44,6 +49,7 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    gameTypes?: string[];
     seasons?: string[];
   };
 };
@@ -113,6 +119,7 @@ export default function TeamRatingsClient({
     datesAlways: !euro,
     teamKey: "teams",
     teamFocus: `${p}_teams`,
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: `${p}_dates`,
   });
   if (query.clutch === "true")
@@ -134,7 +141,7 @@ export default function TeamRatingsClient({
   // The Israeli tab's date chip is always shown (Shiny); it is not a filter
   // until the dates move off the season's bounds.
   const activeCount =
-    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+    activeChipCount(chips) - (!euro && !query.start && !query.end ? 1 : 0);
   const drawerSections: DrawerSection[] = [
     {
       id: "dates",
@@ -303,6 +310,9 @@ export default function TeamRatingsClient({
               }
             />
             <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+            {view === "summary" && (
+              <TableTags league={league} kinds={["shooting"]} />
+            )}
             <ToolsSlot />
           </div>
           <OutputArea

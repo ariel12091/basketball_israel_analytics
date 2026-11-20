@@ -8,6 +8,7 @@ import DataTable, {
   type Group,
 } from "./DataTable";
 import ColumnsMenu from "./ColumnsMenu";
+import LuckNet from "./LuckNet";
 import { useStoredList } from "@/lib/storedList";
 import type { Row, League } from "@/rules/gameLogs";
 import { rankRamp, type TeamView } from "@/rules/teamRatings";
@@ -221,6 +222,37 @@ export default function TeamRatingsTable({
       metric("off_ppp", "Off PPP");
       metric("def_ppp", "Def PPP", true);
       metric("net_rtg", "Net Rtg");
+      // The Shooting luck tag beside Net Rtg (rules/teamRatings teamShootingLuck).
+      const net = cols[cols.length - 1],
+        bare = net.render!;
+      net.render = (r) => {
+        const cell = bare(r);
+        return r.luck_flag !== true
+          ? cell
+          : {
+              ...cell,
+              node: (
+                <LuckNet
+                  value={cell.node}
+                  label={layout.tags.shooting.label}
+                  addedLabel="Shooting luck added"
+                  parts={[
+                    { label: "own 3PT", value: Number(r.luck_3pt_ours) },
+                    {
+                      label: "opponents' 3PT",
+                      value: Number(r.luck_3pt_theirs),
+                    },
+                    {
+                      label: "opponents' FT",
+                      value: Number(r.luck_ft_theirs),
+                    },
+                  ]}
+                  withoutLabel="Without shooting luck"
+                  without={Number(r.net_without_luck)}
+                />
+              ),
+            };
+      };
       plain("off_pace", "Off Pace", 1);
       plain("def_pace", "Def Pace", 1);
       plain("off_poss", "Off Poss");

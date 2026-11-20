@@ -14,7 +14,11 @@ AS WITH base AS (
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
-            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att,
+            -- Shooting luck counts (web teamShootingLuck), same predicates as get_team_ratings_dynamic
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND dppllm.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
+            SUM(CASE WHEN dppllm.type = 'freeThrow' AND dppllm.parameters_made = 'made' THEN 1 ELSE 0 END) AS ftm,
+            SUM(CASE WHEN dppllm.type = 'freeThrow' THEN 1 ELSE 0 END) AS fta
            FROM df_pts_poss_lineups_longer_mv dppllm
              JOIN schedule s USING (game_id)
              LEFT JOIN shot_zones z ON z.game_id = dppllm.game_id AND z.id = dppllm.id
@@ -45,7 +49,13 @@ AS WITH base AS (
             max(base.dunk_att) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_dunk_att,
             max(base.fg3_att) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_fg3_att,
             max(base.c3_att) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_c3_att,
-            max(base.c3_known_att) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_c3_known_att
+            max(base.c3_known_att) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_c3_known_att,
+            max(base.fg3_made) FILTER (WHERE base.type_lineup = 'offense'::text) AS off_fg3_made,
+            max(base.fg3_made) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_fg3_made,
+            max(base.ftm) FILTER (WHERE base.type_lineup = 'offense'::text) AS off_ftm,
+            max(base.fta) FILTER (WHERE base.type_lineup = 'offense'::text) AS off_fta,
+            max(base.ftm) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_ftm,
+            max(base.fta) FILTER (WHERE base.type_lineup = 'defense'::text) AS def_fta
            FROM base
           GROUP BY base.game_year, base.team_id
         ), teams AS (
@@ -76,7 +86,13 @@ AS WITH base AS (
             p.def_dunk_att,
             p.def_fg3_att,
             p.def_c3_att,
-            p.def_c3_known_att
+            p.def_c3_known_att,
+            p.off_fg3_made,
+            p.def_fg3_made,
+            p.off_ftm,
+            p.off_fta,
+            p.def_ftm,
+            p.def_fta
            FROM pivoted p
              JOIN teams t ON t.game_year = p.game_year AND t.team_id = p.team_id
              LEFT JOIN win_loss wl ON wl.game_year = p.game_year AND wl.team_id = p.team_id
@@ -106,7 +122,13 @@ AS WITH base AS (
     def_dunk_att,
     def_fg3_att,
     def_c3_att,
-    def_c3_known_att
+    def_c3_known_att,
+    off_fg3_made,
+    def_fg3_made,
+    off_ftm,
+    off_fta,
+    def_ftm,
+    def_fta
    FROM final
 WITH DATA;
 

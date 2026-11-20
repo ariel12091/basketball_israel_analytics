@@ -27,6 +27,7 @@ import LineupGameLog from "./shiny/LineupGameLog";
 import {
   ChipsRow,
   Chip,
+  activeChipCount,
   contextChips,
   GameFiltersAccordion,
   OutputArea,
@@ -52,6 +53,7 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    gameTypes?: string[];
     seasons?: string[];
     // The table's page state, applied on the server (lineupsPageAnswer).
     autoMin: number | null;
@@ -214,6 +216,7 @@ export default function LineupsClient({
     datesAlways: !euro,
     teamKey: "teams",
     teamFocus: `${p}_team`,
+    seasonTypes: data?.meta.gameTypes,
     datesFocus: `${p}_dates`,
   });
   for (const [key, label] of [
@@ -246,7 +249,7 @@ export default function LineupsClient({
   // The Israeli tab always shows its date chip (Shiny); it is not a filter
   // until the dates move off the season's bounds.
   const activeCount =
-    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+    activeChipCount(chips) - (!euro && !query.start && !query.end ? 1 : 0);
   // Dates (and clutch) first, as on every tab (user 2026-11-16).
   const drawerSections: DrawerSection[] = [
     {

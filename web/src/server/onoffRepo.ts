@@ -33,6 +33,9 @@ const SQL = {
   // Reference lookups: fetch_gn_values(), euro_fetch_teams(), euro_fetch_round_values(),
   // euro_fetch_phases(), euro_fetch_seasons().
   ilGn: "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1::int4 ORDER BY gn",
+  // The season's game types, for the chip that names what a default page includes.
+  ilGameTypes:
+    "SELECT DISTINCT game_type::text AS game_type FROM basketball_test.final_schedule_mv WHERE game_year = $1::int4 AND game_type IS NOT NULL ORDER BY 1",
   elTeams:
     "SELECT team_id, MIN(team_name) AS team_name FROM euroleague.final_schedule_mv WHERE competition = $1::text AND game_year = $2::int4 GROUP BY team_id ORDER BY MIN(team_name)",
   elRounds:
@@ -53,6 +56,7 @@ export type OnOffAnswer = {
   rounds: number[];
   phases: string[];
   seasons?: string[];
+  gameTypes: string[];
 };
 
 /** euroleague.onoff_compute for the context and teams: Tab 8's filtered
@@ -234,6 +238,8 @@ type References = {
   rounds: number[];
   phases: string[];
   seasons?: string[];
+  /** Israeli game type codes the season has played; [] for EuroLeague. */
+  gameTypes: string[];
 };
 const references = new VersionedCache<{ version: string; value: References }>(
   16,
@@ -275,6 +281,7 @@ async function readReferences(q: Query, c: Context): Promise<References> {
         seasons: (await q<{ game_year: number }>(SQL.elSeasons, [comp])).map(
           (r) => String(r.game_year),
         ),
+        gameTypes: [],
       }
     : {
         teams: [],
@@ -282,6 +289,9 @@ async function readReferences(q: Query, c: Context): Promise<References> {
           .map((r) => Number(r.gn))
           .filter(Number.isFinite),
         phases: [],
+        gameTypes: (
+          await q<{ game_type: string }>(SQL.ilGameTypes, [c.season])
+        ).map((r) => r.game_type),
       };
 }
 

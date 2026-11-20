@@ -250,6 +250,14 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ...metric("off_ppp", "Off PPP"),
         ...metric("def_ppp", "Def PPP"),
         ...metric("net_rtg", "Net Rtg"),
+        // rules/teamRatings teamShootingLuck: the tag beside Net Rtg.
+        [
+          "luck_flag",
+          "Shooting luck tag (the Net Rtg changes sign without own and opponents' 3PT luck and opponents' FT luck)",
+          (v) => (v === true ? "Shooting luck" : "none"),
+          "chat",
+        ],
+        ["net_without_luck", "Net Rtg without shooting luck", fixed(1), "chat"],
         ["off_pace", "Off Pace", fixed(1)],
         ["def_pace", "Def Pace", fixed(1)],
         ["off_poss", "Off Poss", fixed(0)],

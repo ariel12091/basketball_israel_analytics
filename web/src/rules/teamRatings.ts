@@ -248,3 +248,74 @@ export function teamTableRows(
     );
   return rows;
 }
+
+export type ShootingRates = { r3: number | null; rft: number | null };
+const LUCK_NEEDS = [
+  "net_rtg",
+  "off_poss",
+  "def_poss",
+  "off_fg3_made",
+  "off_fg3_att",
+  "def_fg3_made",
+  "def_fg3_att",
+  "def_ftm",
+  "def_fta",
+];
+/** League-average 3P% and FT% over every team's own shots (docs/shared_definitions.md,
+ * "Shooting luck (Team Ratings)"); null where the league took no attempts. */
+export function leagueShootingRates(rows: Row[]): ShootingRates {
+  const total = (c: string) => rows.reduce((s, r) => s + (number(r[c]) ?? 0), 0);
+  const ratio = (made: string, att: string) =>
+    total(att) > 0 ? total(made) / total(att) : null;
+  return {
+    r3: ratio("off_fg3_made", "off_fg3_att"),
+    rft: ratio("off_ftm", "off_fta"),
+  };
+}
+/** Shooting luck on a team's Net Rtg: own and opponents' 3PT luck plus the
+ * opponents' FT luck (a defence has no say over the other team's free
+ * throws), per 100 possessions at league-average rates. Adds luck_3pt_ours,
+ * luck_3pt_theirs, luck_ft_theirs, net_without_luck and luck_flag (the Net
+ * changes sign without the luck); rows without the counts come back
+ * unchanged. Mirrors lineupThreePtLuck (rules/lineups.ts). */
+export function teamShootingLuck(
+  rows: Row[],
+  rates: ShootingRates = leagueShootingRates(rows),
+): Row[] {
+  if (!rows.length || !LUCK_NEEDS.every((c) => c in rows[0])) return rows;
+  const per100 = (
+    points: number,
+    made: unknown,
+    att: unknown,
+    rate: number | null,
+    poss: unknown,
+  ) => {
+    const p = number(poss),
+      m = number(made),
+      a = number(att);
+    if (p == null || !(p > 0) || m == null || a == null || rate == null)
+      return null;
+    return (100 * points * (m - rate * a)) / p;
+  };
+  return rows.map((r) => {
+    const ours = per100(3, r.off_fg3_made, r.off_fg3_att, rates.r3, r.off_poss),
+      opp3 = per100(3, r.def_fg3_made, r.def_fg3_att, rates.r3, r.def_poss),
+      oppFt = per100(1, r.def_ftm, r.def_fta, rates.rft, r.def_poss),
+      // 0 - x, not -x: no -0 when the opponents shot exactly the league rate
+      theirs = opp3 == null ? null : 0 - opp3,
+      ft = oppFt == null ? null : 0 - oppFt,
+      net = number(r.net_rtg),
+      adj =
+        net == null || ours == null || theirs == null || ft == null
+          ? null
+          : net - ours - theirs - ft;
+    return {
+      ...r,
+      luck_3pt_ours: ours,
+      luck_3pt_theirs: theirs,
+      luck_ft_theirs: ft,
+      net_without_luck: adj,
+      luck_flag: adj != null && net !== 0 && adj * (net as number) <= 0,
+    };
+  });
+}
