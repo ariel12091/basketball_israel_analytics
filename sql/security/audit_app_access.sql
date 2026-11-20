@@ -126,7 +126,8 @@ euro_app_relations(relation_name) AS (
     ('sub_lineups_stats_mv'),
     ('ribbon_segments_v'),
     ('ribbon_margin_v'),
-    ('ribbon_events_v')
+    ('ribbon_events_v'),
+    ('player_season_profiles')
 ),
 required_app_relations(schema_name, relation_name) AS (
   SELECT s.schema_name, r.relation_name
