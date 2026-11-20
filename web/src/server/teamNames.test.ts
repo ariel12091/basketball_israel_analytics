@@ -33,9 +33,24 @@ describe("Hebrew team names for the Ask chat", () => {
     expect(other).toEqual({ team_name: "TOTAL", name: "Rishon Lezion fan" });
   });
 
+  it("names a row with a team_id by its catalogue name, whatever spelling it held", () => {
+    const [unknown, total, multi] = applyTeamNamesHe(
+      [
+        { team_id: 14, team_name: "RISHON" },
+        { team_id: 14, Team: "TOTAL" },
+        { team_id: 14, team_name: "2 TEAMS", is_multi_team_total: true },
+      ],
+      names,
+    );
+    expect(unknown.team_name).toBe("M. RISHON");
+    expect(total.Team).toBe("TOTAL");
+    expect(multi.team_name).toBe("2 TEAMS");
+  });
+
   it("matches a row by team_id first", () => {
     const [r] = applyTeamNamesHe([{ team_id: 14, team_name: "ANY", pts: 80 }], names);
-    expect(r).toEqual({ team_id: 14, team_name: "ANY", pts: 80, team_name_he: "מכבי תפוזינה ראשון לציון" });
+    // The id also gives the English cell its catalogue name.
+    expect(r).toEqual({ team_id: 14, team_name: "M. RISHON", pts: 80, team_name_he: "מכבי תפוזינה ראשון לציון" });
   });
 
   it("matches a name-only row by any of the three English spellings, case-insensitively", () => {

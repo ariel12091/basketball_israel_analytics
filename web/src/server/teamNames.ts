@@ -19,11 +19,15 @@ import { applyTeamLogos, readTeamLogos } from "./teamIdentity";
  * The English name shown is the catalogue's (`season_teams`, basket.co.il's
  * schedule spelling, rule 2): readers built on the rosters return the
  * provider's spelling ("IRONI EILAT" for "HAPOEL EILAT"), so every English
- * team-name cell that holds any known spelling is rewritten to it (`byNameEn`). */
+ * team-name cell that holds any known spelling is rewritten to it (`byNameEn`),
+ * and a row with a `team_id` gets its team's name in `team_name` / `Team`
+ * whatever spelling it held (`byIdEn`: "KIRYAT ATA", a spelling none of the
+ * three tables records, is "IRONI KIRYAT ATA"). */
 export type TeamNamesHe = {
   byId: Map<number, string>;
   byName: Map<string, string>;
   byNameEn: Map<string, string>;
+  byIdEn: Map<number, string>;
 };
 
 const SQL = `SELECT d.team_id_rosters AS team_id, d.team_name_basket AS name_he,
@@ -45,9 +49,11 @@ const cache = new VersionedCache<{ version: string; rows: Row[] }>(4, (v) => v.v
 export function teamNamesFromRows(rows: Row[]): TeamNamesHe {
   const byId = new Map<number, string>(),
     byName = new Map<string, string>(),
-    byNameEn = new Map<string, string>();
+    byNameEn = new Map<string, string>(),
+    byIdEn = new Map<number, string>();
   for (const r of rows) {
     const en = String(r.team_name ?? "").trim();
+    if (en) byIdEn.set(Number(r.team_id), en);
     if (en)
       for (const k of ["team_name", "team_name_schedule", "team_name_rosters"]) {
         const n = norm(r[k]);
@@ -61,7 +67,7 @@ export function teamNamesFromRows(rows: Row[]): TeamNamesHe {
       if (n) byName.set(n, he);
     }
   }
-  return { byId, byName, byNameEn };
+  return { byId, byName, byNameEn, byIdEn };
 }
 
 async function read(q: Query, season: number): Promise<TeamNamesHe> {
@@ -73,7 +79,12 @@ async function read(q: Query, season: number): Promise<TeamNamesHe> {
   return teamNamesFromRows(data.rows);
 }
 
-const empty = (): TeamNamesHe => ({ byId: new Map(), byName: new Map(), byNameEn: new Map() });
+const empty = (): TeamNamesHe => ({
+  byId: new Map(),
+  byName: new Map(),
+  byNameEn: new Map(),
+  byIdEn: new Map(),
+});
 
 /** The season's Hebrew team names, read in the request's own snapshot (the
  * answer functions call this, as they call readPlayerNames); empty outside
@@ -136,6 +147,17 @@ export function applyTeamNamesHe<T extends Record<string, unknown>>(
       const shown = typeof v === "string" ? names.byNameEn.get(norm(v)) : undefined;
       if (shown && shown !== v) en[k] = shown;
     }
+    // By id: the row's own team cells, unless it is a TOTAL or multi-team row.
+    const byIdName =
+      r.team_id != null && r.team_id !== "" && !r.is_multi_team_total
+        ? names.byIdEn.get(Number(r.team_id))
+        : undefined;
+    if (byIdName)
+      for (const k of ["team_name", "Team"]) {
+        const v = r[k];
+        if (typeof v === "string" && v && norm(v) !== "TOTAL" && v !== byIdName)
+          en[k] = byIdName;
+      }
     let he: string | undefined =
       r.team_id != null && r.team_id !== "" ? names.byId.get(Number(r.team_id)) : undefined;
     if (!he)
