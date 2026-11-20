@@ -202,3 +202,23 @@ test_that("Player Four Factors: the reader's team filter changes no value", {
     }
   }
 })
+
+# EuroLeague and EuroCup On/Off Summary: the season view the web reads with no
+# filter set (On/Off, and Compare's player on/off side) against the reader
+# with no team. Same edge differences as the Israeli pair above (D19).
+test_that("EuroLeague On/Off Summary: the season view equals the reader for every player both hold", {
+  for (comp in c("E", "U")) for (gy in db_test_euro_seasons()) {
+    lab <- paste(comp, gy)
+    view <- dbq(sprintf("SELECT * FROM euroleague.player_onoff_default_mv WHERE competition = '%s' AND game_year = %d", comp, gy))
+    reader <- dbq(sprintf("SELECT * FROM euroleague.onoff_compute('%s', %d, '%d-09-01'::date, '%d-07-01'::date, NULL, NULL, NULL, 'all', 'all', 'all', NULL, 'net', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -1e9, 0, 0)",
+                          comp, gy, gy, gy + 1L))
+    g <- gaps(view, reader, skip = "competition")
+    expect_equal(g$only_b, 0, label = paste(lab, "players only in the reader"))
+    expect_gt(g$matched, 100, label = paste(lab, "players both hold"))
+    is_pr <- grepl("^pr_", names(g$gap))
+    exact <- g$gap[!is_pr & names(g$gap) != "minutes"]
+    expect_identical(names(exact)[exact > 1e-9], character(0), label = paste(lab, "value columns that differ"))
+    if ("minutes" %in% names(g$gap)) expect_lte(g$gap[["minutes"]], 0.1, label = paste(lab, "minutes gap"))
+    expect_lte(max(c(0, g$gap[is_pr])), 0.03, label = paste(lab, "largest percentile gap"))
+  }
+})

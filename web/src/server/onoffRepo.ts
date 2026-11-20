@@ -137,6 +137,18 @@ export async function seasonFourFactors(
   );
 }
 
+/** The On/Off Summary season view (onoff_default_mv /
+ * player_onoff_default_mv): the fast path when no filter is set. For a full
+ * season it equals the reader with no team, both leagues, except at the edge
+ * of the sample (D19; test-player-reader-paths-db.R). */
+export function seasonOnOff(q: Query, c: Context): Promise<Row[]> {
+  const euro = c.league !== "il";
+  return q<Row>(
+    euro ? SQL.elMv : SQL.ilMv,
+    euro ? [c.league === "eurocup" ? "U" : "E", c.season] : [c.season],
+  );
+}
+
 async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   const euro = c.league !== "il";
   const comp = c.league === "eurocup" ? "U" : "E";
@@ -144,10 +156,7 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   const filtered = needsFilteredPath(c);
   const version = await readVersion(q, c.league);
   // The season view: the fast path, and the season frame onoff_league_3p() reads.
-  const mv = await q<Row>(
-    euro ? SQL.elMv : SQL.ilMv,
-    euro ? [comp, c.season] : [c.season],
-  );
+  const mv = await seasonOnOff(q, c);
   const compute = (teams: number[]) => {
     const teamCsv = teams.length ? teams.join(",") : null;
     return euro
