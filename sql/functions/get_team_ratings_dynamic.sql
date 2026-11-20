@@ -51,8 +51,14 @@ RETURNS TABLE (
     def_dunk_att   INT,
     def_fg3_att    INT,
     def_c3_att     INT,
-    def_c3_known_att INT
-) 
+    def_c3_known_att INT,
+    off_fg3_made   INT,
+    def_fg3_made   INT,
+    off_ftm        INT,
+    off_fta        INT,
+    def_ftm        INT,
+    def_fta        INT
+)
 LANGUAGE plpgsql
 STABLE
 SET plan_cache_mode = force_custom_plan
@@ -168,7 +174,11 @@ BEGIN
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att,
+        -- Shooting luck counts (web teamShootingLuck), same predicates as get_team_traditional_dynamic
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND dppllm.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
+        SUM(CASE WHEN dppllm.type = 'freeThrow' AND dppllm.parameters_made = 'made' THEN 1 ELSE 0 END) AS ftm,
+        SUM(CASE WHEN dppllm.type = 'freeThrow' THEN 1 ELSE 0 END) AS fta
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN games_filtered gf ON gf.game_id = dppllm.game_id AND gf.team_id = dppllm.team_id
       LEFT JOIN basketball_test.shot_zones z
@@ -235,7 +245,10 @@ BEGIN
         SUM(ga.dunk_att) AS dunk_att,
         SUM(ga.fg3_att) AS fg3_att,
         SUM(ga.c3_att) AS c3_att,
-        SUM(ga.c3_known_att) AS c3_known_att
+        SUM(ga.c3_known_att) AS c3_known_att,
+        SUM(ga.fg3_made) AS fg3_made,
+        SUM(ga.ftm) AS ftm,
+        SUM(ga.fta) AS fta
       FROM game_agg ga
       GROUP BY ga.game_year, ga.team_id, ga.type_lineup
   ),
@@ -263,7 +276,13 @@ BEGIN
         max(base_agg.dunk_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_dunk_att,
         max(base_agg.fg3_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_fg3_att,
         max(base_agg.c3_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_c3_att,
-        max(base_agg.c3_known_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_c3_known_att
+        max(base_agg.c3_known_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_c3_known_att,
+        max(base_agg.fg3_made) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_fg3_made,
+        max(base_agg.fg3_made) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_fg3_made,
+        max(base_agg.ftm) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_ftm,
+        max(base_agg.fta) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_fta,
+        max(base_agg.ftm) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_ftm,
+        max(base_agg.fta) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_fta
       FROM base_agg
       LEFT JOIN win_loss wl ON wl.game_year = base_agg.game_year AND wl.team_id = base_agg.team_id
       GROUP BY base_agg.game_year, base_agg.team_id, wl.wins, wl.losses
@@ -302,7 +321,13 @@ BEGIN
         p.def_dunk_att,
         p.def_fg3_att,
         p.def_c3_att,
-        p.def_c3_known_att
+        p.def_c3_known_att,
+        p.off_fg3_made,
+        p.def_fg3_made,
+        p.off_ftm,
+        p.off_fta,
+        p.def_ftm,
+        p.def_fta
       FROM pivoted p
       JOIN team_names tn ON tn.team_id = p.team_id
   )
@@ -334,7 +359,13 @@ BEGIN
     fc.def_dunk_att::int,
     fc.def_fg3_att::int,
     fc.def_c3_att::int,
-    fc.def_c3_known_att::int
+    fc.def_c3_known_att::int,
+    fc.off_fg3_made::int,
+    fc.def_fg3_made::int,
+    fc.off_ftm::int,
+    fc.off_fta::int,
+    fc.def_ftm::int,
+    fc.def_fta::int
   FROM final_calc fc;
 END;
 $$;
