@@ -195,6 +195,9 @@ test("Summary Net Rtg carries the luck tag with its arrow and three parts", asyn
   await expect(pop).toContainText("Unlucky: without it the net would be higher.");
   await page.keyboard.press("Escape");
   // The legend explains the tag once, beside the view's "?".
-  await page.locator(".table-top").getByRole("button", { name: "Shooting luck" }).click();
+  const legend = page.locator(".table-top .tl-tags");
+  await expect(legend.locator(".tl-tag")).toHaveText(["▲ Unlucky", "▼ Lucky"]);
+  await legend.getByRole("button", { name: "▼ Lucky: Shooting luck" }).click();
+  await expect(page.locator(".ibpl-more-pop")).toContainText("Lucky: without it the net would be lower.");
   await expect(page.locator(".ibpl-more-pop")).toContainText("free throws");
 });

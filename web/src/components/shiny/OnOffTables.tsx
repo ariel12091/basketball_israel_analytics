@@ -31,11 +31,21 @@ import { tagText, type TagKind } from "./tagText";
 import { luckTag } from "@/rules/luck";
 import { luckNote } from "./LuckNet";
 
-/** A row tag's meaning and its worked example. */
-export function TagWhy({ league, kind }: { league: League; kind: TagKind }) {
+/** A row tag's meaning and its worked example; a legend luck pill
+ * (`luck` < 0 for "▲ Unlucky", > 0 for "▼ Lucky") says its direction first. */
+export function TagWhy({
+  league,
+  kind,
+  luck,
+}: {
+  league: League;
+  kind: TagKind;
+  luck?: number;
+}) {
   const t = tagText(league, kind);
   return (
     <div className="onoff-tip-why">
+      {luck != null && <p>{luckNote(luck)}</p>}
       <p>{t.text}</p>
       {t.example && <p className="onoff-tip-example">{t.example}</p>}
     </div>

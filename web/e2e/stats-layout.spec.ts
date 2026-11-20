@@ -120,7 +120,7 @@ test("the legend is a compact key at the table's top right", async ({
   // (user 2026-11-16); a tag pill explains itself in one sentence.
   const tags = page.locator(".table-top .tl-tags");
   await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
-  await tags.getByRole("button", { name: "3PT luck" }).click();
+  await tags.getByRole("button", { name: "▲ Unlucky: 3PT luck" }).click();
   await expect(page.locator(".ibpl-more-pop")).toContainText(
     layout.tags.luck.text,
   );

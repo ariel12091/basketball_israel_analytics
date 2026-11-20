@@ -10,6 +10,7 @@ import MoreInfo from "./MoreInfo";
 import { heatStyle } from "./DataTable";
 import { TagWhy } from "./OnOffTables";
 import type { TagKind } from "./tagText";
+import { luckTag } from "@/rules/luck";
 import type { League } from "@/rules/gameLogs";
 import { useFrame } from "./TabKit";
 
@@ -82,28 +83,34 @@ export default function TableLegend({
   );
 }
 
-/** On/Off's row tags ("3PT luck", "small sample"), each explained in one
- * sentence on hover or tap. They sit with the "?" and CSV at the start of
+/** The row tags in the legend, each explained on hover or tap: a luck kind
+ * shows the two pills the cells use, "▲ Unlucky" and "▼ Lucky" (user
+ * 2026-11-20), small sample its own pill. They sit with the "?" and CSV at the start of
  * the row, apart from the colour key at the top right (user 2026-11-16). */
 export function TableTags({
   league,
   kinds = ["luck", "sample"],
 }: {
   league: League;
-  /** Team Ratings shows only "Shooting luck". */
+  /** Team Ratings shows only its shooting luck. */
   kinds?: readonly TagKind[];
 }) {
   return (
     <span className="tl-tags">
-      {kinds.map((k) => (
-        <MoreInfo
-          key={k}
-          label={text.tags[k].label}
-          className="onoff-luck-tag tl-tag"
-        >
-          <TagWhy league={league} kind={k} />
-        </MoreInfo>
-      ))}
+      {kinds.flatMap((k) =>
+        (k === "sample" ? [undefined] : [-1, 1]).map((luck) => (
+          <MoreInfo
+            key={`${k}${luck ?? ""}`}
+            label={luck == null ? text.tags[k].label : luckTag(luck)}
+            ariaLabel={
+              luck == null ? undefined : `${luckTag(luck)}: ${text.tags[k].label}`
+            }
+            className="onoff-luck-tag tl-tag"
+          >
+            <TagWhy league={league} kind={k} luck={luck} />
+          </MoreInfo>
+        )),
+      )}
     </span>
   );
 }
