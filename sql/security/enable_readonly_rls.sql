@@ -115,7 +115,11 @@ DECLARE
     'sub_lineups_stats_mv',
     'ribbon_segments_v',
     'ribbon_margin_v',
-    'ribbon_events_v'
+    'ribbon_events_v',
+    -- 067: headshots and heights the web reads on every EuroLeague player
+    -- table. Granted by the migration but missing here, so the 2026-11-20
+    -- re-apply revoked it and EuroLeague On/Off answered 503.
+    'player_season_profiles'
   ];
 BEGIN
   SELECT EXISTS (
