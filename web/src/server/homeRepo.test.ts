@@ -53,7 +53,11 @@ it("uses the original combined dashboard and independent last-game query", async
   expect(calls.filter((c) => c.sql === ui.sql.dashboard)).toEqual([
     { sql: ui.sql.dashboard, params: [2026, 2] },
   ]);
-  expect(calls.some((c) => c.sql === ui.sql.hub_lineups_df)).toBe(false);
+  // Lineups always come from the reader, down to the card's lowest bar (40):
+  // the combined query's own lineups stop at 100 (homeLineupMinPoss).
+  expect(
+    calls.filter((c) => c.sql === ui.sql.hub_lineups_df).map((c) => c.params[7]),
+  ).toEqual([40]);
 });
 it("recovers an SQL failure with a savepoint before using legacy readers", async () => {
   const { query, calls } = mock([
@@ -73,7 +77,7 @@ it("recovers an SQL failure with a savepoint before using legacy readers", async
     false,
     "2025-09-01",
     "2026-07-01",
-    100,
+    40,
     2026,
     null,
     null,

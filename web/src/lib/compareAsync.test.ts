@@ -30,30 +30,24 @@ describe("Compare asynchronous answers", () => {
   });
 });
 describe("Compare default player selection", () => {
-  it("ranks by PPG, breaks ties by points, then samples only eligible top-three IDs", () => {
+  it("takes the top two by PPG among players with half the most games, ties by points", () => {
     const rows = [
       { player_id: 1, gp: 10, pts: 100 },
       { player_id: 2, gp: 5, pts: 100 },
       { player_id: 3, gp: 10, pts: 200 },
       { player_id: 4, gp: 10, pts: 300 },
       { player_id: 5, gp: 0, pts: 1000 },
+      { player_id: 6, gp: 1, pts: 40 },
+      { player_id: 7, gp: 4, pts: 200 },
     ];
-    expect(compareDefaultPlayers(rows, [1, 2, 3, 4, 5], () => 0.999)).toEqual([
-      4, 3,
-    ]);
-    expect(rows[0].player_id).toBe(1);
-    expect(compareDefaultPlayers(rows, [1, 2, 3, 4, 5], () => 0)).toEqual([
-      3, 2,
-    ]);
+    // 6 (40 PPG in 1 game) and 7 (4 of 10 games) do not qualify.
+    expect(compareDefaultPlayers(rows, [1, 2, 3, 4, 5, 6, 7])).toEqual([4, 3]);
+    expect(compareDefaultPlayers(rows, [1, 2, 3, 5, 6, 7])).toEqual([3, 2]);
   });
   it("falls back to the roster when fewer than two scoring candidates are available", () => {
     expect(
-      compareDefaultPlayers(
-        [{ player_id: 1, gp: 1, pts: 10 }],
-        [2, 3],
-        () => 0.999,
-      ),
+      compareDefaultPlayers([{ player_id: 1, gp: 1, pts: 10 }], [2, 3]),
     ).toEqual([2, 3]);
-    expect(compareDefaultPlayers([], [], () => 0)).toEqual([]);
+    expect(compareDefaultPlayers([], [])).toEqual([]);
   });
 });

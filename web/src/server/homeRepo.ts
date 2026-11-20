@@ -6,7 +6,7 @@ import { ParamError } from "./api";
 import { seasonBounds } from "./contextParams";
 import { homeTeams } from "../lib/homeQuery";
 import type { Row } from "../rules/gameLogs";
-import type { HomeFrames } from "../rules/home";
+import { HOME_LINEUP_FLOOR, type HomeFrames } from "../rules/home";
 import ui from "../data/shinyUi.json";
 import home from "../data/homeUi.json";
 import { applyPlayerNames, readPlayerNames } from "./playerNames";
@@ -95,8 +95,7 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
   const source = frames ? "combined" : "fallback";
   if (!frames) {
     frames = emptyHomeFrames();
-    const sql = home.sql,
-      bounds = seasonBounds("il", p.season);
+    const sql = home.sql;
     frames.ratings =
       (await safe("ratings", sql.hub_fetch_team_ratings, [p.season])) ?? [];
     frames.four_factors =
@@ -104,21 +103,6 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
     frames.onoff = (await safe("onoff", sql.hub_onoff_df, [p.season])) ?? [];
     frames.traditional =
       (await safe("traditional", sql.hub_ts_df, [p.season])) ?? [];
-    frames.lineups =
-      (await safe("lineups", sql.hub_lineups_df, [
-        5,
-        String(p.team),
-        null,
-        null,
-        false,
-        bounds.start,
-        bounds.end,
-        100,
-        p.season,
-        ...Array(10).fill(null),
-        false,
-        ...Array(9).fill(null),
-      ])) ?? [];
     const persisted = await safe(
       "storyline_presets",
       sql.hub_fetch_team_ratings_presets,
@@ -128,6 +112,26 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
       persisted ??
       (await safe("storylines", sql.storylines_dynamic, [p.season])) ??
       [];
+  }
+  // Both paths: the team's five-man lineups down to the card's lowest bar
+  // (homeLineupMinPoss); the combined query's own lineups stop at 100.
+  {
+    const bounds = seasonBounds("il", p.season);
+    frames.lineups =
+      (await safe("lineups", home.sql.hub_lineups_df, [
+        5,
+        String(p.team),
+        null,
+        null,
+        false,
+        bounds.start,
+        bounds.end,
+        HOME_LINEUP_FLOOR,
+        p.season,
+        ...Array(10).fill(null),
+        false,
+        ...Array(9).fill(null),
+      ])) ?? [];
   }
   const names = await readPlayerNames(q, "il", p.season);
   frames.onoff = applyPlayerNames(frames.onoff, names);

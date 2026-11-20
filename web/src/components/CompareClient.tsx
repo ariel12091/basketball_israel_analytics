@@ -257,13 +257,13 @@ function CompareTab({
     )
       return;
     defaultsChosen.current = true;
-    const shuffled = compareDefaultPlayers(
+    const picked = compareDefaultPlayers(
       defaults.data.rows,
       players.map((r) => Number(r.player_id)),
     );
     patch({
-      player_a: String(shuffled[0] ?? ""),
-      player_b: String(shuffled[1] ?? shuffled[0] ?? ""),
+      player_a: String(picked[0] ?? ""),
+      player_b: String(picked[1] ?? picked[0] ?? ""),
     });
   }, [
     playerMode,

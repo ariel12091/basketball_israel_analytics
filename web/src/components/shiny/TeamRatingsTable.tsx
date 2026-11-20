@@ -321,8 +321,9 @@ export default function TeamRatingsTable({
         ? [
             { label: "", span: 2 },
             { label: "Usage", span: 2 },
-            { label: layout.shotProfile.groupOff, span: 7 },
-            { label: layout.shotProfile.groupDef, span: 7 },
+            // A team's own shares, not an on-minus-off difference.
+            { label: layout.shotProfile.teamGroupOff, span: 7 },
+            { label: layout.shotProfile.teamGroupDef, span: 7 },
           ]
         : undefined;
   const csv =
