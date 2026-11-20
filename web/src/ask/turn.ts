@@ -11,9 +11,19 @@ import { linkFor, runTool, type ToolCall, type ToolError, type ToolResult } from
 import type { Provider, ProviderMessage, Usage } from "./providers/types";
 import { turnLifetime } from "./lifetime";
 import { protectSeason } from "./semantics";
+import { rowName } from "./rowName";
 
 export type HistoryTurn = { question: string; answer: string; calls: ToolCall[] };
-export type Evidence = { result: string; row: string; key: string; label: string; text: string };
+export type Evidence = {
+  result: string;
+  row: string;
+  key: string;
+  label: string;
+  text: string;
+  /** Whose numbers: the row's player, lineup or team (rowName); "" for a
+   * result-level value. */
+  name?: string;
+};
 export type ToolProblem = { tool: string; param: string | null; error: string };
 export type AskAnswer = {
   text: string;
@@ -395,6 +405,7 @@ async function* turnEvents(
           const row = u.row === "total" ? r.total! : r.rows.find((x) => x.id === u.row)!;
           return {
             ...u,
+            name: u.row === "total" ? (lang === "he" ? "סה״כ" : "Total") : rowName(row.cells, lang),
             label: displaySpec(r.call.tool, r.call.league, r.view)[u.key].label,
             text: cellText(r.call.tool, r.call.league, r.view, u.key, row, lang)!,
           };

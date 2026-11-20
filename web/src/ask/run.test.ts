@@ -427,7 +427,8 @@ describe("runTool: errors, sorting, limits, links", () => {
     };
     const { rows } = flatten("team_overview", "il", { frames }, new URLSearchParams("team_id=2"));
     expect(rows[0]).toMatchObject({ section: "identity", net_rtg: 10, n_teams: 2, rank_net_rtg: 2 });
-    expect(rows.filter((r) => /_lineup$/.test(String(r.section)))).toHaveLength(2);
+    // One qualifying lineup is no comparison: no lineup rows (homeLineups).
+    expect(rows.filter((r) => /_lineup$/.test(String(r.section)))).toEqual([]);
     expect(flatten("team_overview", "il", { frames }, new URLSearchParams()).rows).toEqual([]);
   });
 });

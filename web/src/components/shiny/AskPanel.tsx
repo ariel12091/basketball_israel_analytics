@@ -157,18 +157,23 @@ function Evidence({ items, lang }: { items: EvidenceRow[]; lang: string }) {
   const tableItems = items.filter((e) => e.row !== "");
   if (!tableItems.length) return null;
   const columns = [...new Set(tableItems.map((e) => e.label))];
-  const rows = new Map<string, Map<string, string>>();
+  const rows = new Map<string, Map<string, string>>(),
+    names = new Map<string, string>();
   for (const e of tableItems) {
     const key = `${e.result}|${e.row}`;
     if (!rows.has(key)) rows.set(key, new Map());
     rows.get(key)!.set(e.label, e.text);
+    if (e.name) names.set(key, e.name);
   }
+  // Whose numbers each row holds, first; no column when no row has a name.
+  const named = names.size > 0;
   const numeric = (t: string) => /^[-+#]?\d/.test(t);
   return (
     <div className="ibpl-ask-evidence-wrap" dir={lang === "he" ? "rtl" : "ltr"}>
       <table className="ibpl-ask-evidence">
         <thead>
           <tr>
+            {named && <th scope="col" aria-label={lang === "he" ? "שם" : "Name"} />}
             {columns.map((c) => (
               <th key={c} scope="col">
                 {c}
@@ -179,6 +184,11 @@ function Evidence({ items, lang }: { items: EvidenceRow[]; lang: string }) {
         <tbody>
           {[...rows].map(([key, cells]) => (
             <tr key={key}>
+              {named && (
+                <th scope="row" className="ibpl-ask-evidence-name" dir="auto">
+                  {names.get(key) ?? ""}
+                </th>
+              )}
               {columns.map((c) => {
                 const t = cells.get(c) ?? "";
                 return (

@@ -155,7 +155,9 @@ export default function HomeHub({
                 className="card bg-dark border-secondary mb-4 h-100 hub-card"
               >
                 <div className="card-body">
-                  <h6 className="hub-block-title">{t.lineups}</h6>
+                  <h6 className="hub-block-title">
+                    {t.lineups.replace("100", String(dashboard.lineups.minPoss))}
+                  </h6>
                   {(["best", "worst"] as const).map((key) => {
                     const row = dashboard.lineups![key],
                       color = key === "best" ? "hub-pos" : "hub-neg";
