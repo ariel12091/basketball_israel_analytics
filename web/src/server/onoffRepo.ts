@@ -56,6 +56,7 @@ export type OnOffAnswer = {
   rounds: number[];
   phases: string[];
   seasons?: string[];
+  gameTypes: string[];
 };
 
 /** euroleague.onoff_compute for the context and teams: Tab 8's filtered

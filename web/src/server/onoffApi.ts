@@ -28,6 +28,7 @@ export async function onoffAnswer(league: League, search: URLSearchParams) {
       teams: a.teams,
       rounds: a.rounds,
       phases: a.phases,
+      gameTypes: a.gameTypes,
       ...(a.seasons ? { seasons: a.seasons } : {}),
     },
   };
