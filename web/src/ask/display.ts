@@ -254,7 +254,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         // rules/teamRatings teamShootingLuck: the tag beside Net Rtg.
         [
           "luck_flag",
-          "Shooting luck tag (own and opponents' 3PT luck plus opponents' FT luck is at least half the Net Rtg and 1.5 per 100, or flips its sign): ▲ Unlucky, the Net would be higher without; ▼ Lucky, lower",
+          "Shooting luck tag (own and opponents' 3PT luck plus opponents' FT luck is at least 80% of the Net Rtg and 1.5 per 100, or flips its sign): ▲ Unlucky, the Net would be higher without; ▼ Lucky, lower",
           (v, c) => (v === true ? String(c.luck_tag) : "none"),
           "chat",
         ],

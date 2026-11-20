@@ -80,7 +80,7 @@
     },
     "shooting": {
       "label": "Shooting luck",
-      "text": "Every three and the opponents' free throws, re-scored at league rates. Marked when that luck flips the Net Rtg or is at least half of it.",
+      "text": "Every three and the opponents' free throws, re-scored at league rates. Marked when that luck flips the Net Rtg or is at least 80% of it.",
       "example": {
         "il": "Example: Rishon LeZion 25-26: -3.3, +0.8 without luck.",
         "euro": "Example: Kosner Baskonia 25-26: -6.1, +1.4 without luck."

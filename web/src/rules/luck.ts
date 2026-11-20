@@ -4,7 +4,7 @@
 // luck, per 100 possessions. On every tab a higher Net is better.
 
 /** Team Ratings tags luck of at least this share of the Net... */
-export const LUCK_SHARE = 0.5;
+export const LUCK_SHARE = 0.8;
 /** ...and at least this many points per 100 (near a Net of zero any luck is
  * a big share). A sign flip is tagged regardless (user 2026-11-20). */
 export const LUCK_FLOOR = 1.5;
@@ -20,7 +20,7 @@ export function luckSide(luck: number): "better" | "worse" {
 }
 
 /** Team Ratings: the Net changes sign without the luck, or the luck is at
- * least half the Net and at least 1.5 per 100. */
+ * least 80% of the Net and at least 1.5 per 100 (user 2026-11-20). */
 export function teamLuckTagged(
   net: number | null,
   luck: number | null,

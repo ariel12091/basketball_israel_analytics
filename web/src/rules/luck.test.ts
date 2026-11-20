@@ -15,11 +15,12 @@ describe("luck tag", () => {
 });
 
 describe("teamLuckTagged", () => {
-  it("tags luck of half the Net or more, from 1.5 per 100", () => {
+  it("tags luck of 80% of the Net or more, from 1.5 per 100", () => {
     expect(teamLuckTagged(2.8, -3.3)).toBe(true); // 119%
     expect(teamLuckTagged(-11.6, -2.9)).toBe(false); // 25%
-    expect(teamLuckTagged(6, 3)).toBe(true); // exactly 50%
-    expect(teamLuckTagged(-2.1, 1.3)).toBe(false); // 62%, under the 1.5 floor
+    expect(teamLuckTagged(5, 4)).toBe(true); // exactly 80%
+    expect(teamLuckTagged(6, 3)).toBe(false); // 50%
+    expect(teamLuckTagged(-1.5, 1.3)).toBe(false); // 87%, under the 1.5 floor
   });
   it("always tags a sign flip, however small", () => {
     expect(teamLuckTagged(0.4, 0.6)).toBe(true); // without luck -0.2

@@ -277,7 +277,7 @@ export function leagueShootingRates(rows: Row[]): ShootingRates {
  * opponents' FT luck (a defence has no say over the other team's free
  * throws), per 100 possessions at league-average rates. Adds luck_3pt_ours,
  * luck_3pt_theirs, luck_ft_theirs, net_without_luck, luck_flag (rules/luck
- * teamLuckTagged: a sign flip, or luck of half the Net and 1.5 per 100) and
+ * teamLuckTagged: a sign flip, or luck of 80% of the Net and 1.5 per 100) and
  * luck_tag ("▲ Unlucky" / "▼ Lucky" when flagged); rows without the counts
  * come back unchanged. Mirrors lineupThreePtLuck (rules/lineups.ts). */
 export function teamShootingLuck(
