@@ -60,3 +60,19 @@ test_that("Israeli ratings function returns 3PM and FT counts equal to the Tradi
     }
   }
 })
+
+# No date window: 2026-27 began on 8 September (cup games), before the
+# 1 October start of the "explicit full-season window".
+test_that("Israeli season view counts equal the ratings function over the whole season", {
+  for (season in db_test_seasons()) {
+    v <- dbq(sprintf("SELECT * FROM basketball_test.team_ppp_ratings_mv WHERE game_year = %d", season))
+    expect_true(all(LUCK_COUNTS %in% names(v)), label = paste(season, "view has the counts"))
+    if (!all(LUCK_COUNTS %in% names(v))) next
+    f <- il_ratings(season, "")
+    m <- merge(v, f, by = "team_id", suffixes = c(".v", ".f"))
+    expect_equal(nrow(m), nrow(v), label = paste(season, "teams"))
+    for (col in c(LUCK_COUNTS, "off_poss", "def_poss"))
+      expect_equal(as.numeric(m[[paste0(col, ".v")]]), as.numeric(m[[paste0(col, ".f")]]),
+                   label = paste(season, col))
+  }
+})
