@@ -2,7 +2,7 @@ import ui from "@/data/shinyUi.json";
 import type { ToolCall, ToolResult } from "./run";
 
 const COUNTS = new Set(["pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta"]);
-const RATINGS = /^(?:(?:off|def)_(?:on_|off_)?ppp|net_rtg|net_without_3pt_luck|net_padded|Net RTG Diff|(?:Off|Def) (?:ON|OFF) PPP|(?:Off|Def) ON Diff|(?:On|Off) Net RTG)$/;
+const RATINGS = /^(?:(?:off|def)_(?:on_|off_)?ppp|net_rtg|net_without_3pt_luck|net_without_luck|net_padded|Net RTG Diff|(?:Off|Def) (?:ON|OFF) PPP|(?:Off|Def) ON Diff|(?:On|Off) Net RTG)$/;
 const RATING_METRICS = new Set(["net_rtg", "off_ppp", "def_ppp"]);
 
 export function rateBasis(call: ToolCall): string | null {
