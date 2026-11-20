@@ -98,9 +98,10 @@ function overview(frames: HomeFrames | undefined, team: string): Cells[] {
     for (const f of list ?? []) out.push({ section: `ff_${side}`, ...f });
   for (const r of d.players ?? []) out.push({ section: "key_player", ...r });
   if (d.scorer) out.push({ section: "top_scorer", ...d.scorer });
-  if (d.lineups?.best) out.push({ section: "best_lineup", ...d.lineups.best });
-  if (d.lineups?.worst)
+  if (d.lineups) {
+    out.push({ section: "best_lineup", ...d.lineups.best });
     out.push({ section: "worst_lineup", ...d.lineups.worst });
+  }
   for (const s of d.storylines) out.push({ section: "storyline", ...s });
   if (d.lastGame)
     out.push({

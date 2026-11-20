@@ -115,7 +115,19 @@ export function homeScorer(rows: Row[], team: string) {
     .sort((a, b) => b.ppg - a.ppg);
   return out[0] ?? null;
 }
-export function homeLineups(rows: Row[]) {
+/** The possessions a lineup needs for Home's best/worst card: 2.5% of the
+ * team's possessions so far (offense + defense, the lineups' own unit),
+ * between HOME_LINEUP_FLOOR and 100 -- 100 from about two thirds of a
+ * season, as Shiny's fixed bar; about 40 ten games in, when 100 left half
+ * the teams with one lineup or none (2026-11-20, user). */
+export const HOME_LINEUP_FLOOR = 40;
+export function homeLineupMinPoss(teamPoss: number): number {
+  const bar = Math.round((0.025 * (fin(teamPoss) ? teamPoss : 0)) / 5) * 5;
+  return Math.min(100, Math.max(HOME_LINEUP_FLOOR, bar));
+}
+/** Best and worst five-man lineup over the bar. Fewer than two qualifying
+ * lineups, or all of them tied, is no comparison: no card. */
+export function homeLineups(rows: Row[], minPoss = 100) {
   const out = rows
     .filter((r) => fin(r.net_rtg))
     .map<Row & { total_poss: number }>((r) => ({
@@ -123,18 +135,13 @@ export function homeLineups(rows: Row[]) {
       total_poss:
         (fin(r.off_poss) ? n(r.off_poss) : 0) +
         (fin(r.def_poss) ? n(r.def_poss) : 0),
-    }));
-  if (!out.length) return null;
+    }))
+    .filter((r) => r.total_poss >= minPoss);
+  if (out.length < 2) return null;
   const best = out.reduce((a, b) => (n(b.net_rtg) > n(a.net_rtg) ? b : a)),
     worst = out.reduce((a, b) => (n(b.net_rtg) < n(a.net_rtg) ? b : a));
-  // One qualifying lineup (early in a season), or all of them tied, has no
-  // best and worst: show one, under the tag its own sign earns. Shiny showed
-  // the same lineup under both.
-  if (n(best.net_rtg) === n(worst.net_rtg))
-    return n(best.net_rtg) >= 0
-      ? { best, worst: null }
-      : { best: null, worst };
-  return { best, worst };
+  if (n(best.net_rtg) === n(worst.net_rtg)) return null;
+  return { best, worst, minPoss };
 }
 export function homeStorylines(frames: HomeFrames, team: string) {
   const variants = (v: string) =>
@@ -220,7 +227,10 @@ export function homeDashboard(frames: HomeFrames, team: string) {
     defense: homeMini(frames.four_factors, team, "defense"),
     players: homeKeyPlayers(frames.onoff, team),
     scorer: homeScorer(frames.traditional, team),
-    lineups: homeLineups(frames.lineups),
+    lineups: homeLineups(
+      frames.lineups,
+      homeLineupMinPoss(n(row?.off_poss) + n(row?.def_poss)),
+    ),
     storylines: homeStorylines(frames, team),
     lastGame: homeLastGame(frames.last_games, team),
   };
