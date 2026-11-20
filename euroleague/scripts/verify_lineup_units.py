@@ -300,9 +300,9 @@ def check_idempotence(cursor) -> list[str]:
         "competition, game_year, own_starters, own_lineup, player_ids, "
         "possessions, points, fg2_made, fg2_att, fg3_made, fg3_att, "
         "ts_possessions, fgm, fga, ft_attempts, orebounds, "
-        "oreb_opportunities, turnovers, steals, seconds"
+        "oreb_opportunities, turnovers, steals, seconds, ft_made"
     )
-    order = "game_id, team_id, lineup_key, type_lineup, opp_starters"
+    order ="game_id, team_id, lineup_key, type_lineup, opp_starters"
 
     cursor.execute(
         f"SELECT {columns} FROM euroleague.lineup_totals_by_game "
