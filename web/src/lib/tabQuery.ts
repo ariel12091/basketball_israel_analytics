@@ -74,8 +74,8 @@ export function seasonBounds(league: League, season: string | number) {
  * in every league, so a default page answers from the season tables (R10).
  * Israeli pages opened on 1 October from 2026-11-17 to keep the pre-season
  * Winner Cup out; that put every default request on the slow filtered path,
- * so the whole season is back (user 2026-11-20) and the filter chips name the
- * game types it includes (seasonTypesLabel()). */
+ * so the whole season is back (user 2026-11-20) and the Game type chips name the
+ * game types it includes (seasonTypeChoices()). */
 export function defaultDates(league: League, season: string | number) {
   return seasonBounds(league, season);
 }
