@@ -508,8 +508,9 @@ function CompareTab({
     datesAlways: false,
     teamKey: "teams",
     teamFocus: "cmp_a_teams",
+    // No season Game type chips: Compare's Game type is set per side
+    // (a_game_type, b_game_type), and each side panel shows its own.
     datesFocus: "cmp_dates",
-    seasonTypes: (refs.data as { gameTypes?: string[] } | undefined)?.gameTypes,
   });
   // The settings both sides share sit in a bar under the view tabs, the quick
   // preset first and largest: it is this page's most used control (user

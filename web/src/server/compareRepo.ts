@@ -19,6 +19,7 @@ import {
   euroOnOffCompute,
   readTabReferences,
   seasonFourFactors,
+  seasonOnOff,
 } from "./onoffRepo";
 import data from "../data/compareUi.json";
 import ui from "../data/shinyUi.json";
@@ -191,6 +192,13 @@ function seasonOnTeams(rows: Row[], teams: number[]): Row[] {
   return keep.size ? rows.filter((r) => keep.has(Number(r.team_id))) : rows;
 }
 
+/** Player on/off with no filter and no team reads On/Off's season view. With
+ * a team the reader ranks percentiles within that team, so it stays on the
+ * reader; the Compare page asks without one and picks its player's row. */
+function seasonOnOffSide(c: Params["c"]): boolean {
+  return !needsFilteredPath(c) && c.teams.length === 0;
+}
+
 /** EuroLeague and EuroCup sides: the EuroLeague tabs' own readers with this
  * side's context (one implementation per number, shared_definitions rule 1;
  * a pin in e2e/live-smoke.spec.ts holds each equal to its tab). */
@@ -223,7 +231,10 @@ async function readEuroCompareFacts(q: Query, p: Params): Promise<Row[]> {
     return needsFilteredPath(c)
       ? euroFourFactors(q, c, c.teams)
       : seasonOnTeams(await seasonFourFactors(q, c), c.teams);
-  if (p.kind === "onoff") return euroOnOffCompute(q, c, c.teams);
+  if (p.kind === "onoff")
+    return seasonOnOffSide(c)
+      ? seasonOnOff(q, c)
+      : euroOnOffCompute(q, c, c.teams);
   return [];
 }
 
@@ -332,6 +343,7 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       a.defMin,
       a.defMax,
     ]);
+  if (p.kind === "onoff" && seasonOnOffSide(c)) return seasonOnOff(q, c);
   if (p.kind === "onoff")
     return q<Row>(sql.onoff, [
       c.start,

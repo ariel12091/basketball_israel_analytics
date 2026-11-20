@@ -58,6 +58,16 @@ for (const [name, g] of Object.entries(cases)) {
       ]);
       return;
     }
+    // On/off with no filter and no team reads On/Off's season view too.
+    if (p.kind === "onoff" && !needsFilteredPath(p.c) && !p.c.teams.length) {
+      expect(calls).toEqual([
+        {
+          sql: expect.stringContaining("FROM basketball_test.onoff_default_mv"),
+          params: [p.c.season],
+        },
+      ]);
+      return;
+    }
     expect(calls.map((c) => ({ ...c, sql: normalized(c.sql) }))).toEqual(
       g.calls.map((c) => ({ ...c, sql: normalized(c.sql) })),
     );

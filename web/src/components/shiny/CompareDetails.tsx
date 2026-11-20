@@ -383,6 +383,15 @@ export function PlayerVersus({
     else s.delete("teams");
     return { s, n };
   };
+  // On/off is asked for the whole league and the side's row picked by player
+  // and team: with no filter set the season view answers that (a team would
+  // send it to the slower reader, which only re-ranks percentiles this view
+  // never shows), and both sides share one request.
+  const onParams = (side: "a" | "b") => {
+    const { s } = params(side, "onoff");
+    s.delete("teams");
+    return s;
+  };
   const ffA = useCompareData(
       params("a", "player_ff").s,
       seed,
@@ -394,17 +403,21 @@ export function PlayerVersus({
       q.player_view === "ff_swing" && !!b,
     );
   const onA = useCompareData(
-      params("a", "onoff").s,
+      onParams("a"),
       seed,
       (q.player_view === "shot_profile" || ffA.isSuccess || ffA.isError) && !!a,
     ),
     onB = useCompareData(
-      params("b", "onoff").s,
+      onParams("b"),
       seed,
       (q.player_view === "shot_profile" || ffB.isSuccess || ffB.isError) && !!b,
     );
   const pick = (rows: Row[] | undefined, i: number) =>
-    rows?.find((r) => String(r.player_id) === ids[i]) ?? null;
+    rows?.find(
+      (r) =>
+        String(r.player_id) === ids[i] &&
+        (!teamIds[i] || String(r.team_id) === teamIds[i]),
+    ) ?? null;
   const ffReady = comparePairReady(ffA, ffB, version),
     onReady = comparePairReady(onA, onB, version);
   const ffs = ffReady
