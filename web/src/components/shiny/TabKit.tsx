@@ -55,15 +55,15 @@ export type { DrawerSection } from "./FilterDrawer";
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
 export const PHASES = catalogues.phases as Record<string, string>;
 export const GAME_TYPES = catalogues.gameTypes as Record<string, string>;
-/** What an Israeli page with no Game type set includes: the season's game
- * types in the Game type menu's order, by their short names ("Regular season
- * + Winner Cup"); codes sharing a menu choice are named once. */
-export function seasonTypesLabel(codes: string[]): string {
+/** The Game type menu choices a season has played, in the menu's order,
+ * by their short names; codes sharing a choice (Winner Cup 10 and 34) are one. */
+export function seasonTypeChoices(
+  codes: string[],
+): { value: string; label: string }[] {
   const have = new Set(codes);
   return catalogues.gameTypeChoices
     .filter((c) => c.value && c.value.split(",").some((v) => have.has(v)))
-    .map((c) => GAME_TYPES[c.value] ?? c.label)
-    .join(" + ");
+    .map((c) => ({ value: c.value, label: GAME_TYPES[c.value] ?? c.label }));
 }
 const IL_TEAMS = ui.ilTeams as Record<string, { id: number; name: string }[]>;
 
@@ -951,8 +951,9 @@ const SCOPE_CHIP = "type-default";
 /** How many of contextChips() are filters: the chip naming what the default
  * includes is not one, so it never lights the Filters button. */
 export function activeChipCount(chips: ReactNode[]): number {
-  return chips.filter((c) => !(isValidElement(c) && c.key === SCOPE_CHIP))
-    .length;
+  return chips.filter(
+    (c) => !(isValidElement(c) && String(c.key).startsWith(SCOPE_CHIP)),
+  ).length;
 }
 
 /** build_filter_chips() for the game context, in its order. `datesAlways`:
@@ -1001,27 +1002,49 @@ export function contextChips({
   const types = euro
     ? list(query[typeKey] ?? "")
     : choiceValues(query[typeKey] ?? "", catalogues.gameTypeChoices);
-  if (types.length)
-    chips.push(
-      <Chip
-        key="type"
-        focus={`${p}_${typeKey}`}
-        onClear={() => set({ [typeKey]: null })}
-        label={types
-          .map((t) => (euro ? (PHASES[t] ?? t) : (GAME_TYPES[t] ?? t)))
-          .join(", ")}
-      />,
-    );
-  else if (!euro && seasonTypesLabel(seasonTypes))
-    // The default includes every game type the season has played, the
-    // pre-season Winner Cup too; say so, and let the pencil open Game type.
-    chips.push(
-      <Chip
-        key={SCOPE_CHIP}
-        focus={`${p}_${typeKey}`}
-        label={`Games: ${seasonTypesLabel(seasonTypes)}`}
-      />,
-    );
+  if (euro) {
+    if (types.length)
+      chips.push(
+        <Chip
+          key="type"
+          focus={`${p}_${typeKey}`}
+          onClear={() => set({ [typeKey]: null })}
+          label={types.map((t) => PHASES[t] ?? t).join(", ")}
+        />,
+      );
+  } else {
+    // Israeli Game type: one chip per type. With none set, the chips name
+    // every type the season has played (the default includes the pre-season
+    // Winner Cup too) and do not count as filters; x on one leaves it out.
+    // Keeping every type the season has played is no filter at all.
+    const season = seasonTypeChoices(seasonTypes);
+    const keep = (rest: string[]) =>
+      set({
+        [typeKey]:
+          !rest.length || season.every((c) => rest.includes(c.value))
+            ? null
+            : rest.join(","),
+      });
+    const shown = types.length
+      ? types.map((t) => ({ value: t, label: GAME_TYPES[t] ?? t }))
+      : season;
+    for (const c of shown)
+      chips.push(
+        <Chip
+          key={types.length ? `type-${c.value}` : `${SCOPE_CHIP}-${c.value}`}
+          focus={`${p}_${typeKey}`}
+          label={c.label}
+          onClear={
+            types.length || shown.length > 1
+              ? () =>
+                  keep(
+                    shown.map((x) => x.value).filter((v) => v !== c.value),
+                  )
+              : undefined
+          }
+        />,
+      );
+  }
   const picked = list(query[teamKey] ?? "");
   if (picked.length)
     chips.push(
