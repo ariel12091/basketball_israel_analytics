@@ -2,7 +2,7 @@ import "server-only";
 import type { Row } from "../rules/gameLogs";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { parseLineups } from "./lineupParams";
-import { dbArgs, seasonBounds } from "./contextParams";
+import { dbArgs, needsFilteredPath, seasonBounds } from "./contextParams";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
@@ -14,7 +14,12 @@ import type { League } from "../rules/gameLogs";
 import { readFacts } from "./teamRatingsRepo";
 import { readEuroLineupRows } from "./lineupsRepo";
 import { readPlayerFacts } from "./playerStatsRepo";
-import { euroFourFactors, euroOnOffCompute, readTabReferences } from "./onoffRepo";
+import {
+  euroFourFactors,
+  euroOnOffCompute,
+  readTabReferences,
+  seasonFourFactors,
+} from "./onoffRepo";
 import data from "../data/compareUi.json";
 import ui from "../data/shinyUi.json";
 /** The Compare route's side readers (kind=...); also in the OpenAPI spec. */
@@ -176,6 +181,16 @@ function lineupMembers(rows: Row[], p: Params): Row[] {
   });
 }
 
+/** Player Four Factors with no filter set read On/Off's season views, as
+ * Tab 1/8's fast path does (shared_definitions R10): the stored reader took
+ * 2 s warm and 7 s cold on a EuroLeague season. The team filter the reader
+ * applies in SQL is applied here; it changes no value (pinned in
+ * app/tests/testthat/test-player-reader-paths-db.R). */
+function seasonOnTeams(rows: Row[], teams: number[]): Row[] {
+  const keep = new Set(teams.map(Number));
+  return keep.size ? rows.filter((r) => keep.has(Number(r.team_id))) : rows;
+}
+
 /** EuroLeague and EuroCup sides: the EuroLeague tabs' own readers with this
  * side's context (one implementation per number, shared_definitions rule 1;
  * a pin in e2e/live-smoke.spec.ts holds each equal to its tab). */
@@ -204,7 +219,10 @@ async function readEuroCompareFacts(q: Query, p: Params): Promise<Row[]> {
       throw new ParamError("starters", "Starters splits of player stats are not available for EuroLeague");
     return addUsagePct(normalizeTsRows(await readPlayerFacts(q, p)));
   }
-  if (p.kind === "player_ff") return euroFourFactors(q, c, c.teams);
+  if (p.kind === "player_ff")
+    return needsFilteredPath(c)
+      ? euroFourFactors(q, c, c.teams)
+      : seasonOnTeams(await seasonFourFactors(q, c), c.teams);
   if (p.kind === "onoff") return euroOnOffCompute(q, c, c.teams);
   return [];
 }
@@ -289,6 +307,8 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       ),
     );
   }
+  if (p.kind === "player_ff" && !needsFilteredPath(c))
+    return seasonOnTeams(await seasonFourFactors(q, c), c.teams);
   if (p.kind === "player_ff")
     return q<Row>(sql.player_ff, [
       c.season,

@@ -136,3 +136,69 @@ test_that("On/Off Summary: the season view equals the reader for every player wi
     }
   }
 })
+
+# EuroLeague and EuroCup: the web's On/Off and Compare read this pair as
+# their Four Factors fast path (web/src/server/onoffRepo.ts
+# seasonFourFactors). The rating columns it joins come from
+# player_onoff_default_mv; for a player with a side of at most 3 possessions
+# the reader leaves them NULL where the view has a value (D19).
+FF_JOINED <- c("Net RTG Diff" = "Net RTG Diff", "Off ON Diff" = "Off ON Diff",
+               "Def ON Diff" = "Def ON Diff", minutes = "minutes",
+               off_on_ppp = "Off ON PPP", off_off_ppp = "Off OFF PPP",
+               def_on_ppp = "Def ON PPP", def_off_ppp = "Def OFF PPP")
+euro_ff_reader <- function(comp, gy, teams = "NULL")
+  dbq(sprintf("SELECT * FROM euroleague.four_factors_dashboard_compute('%s', %d, '%d-09-01'::date, '%d-07-01'::date, %s)",
+              comp, gy, gy, gy + 1L, teams))
+
+test_that("EuroLeague On/Off Four Factors: the season views equal the stored reader", {
+  for (comp in c("E", "U")) for (gy in db_test_euro_seasons()) {
+    lab <- paste(comp, gy)
+    where <- sprintf("competition = '%s' AND game_year = %d", comp, gy)
+    view <- dbq(paste("SELECT * FROM euroleague.player_advanced_stats_mv WHERE", where))
+    reader <- euro_ff_reader(comp, gy)
+    expect_gt(nrow(view), 0, label = paste(lab, "view rows"))
+    g <- gaps(view, reader, skip = "competition")
+    expect_equal(c(g$only_a, g$only_b), c(0, 0), label = paste(lab, "players on one side only"))
+    expect_gte(length(g$gap), 37, label = paste(lab, "shared columns"))
+    expect_no_gap(g, lab)
+
+    mv <- keyed(dbq(paste("SELECT * FROM euroleague.player_onoff_default_mv WHERE", where)))
+    r <- keyed(reader); m <- mv[match(r$.key, mv$.key), ]
+    poss <- function(x) ifelse(is.na(x), 0, x)
+    edge <- pmin(poss(r$off_on_poss), poss(r$def_on_poss), poss(r$off_off_poss), poss(r$def_off_poss)) <= 3
+    for (k in names(FF_JOINED)) {
+      u <- r[[k]]; v <- m[[FF_JOINED[[k]]]]
+      expect_false(any(!is.na(u) & is.na(v)), label = paste(lab, k, "in the reader, missing from the view"))
+      expect_true(all(edge[is.na(u) & !is.na(v)]), label = paste(lab, k, "missing from the reader only at the edge of the sample"))
+      both <- !is.na(u) & !is.na(v)
+      expect_lte(max(c(0, abs(u[both] - v[both]))), 1e-9, label = paste(lab, k, "largest gap"))
+    }
+  }
+})
+
+# Compare's player Four Factors side reads the season views for the whole
+# league and keeps the side's team on the page; the reader filters the team
+# in SQL. A player's numbers must not depend on which of the two did it.
+test_that("Player Four Factors: the reader's team filter changes no value", {
+  two_teams <- function(d) head(sort(unique(as.integer(d$team_id))), 2)
+  for (gy in names(SEASONS)) {
+    all <- dbq(sprintf("SELECT * FROM basketball_test.four_factors_dashboard_compute(%s)", gy))
+    for (tm in two_teams(all)) {
+      one <- dbq(sprintf("SELECT * FROM basketball_test.four_factors_dashboard_compute(%s, NULL, NULL, '%d')", gy, tm))
+      g <- gaps(all[all$team_id == tm, ], one)
+      expect_gt(g$matched, 0, label = paste(gy, tm, "players"))
+      expect_equal(c(g$only_a, g$only_b), c(0, 0), label = paste(gy, tm, "players on one side only"))
+      expect_no_gap(g, paste(gy, tm))
+    }
+  }
+  for (comp in c("E", "U")) for (gy in db_test_euro_seasons()) {
+    all <- euro_ff_reader(comp, gy)
+    for (tm in two_teams(all)) {
+      one <- euro_ff_reader(comp, gy, sprintf("'%d'", tm))
+      g <- gaps(all[all$team_id == tm, ], one, skip = "competition")
+      expect_gt(g$matched, 0, label = paste(comp, gy, tm, "players"))
+      expect_equal(c(g$only_a, g$only_b), c(0, 0), label = paste(comp, gy, tm, "players on one side only"))
+      expect_no_gap(g, paste(comp, gy, tm))
+    }
+  }
+})

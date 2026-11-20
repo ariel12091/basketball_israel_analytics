@@ -115,6 +115,24 @@ export function euroFourFactors(q: Query, c: Context, teams: number[]): Promise<
   ]);
 }
 
+/** The Four Factors fast path (no filter set): the season's advanced-stats
+ * view joined to the On/Off season view's ratings. For a full season it
+ * equals four_factors_dashboard_compute, team filter or not
+ * (app/tests/testthat/test-player-reader-paths-db.R, both leagues; D19 at
+ * the edge of the sample). `mv` is the On/Off season view when already read. */
+export async function seasonFourFactors(
+  q: Query,
+  c: Context,
+  mv?: Row[],
+): Promise<Row[]> {
+  const euro = c.league !== "il",
+    args = euro ? [c.league === "eurocup" ? "U" : "E", c.season] : [c.season];
+  return joinFfRatings(
+    await q<Row>(euro ? SQL.elAdv : SQL.ilAdv, args),
+    mv ?? (await q<Row>(euro ? SQL.elMv : SQL.ilMv, args)),
+  );
+}
+
 async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   const euro = c.league !== "il";
   const comp = c.league === "eurocup" ? "U" : "E";
@@ -183,13 +201,7 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
               a.defMin,
               a.defMax,
             ]))
-      : joinFfRatings(
-          await q<Row>(
-            euro ? SQL.elAdv : SQL.ilAdv,
-            euro ? [comp, c.season] : [c.season],
-          ),
-          mv,
-        );
+      : await seasonFourFactors(q, c, mv);
     rows = addFfRanks(rows);
   } else if (view === "shot_profile") {
     // Shot Profile ranks over the whole population: no team in SQL.

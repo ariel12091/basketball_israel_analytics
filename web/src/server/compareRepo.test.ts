@@ -7,7 +7,7 @@ import {
   readCompareFacts,
 } from "./compareRepo";
 import data from "../data/compareUi.json";
-import { seasonBounds } from "./contextParams";
+import { needsFilteredPath, seasonBounds } from "./contextParams";
 import type { Query } from "./db";
 
 const cases = JSON.parse(
@@ -43,6 +43,22 @@ for (const [name, g] of Object.entries(cases)) {
       return [];
     };
     await readCompareFacts(q, p);
+    // With no filter set, player Four Factors reads On/Off's season views
+    // (seasonFourFactors), not the reader Shiny called; their equality is
+    // pinned in app/tests/testthat/test-player-reader-paths-db.R.
+    if (p.kind === "player_ff" && !needsFilteredPath(p.c)) {
+      expect(calls).toEqual([
+        {
+          sql: "SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = $1::int4",
+          params: [p.c.season],
+        },
+        {
+          sql: expect.stringContaining("FROM basketball_test.onoff_default_mv"),
+          params: [p.c.season],
+        },
+      ]);
+      return;
+    }
     expect(calls.map((c) => ({ ...c, sql: normalized(c.sql) }))).toEqual(
       g.calls.map((c) => ({ ...c, sql: normalized(c.sql) })),
     );
@@ -91,4 +107,31 @@ it("Compare missing preset rolls back before executing the dynamic reader", asyn
     data.sql.ratings,
   ]);
   expect(calls.at(-1)!.params).toEqual(compareDynamicArgs(p));
+});
+
+it("EuroLeague player Four Factors: season views with no filter, the reader otherwise", async () => {
+  const read = async (query: Record<string, string>) => {
+    const calls: string[] = [];
+    const q: Query = async <R>(sql: string) => {
+      calls.push(sql);
+      return (sql.includes("player_advanced_stats_mv")
+        ? [{ player_id: 1, team_id: 7, game_year: 2025 }, { player_id: 2, team_id: 9, game_year: 2025 }]
+        : []) as R[];
+    };
+    const rows = await readCompareFacts(
+      q,
+      parseCompare(new URLSearchParams({ kind: "player_ff", season: "2025", ...query }), "euroleague"),
+    );
+    return { calls, rows };
+  };
+  const season = await read({ teams: "7" });
+  expect(season.calls).toEqual([
+    expect.stringContaining("FROM euroleague.player_advanced_stats_mv"),
+    expect.stringContaining("FROM euroleague.player_onoff_default_mv"),
+  ]);
+  expect(season.rows.map((r) => r.player_id)).toEqual([1]);
+  const filtered = await read({ home_away: "home" });
+  expect(filtered.calls).toEqual([
+    expect.stringContaining("euroleague.four_factors_dashboard_compute"),
+  ]);
 });
