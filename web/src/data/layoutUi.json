@@ -98,6 +98,8 @@
   "shotProfile": {
     "groupOff": "Offense shot mix: % of shots (on − off)",
     "groupDef": "Defense shot mix: % of shots (on − off)",
+    "teamGroupOff": "Offense shot mix: % of shots",
+    "teamGroupDef": "Defense shot mix: % of opponents' shots",
     "efg": "eFG% (accuracy)",
     "labels": {
       "Lay-up": "Lay-up share",

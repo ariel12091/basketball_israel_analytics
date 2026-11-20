@@ -271,6 +271,8 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .ibpl-ask-evidence th { font-weight: 600; color: var(--ibpl-text-muted); text-align: start; padding: 4px 8px; border-block-end: 1px solid var(--ibpl-border); white-space: nowrap; }
 .ibpl-ask-evidence td { text-align: start; padding: 6px 8px; border-block-end: 1px solid var(--ibpl-border); vertical-align: top; }
 .ibpl-ask-evidence td.num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; unicode-bidi: isolate; }
+/* Whose numbers the row holds (a player, lineup or team), first in each row. */
+.ibpl-ask-evidence th.ibpl-ask-evidence-name { color: var(--ibpl-text-body); padding: 6px 8px; white-space: normal; min-width: 7rem; vertical-align: top; }
 .ibpl-ask-answer .btn { margin: 0 6px 4px 0; }
 .ibpl-ask-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px 16px; border-top: 1px solid var(--ibpl-border); }
 .ibpl-ask-form textarea { resize: none; min-width: 0; }
