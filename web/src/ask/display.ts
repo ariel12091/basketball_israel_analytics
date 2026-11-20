@@ -1,6 +1,7 @@
 // The columns the ask box may quote, each with the formatter its page uses.
 // A copy of the pages' column choices, pinned by display.test.ts: every key's
 // text equals the page's own rendered cell for the same row.
+import { luckTag } from "@/rules/luck";
 import homeUi from "@/data/homeUi.json";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
@@ -77,7 +78,7 @@ const tip1 = (v: unknown) => {
 };
 /** The Net cell's 3PT luck and sample tooltip (OnOffTables TipBody, NetCell). */
 const LUCK_SAMPLE: ([string, string, Fmt] | [string, string, Fmt, true])[] = [
-  ["luck_3pt_flag", "3PT luck tag (the net impact changes sign without 3PT luck)", (v) => (v === true ? "3PT luck" : "none"), true],
+  ["luck_3pt_flag", "3PT luck tag (the net impact changes sign without 3PT luck): ▲ Unlucky, it would be higher without; ▼ Lucky, lower", (v, c) => (v === true ? luckTag(Number(c.luck_3pt_ours) + Number(c.luck_3pt_theirs)) : "none"), true],
   [
     "luck_3pt_added",
     "3PT shooting added to the net impact",
@@ -198,8 +199,8 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
             // rules/lineups lineupThreePtLuck: the tag beside Net RTG.
             [
               "luck_3pt_flag",
-              "3PT luck tag (the Net RTG changes sign without 3PT luck)",
-              (v) => (v === true ? "3PT luck" : "none"),
+              "3PT luck tag (the Net RTG changes sign without 3PT luck): ▲ Unlucky, it would be higher without; ▼ Lucky, lower",
+              (v, c) => (v === true ? luckTag(Number(c.luck_3pt_ours) + Number(c.luck_3pt_theirs)) : "none"),
               "chat",
             ],
             ["net_without_3pt_luck", "Net RTG without 3PT luck", fixed(1), "chat"],
@@ -253,8 +254,8 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         // rules/teamRatings teamShootingLuck: the tag beside Net Rtg.
         [
           "luck_flag",
-          "Shooting luck tag (the Net Rtg changes sign without own and opponents' 3PT luck and opponents' FT luck)",
-          (v) => (v === true ? "Shooting luck" : "none"),
+          "Shooting luck tag (own and opponents' 3PT luck plus opponents' FT luck is at least 80% of the Net Rtg and 1.5 per 100, or flips its sign): ▲ Unlucky, the Net would be higher without; ▼ Lucky, lower",
+          (v, c) => (v === true ? String(c.luck_tag) : "none"),
           "chat",
         ],
         ["net_without_luck", "Net Rtg without shooting luck", fixed(1), "chat"],

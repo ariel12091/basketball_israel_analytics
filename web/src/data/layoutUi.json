@@ -80,10 +80,10 @@
     },
     "shooting": {
       "label": "Shooting luck",
-      "text": "Threes go in and out by chance, and a defence has no say over the other team's free throws. We re-scored every three, by both teams, at the league's 3P%, and the opponents' free throws at the league's FT%. If that flips this number from plus to minus (or back), it is marked: it rests mostly on shooting luck.",
+      "text": "Every three and the opponents' free throws, re-scored at league rates. Marked when that luck flips the Net Rtg or is at least 80% of it.",
       "example": {
-        "il": "Example: Rishon LeZion, 25-26: Net Rtg -3.3. Its own threes cost it 3.5 points per 100 possessions against the league rate and its opponents' threes 1.1; its opponents' free throws gave back 0.5. Without that luck it is +0.8.",
-        "euro": "Example: Kosner Baskonia, 25-26: Net Rtg -6.1. Its opponents' threes cost it 4.7 points per 100 possessions against the league rate, its own 1.8 and its opponents' free throws 1.0. Without that luck it is +1.4."
+        "il": "Example: Rishon LeZion 25-26: -3.3, +0.8 without luck.",
+        "euro": "Example: Kosner Baskonia 25-26: -6.1, +1.4 without luck."
       }
     },
     "sample": {

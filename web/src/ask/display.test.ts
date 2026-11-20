@@ -155,13 +155,13 @@ describe("cellText equals the page column text", () => {
     const r: Row = {
       ...fill(Object.keys(displaySpec("team_ratings", "il", "summary"))),
       net_rtg: -6.1, rank_net_rtg: 18, luck_3pt_ours: -1.8, luck_3pt_theirs: -4.7,
-      luck_ft_theirs: -1.0, net_without_luck: 1.44, luck_flag: true,
+      luck_ft_theirs: -1.0, net_without_luck: 1.44, luck_flag: true, luck_tag: "▲ Unlucky",
     };
     const html = renderToStaticMarkup(
       createElement(TeamRatingsTable, { rows: [r], view: "summary", league: "il", side: "offense", display: "per_game" }),
     );
     const t = (k: string, x: Row = r) => cellText("team_ratings", "il", "summary", k, row(x));
-    expect(t("luck_flag")).toBe("Shooting luck");
+    expect(t("luck_flag")).toBe("▲ Unlucky");
     expect(cells(html).net_rtg).toContain(t("luck_flag"));
     expect(t("net_without_luck")).toBe("1.4");
     expect(t("luck_flag", { ...r, luck_flag: false })).toBe("none");
