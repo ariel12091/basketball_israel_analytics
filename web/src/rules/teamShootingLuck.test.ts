@@ -25,16 +25,32 @@ describe("teamShootingLuck", () => {
     expect(r.luck_ft_theirs as number).toBeCloseTo(-1.25, 6);
     expect(r.net_without_luck as number).toBeCloseTo(-2.75, 6);
     expect(r.luck_flag).toBe(true);
+    expect(r.luck_tag).toBe("▼ Lucky");
+  });
+
+  it("tags luck of half the Net or more without a sign flip, pointing up when it hurt", () => {
+    // Galil Elion 26-27 shape: Net +2.8, luck -3.3 (119% of it), +6.1 without.
+    const [r] = teamShootingLuck(
+      [{ ...teamA, net_rtg: 2.8, off_fg3_made: 105, def_fg3_made: 116, def_ftm: 187.5 }],
+      rates,
+    );
+    expect(r.net_without_luck as number).toBeCloseTo(6.1, 6);
+    expect(r.luck_flag).toBe(true);
+    expect(r.luck_tag).toBe("▲ Unlucky");
   });
 
   it("does not tag a Net Rtg that keeps its sign without the luck", () => {
     const [r] = teamShootingLuck([{ ...teamA, net_rtg: 10 }], rates);
     expect(r.net_without_luck as number).toBeCloseTo(5.25, 6);
+    // luck 4.75 is 47.5% of the Net: under half, no flip
     expect(r.luck_flag).toBe(false);
+    expect(r.luck_tag).toBeNull();
   });
 
-  it("never tags a Net Rtg of exactly zero", () => {
-    expect(teamShootingLuck([{ ...teamA, net_rtg: 0 }], rates)[0].luck_flag).toBe(false);
+  it("tags a Net Rtg of exactly zero only from the 1.5 floor", () => {
+    expect(teamShootingLuck([{ ...teamA, net_rtg: 0 }], rates)[0].luck_tag).toBe("▼ Lucky");
+    const small = { ...teamA, net_rtg: 0, off_fg3_made: 105, def_fg3_made: 105, def_ftm: 197.5 };
+    expect(teamShootingLuck([small], rates)[0].luck_flag).toBe(false); // luck -1.0
   });
 
   it("gives a zero FT term when the opponents took no free throws", () => {

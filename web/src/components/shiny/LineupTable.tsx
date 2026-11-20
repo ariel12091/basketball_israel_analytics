@@ -140,8 +140,7 @@ export default function LineupTable({
             node: (
               <LuckNet
                 value={cell.node}
-                label="3PT luck"
-                addedLabel="3PT shooting added"
+                title="3PT luck"
                 parts={[
                   { label: "lineup", value: Number(r.luck_3pt_ours) },
                   { label: "opponents", value: Number(r.luck_3pt_theirs) },

@@ -159,7 +159,7 @@ test("Traditional column order persists and is usable on phone", async ({
   );
 });
 
-test("Summary Net Rtg carries the Shooting luck tag with its three parts", async ({
+test("Summary Net Rtg carries the luck tag with its arrow and three parts", async ({
   page,
 }) => {
   test.skip(!teamPresets.includes("euroleague_summary_default.json"), "goldens missing");
@@ -186,12 +186,13 @@ test("Summary Net Rtg carries the Shooting luck tag with its three parts", async
   const tag = row(flagged.team_name).locator('td[data-column="net_rtg"] .onoff-luck-tag');
   await expect(tag).toHaveCount(1);
   await expect(row(plain.team_name).locator('td[data-column="net_rtg"] .onoff-luck-tag')).toHaveCount(0);
-  await expect(tag).toHaveText("Shooting luck");
+  await expect(tag).toHaveText("▲ Unlucky");
   await tag.click();
   const pop = page.locator(".ibpl-more-pop");
-  await expect(pop).toContainText("Shooting luck added-7.5");
+  await expect(pop).toContainText("Shooting luck per 100-7.5");
   await expect(pop).toContainText("own 3PT -1.8 · opponents' 3PT -4.7 · opponents' FT -1.0");
-  await expect(pop).toContainText("Without shooting luck+1.4");
+  await expect(pop).toContainText("Without luck+1.4");
+  await expect(pop).toContainText("Unlucky: without it the net would be higher.");
   await page.keyboard.press("Escape");
   // The legend explains the tag once, beside the view's "?".
   await page.locator(".table-top").getByRole("button", { name: "Shooting luck" }).click();

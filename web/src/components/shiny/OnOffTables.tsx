@@ -28,6 +28,8 @@ import DataTable, {
 import MoreInfo from "./MoreInfo";
 import layout from "@/data/layoutUi.json";
 import { tagText, type TagKind } from "./tagText";
+import { luckTag } from "@/rules/luck";
+import { luckNote } from "./LuckNet";
 
 /** A row tag's meaning and its worked example. */
 export function TagWhy({ league, kind }: { league: League; kind: TagKind }) {
@@ -166,6 +168,7 @@ export function TipBody({
             <span>Without 3PT luck</span>
             <TipVal v={net - o - t} />
           </div>
+          <div className="onoff-tip-note">{luckNote(o + t)}</div>
         </div>
       )}
       {kind !== "luck" && p != null && (
@@ -207,6 +210,9 @@ function NetCell({ row, league = "il" }: { row: Row; league?: League }) {
     num(row.luck_3pt_ours) != null && num(row.luck_3pt_theirs) != null;
   const hasPad = num(row.net_padded) != null;
   if (!hasLuck && !hasPad) return <>{txt}</>;
+  const luckLabel = hasLuck
+    ? luckTag(num(row.luck_3pt_ours)! + num(row.luck_3pt_theirs)!)
+    : "";
   const pop = (kind: "all" | "luck" | "sample") => (
     <div className="onoff-tip-pop" data-kind={kind}>
       <TipBody row={row} kind={kind} />
@@ -219,7 +225,11 @@ function NetCell({ row, league = "il" }: { row: Row; league?: League }) {
         {pop("all")}
       </MoreInfo>
       {hasLuck && row.luck_3pt_flag === true && (
-        <MoreInfo label={layout.tags.luck.label} className="onoff-luck-tag">
+        <MoreInfo
+          label={luckLabel}
+          ariaLabel={`${luckLabel}: ${layout.tags.luck.label}`}
+          className="onoff-luck-tag"
+        >
           {pop("luck")}
         </MoreInfo>
       )}

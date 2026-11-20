@@ -4,6 +4,7 @@ import { applyStatFilters } from "./statFilters";
 import { rRound } from "./round";
 import { SP_SUFFIX } from "./onoff";
 import ui from "../data/shinyUi.json";
+import { luckTag, teamLuckTagged } from "./luck";
 export type TeamView =
   "summary" | "four_factors" | "shot_profile" | "traditional";
 export const TRAD_COUNTS = [
@@ -275,9 +276,10 @@ export function leagueShootingRates(rows: Row[]): ShootingRates {
 /** Shooting luck on a team's Net Rtg: own and opponents' 3PT luck plus the
  * opponents' FT luck (a defence has no say over the other team's free
  * throws), per 100 possessions at league-average rates. Adds luck_3pt_ours,
- * luck_3pt_theirs, luck_ft_theirs, net_without_luck and luck_flag (the Net
- * changes sign without the luck); rows without the counts come back
- * unchanged. Mirrors lineupThreePtLuck (rules/lineups.ts). */
+ * luck_3pt_theirs, luck_ft_theirs, net_without_luck, luck_flag (rules/luck
+ * teamLuckTagged: a sign flip, or luck of half the Net and 1.5 per 100) and
+ * luck_tag ("▲ Unlucky" / "▼ Lucky" when flagged); rows without the counts
+ * come back unchanged. Mirrors lineupThreePtLuck (rules/lineups.ts). */
 export function teamShootingLuck(
   rows: Row[],
   rates: ShootingRates = leagueShootingRates(rows),
@@ -309,13 +311,16 @@ export function teamShootingLuck(
         net == null || ours == null || theirs == null || ft == null
           ? null
           : net - ours - theirs - ft;
+    const luck = adj == null ? null : (net as number) - adj,
+      flag = teamLuckTagged(net, luck);
     return {
       ...r,
       luck_3pt_ours: ours,
       luck_3pt_theirs: theirs,
       luck_ft_theirs: ft,
       net_without_luck: adj,
-      luck_flag: adj != null && net !== 0 && adj * (net as number) <= 0,
+      luck_flag: flag,
+      luck_tag: flag ? luckTag(luck as number) : null,
     };
   });
 }

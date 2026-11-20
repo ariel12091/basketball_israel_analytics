@@ -234,8 +234,7 @@ export default function TeamRatingsTable({
               node: (
                 <LuckNet
                   value={cell.node}
-                  label={layout.tags.shooting.label}
-                  addedLabel="Shooting luck added"
+                  title={layout.tags.shooting.label}
                   parts={[
                     { label: "own 3PT", value: Number(r.luck_3pt_ours) },
                     {
@@ -247,7 +246,7 @@ export default function TeamRatingsTable({
                       value: Number(r.luck_ft_theirs),
                     },
                   ]}
-                  withoutLabel="Without shooting luck"
+                  withoutLabel="Without luck"
                   without={Number(r.net_without_luck)}
                 />
               ),
