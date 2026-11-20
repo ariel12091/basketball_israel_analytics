@@ -9,6 +9,7 @@ import { Runs, type Block } from "./Blocks";
 import MoreInfo from "./MoreInfo";
 import { heatStyle } from "./DataTable";
 import { TagWhy } from "./OnOffTables";
+import type { TagKind } from "./tagText";
 import type { League } from "@/rules/gameLogs";
 import { useFrame } from "./TabKit";
 
@@ -84,10 +85,17 @@ export default function TableLegend({
 /** On/Off's row tags ("3PT luck", "small sample"), each explained in one
  * sentence on hover or tap. They sit with the "?" and CSV at the start of
  * the row, apart from the colour key at the top right (user 2026-11-16). */
-export function TableTags({ league }: { league: League }) {
+export function TableTags({
+  league,
+  kinds = ["luck", "sample"],
+}: {
+  league: League;
+  /** Team Ratings shows only "Shooting luck". */
+  kinds?: readonly TagKind[];
+}) {
   return (
     <span className="tl-tags">
-      {(["luck", "sample"] as const).map((k) => (
+      {kinds.map((k) => (
         <MoreInfo
           key={k}
           label={text.tags[k].label}

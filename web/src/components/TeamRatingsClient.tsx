@@ -14,7 +14,11 @@ import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
-import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import TableLegend, {
+  keyFromBlocks,
+  TableTags,
+  ViewIntro,
+} from "./shiny/TableKey";
 import { ToolsSlot } from "./shiny/toolsSlot";
 import layout from "@/data/layoutUi.json";
 import {
@@ -303,6 +307,9 @@ export default function TeamRatingsClient({
               }
             />
             <TableLegend shots={viewKey.shots} rank={viewKey.rank} />
+            {view === "summary" && (
+              <TableTags league={league} kinds={["shooting"]} />
+            )}
             <ToolsSlot />
           </div>
           <OutputArea

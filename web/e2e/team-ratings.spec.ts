@@ -158,3 +158,42 @@ test("Traditional column order persists and is usable on phone", async ({
     "traditional_team_per_game",
   );
 });
+
+test("Summary Net Rtg carries the Shooting luck tag with its three parts", async ({
+  page,
+}) => {
+  test.skip(!teamPresets.includes("euroleague_summary_default.json"), "goldens missing");
+  const { g, answer } = loadTeam("euroleague_summary_default.json");
+  const [flagged, plain] = answer.rows;
+  Object.assign(flagged, {
+    luck_3pt_ours: -1.8,
+    luck_3pt_theirs: -4.7,
+    luck_ft_theirs: -1.0,
+    net_without_luck: 1.4,
+    luck_flag: true,
+  });
+  Object.assign(plain, { luck_flag: false });
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).pathname.endsWith("/version")
+        ? { leagues: [{ league: g.league, version: answer.meta.version }] }
+        : answer,
+    }),
+  );
+  await page.goto(`/${g.league}/team-ratings?${new URLSearchParams(g.query)}`);
+  const row = (name: unknown) =>
+    page.locator(".ibpl-dt-scroll tbody tr").filter({ hasText: String(name) });
+  const tag = row(flagged.team_name).locator('td[data-column="net_rtg"] .onoff-luck-tag');
+  await expect(tag).toHaveCount(1);
+  await expect(row(plain.team_name).locator('td[data-column="net_rtg"] .onoff-luck-tag')).toHaveCount(0);
+  await expect(tag).toHaveText("Shooting luck");
+  await tag.click();
+  const pop = page.locator(".ibpl-more-pop");
+  await expect(pop).toContainText("Shooting luck added-7.5");
+  await expect(pop).toContainText("own 3PT -1.8 · opponents' 3PT -4.7 · opponents' FT -1.0");
+  await expect(pop).toContainText("Without shooting luck+1.4");
+  await page.keyboard.press("Escape");
+  // The legend explains the tag once, beside the view's "?".
+  await page.locator(".table-top").getByRole("button", { name: "Shooting luck" }).click();
+  await expect(page.locator(".ibpl-more-pop")).toContainText("free throws");
+});

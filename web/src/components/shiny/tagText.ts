@@ -7,16 +7,18 @@ import layout from "@/data/layoutUi.json";
 import type { League } from "@/rules/gameLogs";
 import type { TextBlock } from "./Blocks";
 
-export type TagKind = "luck" | "sample";
+export type TagKind = "luck" | "sample" | "shooting";
 
 export function tagText(league: League, kind: TagKind) {
   const euro = league !== "il";
   const tag = layout.tags[kind];
-  if (kind === "sample")
+  // Small sample and Team Ratings' shooting luck: web text with an example
+  // from the same 25-26 data.
+  if (kind === "sample" || kind === "shooting")
     return {
       label: tag.label,
       text: tag.text,
-      example: layout.tags.sample.example[euro ? "euro" : "il"],
+      example: layout.tags[kind].example[euro ? "euro" : "il"],
     };
   const body = (euro ? ui.onoff.euro : ui.onoff.il).popovers[0]
     .body as TextBlock[];
