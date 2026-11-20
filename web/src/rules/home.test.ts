@@ -6,6 +6,7 @@ import {
   homeOrdinal,
   homeFixed,
   type HomeFrames,
+  homeLineups,
 } from "./home";
 import type { Row } from "./gameLogs";
 const cases = JSON.parse(
@@ -25,9 +26,25 @@ function check(actual: unknown, expected: unknown, path = "") {
       check((actual as Record<string, unknown>)?.[k], v, `${path}.${k}`);
   else expect(actual, path).toEqual(expected);
 }
+// Shiny showed a team's only qualifying lineup (or one of several tied ones)
+// as both best and worst; the web shows it once, under the tag its sign earns
+// (homeLineups).
+function webExpected(expected: unknown): unknown {
+  const e = structuredClone(expected) as {
+    lineups?: { best: { net_rtg: number } | null; worst: unknown };
+  };
+  const l = e?.lineups;
+  if (l?.best && JSON.stringify(l.best) === JSON.stringify(l.worst)) {
+    if (l.best.net_rtg >= 0) l.worst = null;
+    else l.best = null;
+  }
+  return e;
+}
 describe("Home original R helpers over recorded dashboard frames", () => {
   for (const [name, g] of Object.entries(cases))
-    it(name, () => check(homeDashboard(g.frames, g.team), g.expected));
+    it(name, () =>
+      check(homeDashboard(g.frames, g.team), webExpected(g.expected)),
+    );
 });
 it("resolves remembered/leader/first/empty defaults as hub_default_team", () => {
   const teams: Row[] = [{ team_id: 2 }, { team_id: 5 }],
@@ -57,4 +74,14 @@ it("keeps ordinal exceptions and signed rounded zero", () => {
   expect(homeOrdinal(null)).toBe("");
   expect(homeFixed(-0.01, true)).toBe("-0.0");
   expect(homeFixed(2.25)).toBe("2.2");
+});
+
+it("shows a team's only qualifying lineup once, under the tag its sign earns", () => {
+  const row = (net: number) => ({ net_rtg: net, off_poss: 60, def_poss: 60 });
+  expect(homeLineups([row(-28)])).toMatchObject({ best: null, worst: { net_rtg: -28 } });
+  expect(homeLineups([row(4)])).toMatchObject({ best: { net_rtg: 4 }, worst: null });
+  expect(homeLineups([row(4), row(-2)])).toMatchObject({
+    best: { net_rtg: 4 },
+    worst: { net_rtg: -2 },
+  });
 });

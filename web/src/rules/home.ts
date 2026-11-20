@@ -125,10 +125,16 @@ export function homeLineups(rows: Row[]) {
         (fin(r.def_poss) ? n(r.def_poss) : 0),
     }));
   if (!out.length) return null;
-  return {
-    best: out.reduce((a, b) => (n(b.net_rtg) > n(a.net_rtg) ? b : a)),
-    worst: out.reduce((a, b) => (n(b.net_rtg) < n(a.net_rtg) ? b : a)),
-  };
+  const best = out.reduce((a, b) => (n(b.net_rtg) > n(a.net_rtg) ? b : a)),
+    worst = out.reduce((a, b) => (n(b.net_rtg) < n(a.net_rtg) ? b : a));
+  // One qualifying lineup (early in a season), or all of them tied, has no
+  // best and worst: show one, under the tag its own sign earns. Shiny showed
+  // the same lineup under both.
+  if (n(best.net_rtg) === n(worst.net_rtg))
+    return n(best.net_rtg) >= 0
+      ? { best, worst: null }
+      : { best: null, worst };
+  return { best, worst };
 }
 export function homeStorylines(frames: HomeFrames, team: string) {
   const variants = (v: string) =>

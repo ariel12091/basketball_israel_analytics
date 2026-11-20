@@ -5,6 +5,23 @@ import type { Row } from "@/rules/gameLogs";
 import type { PlayerSelection } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
 const MODE = { on: "On", any: "Any of", off: "Off" } as const;
+/** app.js displayName: an all-caps provider name becomes title case ("KENDALE
+ * MCCULLUM" -> "Kendale McCullum"); a name that already has mixed case stays
+ * as supplied. "Mc" keeps the next letter capital, as every Mc name does;
+ * "Mac" is left alone (Mack, Macon). */
+export function chipName(raw: string): string {
+  const name = raw.trim();
+  return name !== name.toUpperCase()
+    ? name
+    : name
+        .toLowerCase()
+        .replace(
+          /(^|[\s\-'.])([a-z])/g,
+          (_, p: string, c: string) => p + c.toUpperCase(),
+        )
+        .replace(/\bMc([a-z])/g, (_, c: string) => "Mc" + c.toUpperCase())
+        .replace(/\b(Ii|Iii|Iv)\b/g, (m) => m.toUpperCase());
+}
 export default function LineupPlayers({
   roster,
   selection,
@@ -16,20 +33,7 @@ export default function LineupPlayers({
 }) {
   const [mode, setMode] = useState<"on" | "any" | "off">("on");
   const [expanded, setExpanded] = useState(false);
-  // app.js displayName: all-cap provider names become title case; names that
-  // already have mixed case remain as supplied (including McRae etc.).
-  const full = (r: Row) => {
-    const name = String(r.name ?? "").trim();
-    return name !== name.toUpperCase()
-      ? name
-      : name
-          .toLowerCase()
-          .replace(
-            /(^|[\s\-'.])([a-z])/g,
-            (_, p: string, c: string) => p + c.toUpperCase(),
-          )
-          .replace(/\b(Ii|Iii|Iv)\b/g, (m) => m.toUpperCase());
-  };
+  const full = (r: Row) => chipName(String(r.name ?? ""));
   const last = (r: Row) =>
     full(r).includes(",")
       ? full(r).split(",")[0].trim()

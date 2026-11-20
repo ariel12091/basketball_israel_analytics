@@ -159,6 +159,7 @@ export default function HomeHub({
                   {(["best", "worst"] as const).map((key) => {
                     const row = dashboard.lineups![key],
                       color = key === "best" ? "hub-pos" : "hub-neg";
+                    if (!row) return null;
                     return (
                       <div className="hub-lineup" key={key}>
                         <span className={`hub-lineup-tag ${color}`}>

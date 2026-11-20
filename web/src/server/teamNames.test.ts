@@ -18,6 +18,21 @@ const names = teamNamesFromRows([
 ]);
 
 describe("Hebrew team names for the Ask chat", () => {
+  it("shows the catalogue's English name for any known spelling (basket.co.il's, rule 2)", () => {
+    const [own, opp, other] = applyTeamNamesHe(
+      [
+        { team_id: 14, team_name: "RISHON LEZION" },
+        { Team: "M. RISHON", opp_team_name: "rishon lezion" },
+        { team_name: "TOTAL", name: "Rishon Lezion fan" },
+      ],
+      names,
+    );
+    expect(own.team_name).toBe("M. RISHON");
+    expect(opp.Team).toBe("M. RISHON");
+    expect(opp.opp_team_name).toBe("M. RISHON");
+    expect(other).toEqual({ team_name: "TOTAL", name: "Rishon Lezion fan" });
+  });
+
   it("matches a row by team_id first", () => {
     const [r] = applyTeamNamesHe([{ team_id: 14, team_name: "ANY", pts: 80 }], names);
     expect(r).toEqual({ team_id: 14, team_name: "ANY", pts: 80, team_name_he: "מכבי תפוזינה ראשון לציון" });
