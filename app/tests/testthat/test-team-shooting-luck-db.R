@@ -76,3 +76,52 @@ test_that("Israeli season view counts equal the ratings function over the whole 
                    label = paste(season, col))
   }
 })
+
+# EuroLeague (migration 068): eight counts, 3PA included (its readers had none).
+EL_COUNTS <- c("off_fg3_made", "off_fg3_att", "def_fg3_made", "def_fg3_att",
+               "off_ftm", "off_fta", "def_ftm", "def_fta")
+EL_CLUTCH <- ", p_max_margin => 5, p_margin_status => 'all', p_max_time_remaining => 300"
+el_read <- function(fn, comp, season, args = "", cols = "*") {
+  dbq(sprintf("SELECT %s FROM euroleague.%s('%s', %d%s)", cols, fn, comp, season, args))
+}
+same_counts <- function(a, b, cols, label) {
+  m <- merge(a, b, by = "team_id", suffixes = c(".a", ".b"))
+  expect_equal(nrow(m), nrow(a), label = paste(label, "teams"))
+  for (col in cols)
+    expect_equal(as.numeric(m[[paste0(col, ".a")]]), as.numeric(m[[paste0(col, ".b")]]),
+                 label = paste(label, col))
+}
+
+test_that("EuroLeague Team Ratings readers return the same eight counts on every path", {
+  for (comp in c("E", "U")) for (season in db_test_euro_seasons()) {
+    label <- paste(comp, season)
+    pg <- el_read("get_team_ratings_pergame", comp, season)
+    expect_true(all(EL_COUNTS %in% names(pg)), label = paste(label, "pergame has the counts"))
+    if (!all(EL_COUNTS %in% names(pg))) next
+    mv <- dbq(sprintf("SELECT * FROM euroleague.team_ppp_ratings_mv WHERE competition = '%s' AND game_year = %d", comp, season))
+    same_counts(mv, pg, c(EL_COUNTS, "off_poss", "def_poss"), paste(label, "view vs pergame"))
+    same_counts(el_read("get_team_ratings_direct", comp, season), pg, EL_COUNTS, paste(label, "direct vs pergame"))
+    dyn <- el_read("get_team_ratings_dynamic", comp, season, EL_CLUTCH)
+    same_counts(el_read("get_team_dashboard_dynamic", comp, season, EL_CLUTCH), dyn, EL_COUNTS,
+                paste(label, "dashboard vs dynamic, standard clutch"))
+    same_counts(el_read("get_team_ratings_direct", comp, season, EL_CLUTCH), dyn, EL_COUNTS,
+                paste(label, "direct vs dynamic, standard clutch"))
+  }
+})
+
+test_that("EuroLeague ratings counts equal the Traditional reader's", {
+  trad_cols <- "team_id, \"3pm\" AS fg3_made, \"3pa\" AS fg3_att, ftm, fta"
+  for (comp in c("E", "U")) for (season in db_test_euro_seasons()) for (side in c("off", "def")) {
+    label <- paste(comp, season, side)
+    p_side <- sprintf(", p_side => '%s'", if (side == "off") "offense" else "defense")
+    rename <- function(d) { names(d)[-1] <- paste0(side, "_", names(d)[-1]); d }
+    cols <- paste0(side, "_", c("fg3_made", "fg3_att", "ftm", "fta"))
+    pg <- el_read("get_team_ratings_pergame", comp, season)
+    if (!all(cols %in% names(pg))) { expect_true(FALSE, label = paste(label, "has the counts")); next }
+    same_counts(pg, rename(el_read("get_team_traditional_pergame", comp, season, p_side, trad_cols)), cols,
+                paste(label, "pergame vs Traditional"))
+    same_counts(el_read("get_team_ratings_dynamic", comp, season, EL_CLUTCH),
+                rename(el_read("get_team_traditional_direct", comp, season, paste0(EL_CLUTCH, p_side), trad_cols)), cols,
+                paste(label, "standard clutch vs Traditional"))
+  }
+})
