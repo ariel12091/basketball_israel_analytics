@@ -310,45 +310,11 @@ KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
   398L, 3980348L, "00:00", "08:25", "Q2 live-window linear interpolation to next correct anchor",
   398L, 3980349L, "00:00", "08:22", "Q2 live-window linear interpolation to next correct anchor",
   398L, 3980350L, "00:00", "08:21", "Q2 live-window linear interpolation to next correct anchor",
-  399L, 3990421L, "00:16", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990422L, "00:16", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990423L, "00:15", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990424L, "00:13", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990425L, "00:12", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990428L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990429L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990430L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990431L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990432L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990433L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990434L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
   406L, 4060230L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
   406L, 4060231L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
   406L, 4060232L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
   406L, 4060233L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
-  406L, 4060234L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
-  # Game 459 (2026-11-20): user times 11:51:31-11:51:46, between the Q3 tip
-  459L, 4590371L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590372L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590373L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590374L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590375L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590376L, "00:40", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590377L, "00:40", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590378L, "00:38", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590379L, "00:38", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590380L, "00:37", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590381L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590382L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590383L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590384L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590385L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590386L, "00:32", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590387L, "00:31", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590388L, "00:30", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590389L, "00:29", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  459L, 4590390L, "00:28", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter"
-# 87 interleaved rows retain quarter=3 after Q4 begins. Their IDs, user times,
+  406L, 4060234L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint"
 )
 
 # Game 402's archived Basket payload contains a coherent Q4 action stream, but
@@ -529,6 +495,81 @@ apply_known_game406_wall_clock_correction <- function(df, game_id_val) {
   df
 }
 
+# A run of dead-ball events (substitutions, timeouts) stamped with a clock
+# later in the period than the plays that follow it: after the run the clock
+# jumps back more than CLOCK_RUN_JUMP_SECONDS, and the run is shorter than the
+# stretch of plays it overtakes. The canonical clock is a running maximum, so
+# such a run hands its time to every play after it until the clock catches up
+# (games 398, 399, 459 Q3; 62506 Q3: zero-point stints, minutes on the wrong
+# players). A dead-ball event happens at the clock it interrupts, so the run
+# takes the clock of the last event before it in the period, or the period's
+# start. Runs holding a live play are left to KNOWN_CLOCK_STAMP_CORRECTIONS
+# (by hand), and an event stamped EARLIER than its neighbours is left alone:
+# the running maximum already ignores it. Scan of every game 2024-25 to
+# 2026-27 (2026-11-21): the rule fires on 459 Q3 (the 20 hand-listed rows,
+# same result) and 62506 Q3 (2 substitutions in a 5:07 timeout stamped 4:21).
+CLOCK_RUN_JUMP_SECONDS <- 24
+CLOCK_RUN_DEAD_BALL_TYPES <- c("substitution", "timeout")
+
+#' Misplaced dead-ball runs in one game's rows, given in id order.
+#'
+#' @param quarter,remaining,type one entry per row; `remaining` is seconds
+#'   left in the period.
+#' @return data.frame(index, remaining): the rows to restamp and their clock.
+misplaced_dead_ball_runs <- function(quarter, remaining, type,
+                                     jump = CLOCK_RUN_JUMP_SECONDS,
+                                     dead_ball = CLOCK_RUN_DEAD_BALL_TYPES) {
+  out_index <- integer(0)
+  out_remaining <- numeric(0)
+  for (q in unique(quarter[!is.na(quarter)])) {
+    rows <- which(quarter == q)
+    r <- remaining[rows]
+    n <- length(r)
+    if (n < 2) next
+    period_start <- if (q <= 4) 600 else 300
+    for (k in 2:n) {
+      if (is.na(r[k]) || is.na(r[k - 1]) || r[k] <= r[k - 1] + jump) next
+      # The run: rows before k stamped later in the period than row k.
+      j <- k - 1
+      while (j >= 1 && !is.na(r[j]) && r[j] < r[k] - jump) j <- j - 1
+      run <- seq.int(j + 1, k - 1)
+      # The plays it overtakes: rows from k until the clock catches up.
+      after <- 0L
+      while (k + after <= n && !is.na(r[k + after]) && r[k + after] > max(r[run]) + jump) {
+        after <- after + 1L
+      }
+      if (!all(type[rows[run]] %in% dead_ball) || length(run) >= after) next
+      anchor <- if (j >= 1) r[j] else period_start
+      out_index <- c(out_index, rows[run])
+      out_remaining <- c(out_remaining, rep(anchor, length(run)))
+    }
+  }
+  data.frame(index = out_index, remaining = out_remaining)
+}
+
+#' Restamp misplaced dead-ball runs in one game's raw action rows (see
+#' misplaced_dead_ball_runs()). Only `quarter_time` changes; clock rows are
+#' ignored, as clean_actions() drops them.
+restamp_misplaced_dead_ball_runs <- function(df, game_id_val) {
+  if (!nrow(df)) return(df)
+  ord <- order(suppressWarnings(as.integer(df$id)), df$source_row)
+  ord <- ord[df$type[ord] != "clock"]
+  remaining <- suppressWarnings(
+    lubridate::period_to_seconds(lubridate::ms(df$quarter_time[ord]))
+  )
+  fixes <- misplaced_dead_ball_runs(as.integer(df$quarter[ord]), remaining, df$type[ord])
+  if (!nrow(fixes)) return(df)
+  target <- ord[fixes$index]
+  corrected <- sprintf("%02d:%02d", as.integer(fixes$remaining %/% 60), as.integer(fixes$remaining %% 60))
+  message(sprintf(
+    "Game %s: restamped %d dead-ball event(s) stamped later than the plays after them: %s",
+    game_id_val, length(target),
+    paste(sprintf("%s %s->%s", df$id[target], df$quarter_time[target], corrected), collapse = ", ")
+  ))
+  df$quarter_time[target] <- corrected
+  df
+}
+
 clean_actions <- function(pbp) {
   a <- tibble::as_tibble(pbp$result$actions) |>
     dplyr::mutate(source_row = dplyr::row_number()) |>
@@ -545,6 +586,8 @@ clean_actions <- function(pbp) {
   # displayed clock and the clock used downstream never disagree.
   a <- apply_known_clock_corrections(a, game_id_val)
   a <- apply_known_game406_wall_clock_correction(a, game_id_val)
+  # Then the general rule for dead-ball runs stamped later than the plays after them.
+  a <- restamp_misplaced_dead_ball_runs(a, game_id_val)
 
   out <- a |>
     filter(type != "clock") |>
