@@ -98,8 +98,10 @@ registration_english_names <- function(rows) {
 }
 
 # One row per Basket season registration, with the team already resolved
-# through schedule_team_dict. A registration whose team string is unmapped is
-# returned with team_id NA and reported rather than silently dropped.
+# through schedule_team_dict: by basket.co.il's team id (team_id_schedule) when
+# the registration carries one, by the Basket spelling only when it does not.
+# A registration whose team is unmapped is returned with team_id NA and
+# reported rather than silently dropped.
 fetch_basket_registrations <- function(con, seasons) {
   rows <- db_query(con, sprintf("
     SELECT s.game_year, s.basket_player_id, s.player_name, s.player_name_en,
@@ -114,7 +116,8 @@ fetch_basket_registrations <- function(con, seasons) {
     FROM basketball_test.basket_player_registration s
     LEFT JOIN basketball_test.schedule_team_dict d
       ON d.game_year = s.game_year
-     AND d.team_name_basket = s.basket_team_name
+     AND (d.team_id_schedule = s.basket_team_id
+          OR (s.basket_team_id IS NULL AND d.team_name_basket = s.basket_team_name))
     WHERE s.game_year IN (%s)
     ORDER BY s.game_year, s.basket_player_id",
     paste(as.integer(seasons), collapse = ", ")))

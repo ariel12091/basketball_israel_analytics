@@ -68,7 +68,24 @@ test_that("profiles carry the team and date of birth", {
   out <- parse_basket_player_profile_html(html)
 
   expect_equal(out$basket_team_name, "הפועל IBI תל אביב")
+  expect_true(is.na(out$basket_team_id))
   expect_equal(out$date_of_birth, as.Date("1995-09-21"))
+})
+
+# The site's markup (player 26043, 2026-27). The team id is the link next to
+# the label, not the first TeamId on the page: the menu links every team.
+test_that("profiles carry the team page's id", {
+  html <- paste0(
+    "<a href=\"team.asp?TeamId=2111\">menu</a>",
+    "<div class=\"p_info he\"> <span class=\"p_info_title\">קבוצה:&nbsp;</span>",
+    "<a href=\"team.asp?TeamId=2114\">הפועל מידטאון י-ם</a><br />",
+    " <span class=\"p_info_title\">אזרחות:&nbsp;</span> <a>ישראל (ISR)</a>",
+    "<div>עמדה:&nbsp;פורוורד</div><div>גובה:&nbsp;2.03</div></div>"
+  )
+  out <- parse_basket_player_profile_html(html)
+
+  expect_equal(out$basket_team_id, 2114L)
+  expect_equal(out$basket_team_name, "הפועל מידטאון י-ם")
 })
 
 # 695 of 1160 cached profiles have a day > 12 and none has a month > 12, so the
