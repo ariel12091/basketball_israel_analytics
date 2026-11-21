@@ -326,7 +326,29 @@ KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
   406L, 4060231L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
   406L, 4060232L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
   406L, 4060233L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
-  406L, 4060234L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint"
+  406L, 4060234L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
+  # Game 459 (2026-11-20): user times 11:51:31-11:51:46, between the Q3 tip
+  459L, 4590371L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590372L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590373L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590374L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590375L, "00:43", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590376L, "00:40", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590377L, "00:40", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590378L, "00:38", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590379L, "00:38", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590380L, "00:37", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590381L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590382L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590383L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590384L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590385L, "00:33", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590386L, "00:32", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590387L, "00:31", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590388L, "00:30", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590389L, "00:29", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  459L, 4590390L, "00:28", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter"
+# 87 interleaved rows retain quarter=3 after Q4 begins. Their IDs, user times,
 )
 
 # Game 402's archived Basket payload contains a coherent Q4 action stream, but
