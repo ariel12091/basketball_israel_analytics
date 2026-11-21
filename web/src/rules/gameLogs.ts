@@ -308,6 +308,9 @@ export function joinScheduleInfo(metrics: Row[], schedule: Row[]): Row[] {
               "game_type",
               "game_date",
               "opp_team_name",
+              // Not in gl_join_schedule_info: the opponent's logo is keyed on
+              // it (server/teamIdentity.ts applyTeamLogos).
+              "opp_team_id",
               "team_score",
               "opp_score",
               "has_won",
