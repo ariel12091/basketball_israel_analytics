@@ -11,7 +11,7 @@
 // has no view menus.
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import type { League } from "@/rules/gameLogs";
 import {
   LEAGUE_VALUE,
@@ -82,6 +82,12 @@ const TABS: Tab[] = [
     path: "compare",
   },
 ];
+
+/** The bar entry a route belongs to (Gameflow sits under Game Logs). */
+export function tabForPath(path: string): TabId {
+  if (path === "gameflow") return "game_logs";
+  return TABS.find((t) => t.path === path)?.value ?? "home";
+}
 
 const LEAGUES: League[] = ["il", "euroleague", "eurocup"];
 /** The league switch's words; the menu and the page title use full names. */
@@ -210,6 +216,7 @@ export default function Navbar({
                     >
                       <i className={`bi ${t.icon}`} aria-hidden="true"></i>
                       <span className="ibpl-page-label">{t.label}</span>
+                      <PendingFlag />
                     </Link>
                   </li>
                 );
@@ -292,6 +299,21 @@ export default function Navbar({
         {children}
       </div>
     </>
+  );
+}
+
+/** Marks its page link while the next page renders on the server, so a tap
+ * shows at once: web.css moves the highlight to that link (and off the
+ * current one) and runs a loading bar on the tab bar. It ends by itself when
+ * the page arrives or the navigation is dropped. */
+function PendingFlag() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      className="ibpl-page-pending"
+      data-pending={pending ? "" : undefined}
+      aria-hidden="true"
+    ></span>
   );
 }
 

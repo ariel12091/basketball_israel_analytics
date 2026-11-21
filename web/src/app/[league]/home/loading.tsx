@@ -1,3 +1,5 @@
+import TabSkeleton from "@/components/shiny/TabSkeleton";
+
 export default function Loading() {
-  return <p role="status">Loading Home…</p>;
+  return <TabSkeleton message="Loading Home…" />;
 }
