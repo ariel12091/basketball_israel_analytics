@@ -51,7 +51,36 @@ BEGIN
     def_c3_att,
     def_c3_known_att
   )
-  SELECT preset_rows.*
+  -- Name every column: the reader appends columns (#103 added six), and
+  -- preset_rows.* would then outgrow this table's insert list.
+  SELECT
+    preset_rows.preset_variant,
+    preset_rows.game_year,
+    preset_rows.team_id,
+    preset_rows.team_name,
+    preset_rows.off_ppp,
+    preset_rows.def_ppp,
+    preset_rows.net_rtg,
+    preset_rows.games_played,
+    preset_rows.wins,
+    preset_rows.losses,
+    preset_rows.off_poss,
+    preset_rows.def_poss,
+    preset_rows.rank_net_rtg,
+    preset_rows.rank_off_ppp,
+    preset_rows.rank_def_ppp,
+    preset_rows.off_fga,
+    preset_rows.off_layup_att,
+    preset_rows.off_dunk_att,
+    preset_rows.off_fg3_att,
+    preset_rows.off_c3_att,
+    preset_rows.off_c3_known_att,
+    preset_rows.def_fga,
+    preset_rows.def_layup_att,
+    preset_rows.def_dunk_att,
+    preset_rows.def_fg3_att,
+    preset_rows.def_c3_att,
+    preset_rows.def_c3_known_att
   FROM affected_years ay
   CROSS JOIN LATERAL (
     SELECT 'starters_hi'::text AS preset_variant, r.*
