@@ -94,6 +94,33 @@ Spec: `docs/superpowers/specs/2026-11-17-player-stats-views-design.md`.
 - `e2e/player-stats.spec.ts` is not run in CI (only the live smoke is); its
   column-view test was written while C: was full and has not been run yet.
 
+## Defaults, fast paths and names (since 2026-11-20, PRs #102-#106)
+
+- **Every league opens on its whole season** (`defaultDates()` = `seasonBounds()`), so
+  a default page answers from the season tables (R10). The 1 October Israeli
+  default (2026-11-17) put every default request on the slow path and was
+  dropped (D22). With no Game type set, Israeli tabs show one chip per game
+  type the season has played (`seasonTypeChoices()`, from the references'
+  `gameTypes`); x on one sets Game type to the rest; they never count as
+  active filters (`activeChipCount()`). Compare sets Game type per side, so it
+  shows none of these chips.
+- **Compare reuses On/Off's season views** when no filter is set:
+  `seasonFourFactors()` (player Four Factors) and `seasonOnOff()` (player
+  on/off, asked league-wide and picked by player + team; with a team the API
+  still runs the reader, whose percentiles rank within the team). Pinned in
+  `app/tests/testthat/test-player-reader-paths-db.R`, both leagues.
+- **Team names**: every Israeli English team-name cell shows the
+  `season_teams` catalogue name (basket.co.il's spelling), rewritten in
+  `server/teamNames.ts` (any known spelling, or the row's `team_id`). Never
+  show a reader's roster spelling ("IRONI EILAT").
+- **Timing**: answers are cached in memory for 60 s per instance
+  (`versionedCache.ts`), so only a first request reaches the database; time
+  first requests, and expect a cold database read to be 5-10x slower
+  (`shared_buffers` 256 MB).
+- Home's lineup card needs two lineups over 2.5% of the team's possessions
+  (40-100; `homeLineupMinPoss()`), else no card. Compare's default players are
+  the top two by points per game among players with half the most games.
+
 ## Logs (since 2026-11-19)
 
 One JSON line per event in Vercel's runtime log (`lib/logEvent.ts`); Hobby
