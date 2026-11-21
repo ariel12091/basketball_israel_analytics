@@ -589,6 +589,14 @@ parse_basket_player_profile_html <- function(html) {
   team_name <- first_capture(
     "קבוצה:[[:space:]]*(.*?)[[:space:]]*אזרחות:", text, 1L
   )
+  # The same label links the team page, team.asp?TeamId=<id> (227 of 227
+  # 2026-27 profiles, 2026-11-21). That id is schedule_team_dict.team_id_schedule,
+  # so the identity match keys the team on it rather than on a spelling that
+  # changes with sponsors and differs between the site's own pages.
+  team_id <- suppressWarnings(as.integer(first_capture(
+    "(?s)קבוצה:.{0,300}?team\\.asp\\?TeamId=([0-9]+)", html, 1L
+  )))
+  if (!is.na(team_id) && team_id <= 0L) team_id <- NA_integer_
   # dd/mm/yyyy: 695 of 1160 cached profiles have a day > 12 and none has a
   # month > 12, so day-first is the site's format, not an assumption.
   birth_text <- first_capture(
@@ -625,6 +633,7 @@ parse_basket_player_profile_html <- function(html) {
     nationality_name = nationality_name,
     nationality_code = nationality_code,
     basket_team_name = team_name,
+    basket_team_id = team_id,
     date_of_birth = date_of_birth,
     stringsAsFactors = FALSE
   )
@@ -1259,14 +1268,15 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "CREATE TEMP TABLE basket_profiles_stage (",
           "game_year integer, basket_player_id integer, position_name text,",
           "position_en text, height_m numeric, nationality_name text,",
-          "nationality_code text, basket_team_name text, date_of_birth date,",
+          "nationality_code text, basket_team_name text, basket_team_id integer,",
+          "date_of_birth date,",
           "source_url text, source_content_md5 text,",
           "fetched_at timestamptz, cache_hit boolean",
           ") ON COMMIT DROP"
         ))
         profile_columns <- c(
           "game_year", "basket_player_id", "position_name", "position_en", "height_m",
-          "nationality_name", "nationality_code", "basket_team_name",
+          "nationality_name", "nationality_code", "basket_team_name", "basket_team_id",
           "date_of_birth", "source_url",
           "source_content_md5", "fetched_at", "cache_hit"
         )
@@ -1280,6 +1290,7 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "height_m = s.height_m, nationality_name = s.nationality_name,",
           "nationality_code = s.nationality_code,",
           "basket_team_name = s.basket_team_name,",
+          "basket_team_id = COALESCE(s.basket_team_id, t.basket_team_id),",
           "date_of_birth = s.date_of_birth,",
           "profile_source_url = s.source_url,",
           "profile_source_content_md5 = s.source_content_md5,",

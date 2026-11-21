@@ -990,7 +990,9 @@ player_display_name_gaps <- function(pg, schema = SCHEMA, game_years = NULL) {
               u.player_name || \' (\' || u.basket_team_name || \')\'
      FROM unlinked u
      LEFT JOIN "%1$s"."schedule_team_dict" d
-       ON d.game_year = u.game_year AND d.team_name_basket = u.basket_team_name
+       ON d.game_year = u.game_year
+      AND (d.team_id_schedule = u.basket_team_id
+           OR (u.basket_team_id IS NULL AND d.team_name_basket = u.basket_team_name))
      %3$s
      ORDER BY 1 DESC, 2, 5, 3',
     schema, filter,
