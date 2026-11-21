@@ -746,6 +746,8 @@ than adding a special case:
    Note the 2025 cup ids come from a different provider space (normal range is 23-64942). Harmless for display — both game-log tabs sort on date first and use `game_id` only as a same-date tiebreak — but anything keying or ordering on `game_id` alone will place them after every other game.
    They are also the 14 team-games that `verify_minutes_migration()` skips as "absent from both sides"; if they are ever backfilled that exemption should stop finding them.
 
+2. **BACKLOG (user 2026-11-21): a general rule for mislabelled periods.** Flag, and where safe relabel, rows whose quarter goes backwards in action-id order (game 62506: a Q2 rebound labelled Q1, a Q3 free throw and rebound labelled Q2; fixed by hand in `KNOWN_PERIOD_LABEL_CORRECTIONS`, `etl/etl_onoff.R`, #114). Today such a game fails the lineup coverage gate and writes nothing, so it is safe but needs a hand fix. Model it on `restamp_misplaced_dead_ball_runs()` (#113): scan every season first, log each change, leave ambiguous cases to the hand table.
+
 **Performance (React+Plumber):**
 1. Profile SQL functions with `EXPLAIN (ANALYZE, BUFFERS)` for filtered cases
 2. Audit indexes only after query-plan evidence
