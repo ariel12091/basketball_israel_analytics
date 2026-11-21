@@ -1,13 +1,12 @@
 import { Suspense } from "react";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import GameLogsClient from "@/components/GameLogsClient";
 import type { League } from "@/rules/gameLogs";
 import type { SearchParams } from "@/lib/tabQuery";
-import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
+import { TAB_FIRST_PATH } from "@/lib/tabPages";
 import { gameLogsAnswer } from "@/server/gameLogsApi";
 import { pageMetadata } from "@/lib/pageTitle";
-import { pageFailed } from "@/server/requestLog";
+import { streamedTab } from "@/server/streamedTab";
 
 export const generateMetadata = pageMetadata("game-logs");
 // The first table is rendered on the server from the same answer the API
@@ -27,19 +26,14 @@ export default async function GameLogsPage({
   if (!["il", "euroleague", "eurocup"].includes(league)) notFound();
   const l = league as League;
   const path = TAB_FIRST_PATH["game-logs"](l, await searchParams);
-  const data =
-    (await headers()).get("x-ibpl-client-data") === "1"
-      ? null
-      : await gameLogsAnswer(
-          l,
-          new URL(path, "http://local").searchParams,
-        ).catch((e) => {
-          pageFailed("game-logs", l)(e);
-          throw new FirstReadFailed();
-        });
-  return (
-    <Suspense fallback={null}>
-      <GameLogsClient key={league} league={l} initial={{ url: path, data }} />
-    </Suspense>
-  );
+  return streamedTab({
+    page: "game-logs",
+    league: l,
+    read: () => gameLogsAnswer(l, new URL(path, "http://local").searchParams),
+    render: (data) => (
+      <Suspense fallback={null}>
+        <GameLogsClient key={league} league={l} initial={{ url: path, data }} />
+      </Suspense>
+    ),
+  });
 }

@@ -2153,6 +2153,14 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
    the current one gives it up, and a bar runs along the top of the tab bar
    until the page arrives. */
 .ibpl-page-pending { display: none; }
+/* The tab's placeholder until its first answer (TabSkeleton). */
+.ibpl-tab-loading { padding: 12px 0; }
+.ibpl-tab-loading [role="status"] { margin: 0 0 12px; color: var(--ibpl-text-muted); font-size: 0.875rem; }
+.ibpl-tab-loading-rows { display: grid; gap: 8px; }
+.ibpl-tab-loading-rows span { display: block; height: 28px; border-radius: 6px; background: linear-gradient(90deg, var(--ibpl-surface) 0%, var(--ibpl-surface-hover) 50%, var(--ibpl-surface) 100%); background-size: 200% 100%; animation: ibpl-tab-shimmer 1.2s linear infinite; }
+.ibpl-tab-loading-rows span:first-child { height: 34px; }
+@keyframes ibpl-tab-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .ibpl-tab-loading-rows span { animation: none; } }
 .ibpl-page:has(> .ibpl-page-pending[data-pending]) { color: var(--ibpl-accent); font-weight: 700; }
 .ibpl-page:has(> .ibpl-page-pending[data-pending]) .bi { background: rgba(var(--ibpl-accent-rgb), 0.18); animation: ibpl-page-wait 900ms ease-in-out infinite; }
 .ibpl-pages:has([data-pending]) .ibpl-page.active { color: var(--ibpl-text-muted); font-weight: 600; }

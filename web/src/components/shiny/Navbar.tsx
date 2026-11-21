@@ -83,6 +83,12 @@ const TABS: Tab[] = [
   },
 ];
 
+/** The bar entry a route belongs to (Gameflow sits under Game Logs). */
+export function tabForPath(path: string): TabId {
+  if (path === "gameflow") return "game_logs";
+  return TABS.find((t) => t.path === path)?.value ?? "home";
+}
+
 const LEAGUES: League[] = ["il", "euroleague", "eurocup"];
 /** The league switch's words; the menu and the page title use full names. */
 const LEAGUE_SHORT: Record<League, string> = {
