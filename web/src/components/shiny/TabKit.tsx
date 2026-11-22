@@ -43,10 +43,15 @@ import { choiceValues } from "@/lib/choices";
 import ui from "@/data/shinyUi.json";
 import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
+import { PillField } from "./PillSwitch";
+import PossStepper from "./PossStepper";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
-import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+import FilterDrawer, {
+  onPageScrollbar,
+  type DrawerSection,
+} from "./FilterDrawer";
 import { ClearFiltersContext } from "./EmptyState";
 import * as Popover from "@radix-ui/react-popover";
 import { ToolsSlotProvider } from "./toolsSlot";
@@ -578,6 +583,7 @@ export function StarterSelects({
   set,
   starterKey,
   wrap,
+  pills = false,
 }: {
   p: string;
   query: Query;
@@ -585,18 +591,37 @@ export function StarterSelects({
   starterKey: "own_starters" | "opp_starters";
   /** Lays out the mode select and the value select. */
   wrap: (mode: ReactNode, value: ReactNode) => ReactNode;
+  /** One worded dropdown for sign and count (the tabs' Filters sheet);
+   * Compare's A/B grid keeps its two dropdowns. */
+  pills?: boolean;
 }) {
   const [mode = "", value = ""] = (query[starterKey] ?? "").split(":");
   const own = starterKey === "own_starters",
     side = own ? "off" : "def";
+  const label = tt(
+    own ? "Own lineup starters" : "Opponent lineup starters",
+    starterKey,
+  );
+  const setMode = (m: string) =>
+    set({ [starterKey]: m || value ? `${m}:${value}` : null });
+  const setValue = (v: string) =>
+    set({ [starterKey]: mode || v ? `${mode}:${v}` : null });
+  if (pills)
+    return (
+      <StarterChoice
+        id={`${p}_num_starters_${side}`}
+        label={tt(own ? "Own" : "Opponent", starterKey)}
+        opponent={!own}
+        mode={mode}
+        value={value}
+        onChange={(v) => set({ [starterKey]: v })}
+      />
+    );
   return wrap(
     <Selectize
       id={`${p}_num_starters_${side}_mode`}
       formControl={false}
-      label={tt(
-        own ? "Own lineup starters" : "Opponent lineup starters",
-        starterKey,
-      )}
+      label={label}
       placeholder="ALL"
       emptyLabel="ALL"
       choices={[
@@ -604,9 +629,7 @@ export function StarterSelects({
         { value: "lte", label: "At most (<=)" },
       ]}
       value={[mode]}
-      onChange={(v) =>
-        set({ [starterKey]: v[0] || value ? `${v[0] ?? ""}:${value}` : null })
-      }
+      onChange={(v) => setMode(v[0] ?? "")}
     />,
     <Selectize
       id={`${p}_num_starters_${side}`}
@@ -619,12 +642,180 @@ export function StarterSelects({
         label: n,
       }))}
       value={[value]}
-      onChange={(v) =>
-        set({ [starterKey]: mode || v[0] ? `${mode}:${v[0] ?? ""}` : null })
-      }
+      onChange={(v) => setValue(v[0] ?? "")}
     />,
   );
 }
+/** One starters filter as one dropdown in words (user 2026-11-22: the sign
+ * and the count mean nothing apart, and >= / <= read like a math problem).
+ * "Any lineup" is no filter; values stay gte:N / lte:N. */
+function starterWords(mode: string, value: string): string | null {
+  if ((mode !== "gte" && mode !== "lte") || !/^[0-5]$/.test(value)) return null;
+  const n = Number(value);
+  if (mode === "gte" && n === 5) return "all 5 starters";
+  if (mode === "lte" && n === 0) return "no starters";
+  return `${mode === "gte" ? "at least" : "at most"} ${n} starter${n === 1 ? "" : "s"}`;
+}
+/** Laid out as Opponent strength is (user 2026-11-22): At least / At most
+ * pills, then the number of starters; picking a pill writes both (3 unless
+ * already chosen), a second press clears it, and the number rests greyed
+ * out while nothing is picked. */
+function StarterChoice({
+  id,
+  label,
+  mode,
+  value,
+  onChange,
+  opponent = false,
+}: {
+  id: string;
+  label: ReactNode;
+  mode: string;
+  value: string;
+  onChange: (v: string | null) => void;
+  /** The opponent's row says so, so the two lines never read the same. */
+  opponent?: boolean;
+}) {
+  const on = mode === "gte" || mode === "lte";
+  const n = value === "" ? 3 : Number(value);
+  const words = starterWords(mode, value);
+  // A hard idea to grasp, so the line spells it out (user 2026-11-22).
+  const line = opponent
+    ? words
+      ? `Opponent lineups with ${words}.`
+      : "Any opponent lineup."
+    : words
+      ? `Lineups with ${words}.`
+      : "Any lineup.";
+  return (
+    <div className="ibpl-opp-strength ibpl-starter">
+      {/* The count sits beside the pills: one row, not two (user). */}
+      <div className="ibpl-starter-row">
+        <PillField
+          id={`${id}_mode`}
+          label={label}
+          toggle
+          options={[
+            { value: "gte", label: "At least" },
+            { value: "lte", label: "At most" },
+          ]}
+          value={[on ? mode : ""]}
+          onChange={(v) => onChange(v[0] ? `${v[0]}:${n}` : null)}
+        />
+        <div className={on ? "" : "is-off"} inert={!on}>
+          <PossStepper
+            id={id}
+            label={<span className="visually-hidden">Number of starters</span>}
+            name="number of starters"
+            min={0}
+            max={5}
+            step={1}
+            value={n}
+            onChange={(v) => onChange(`${mode}:${v}`)}
+          />
+        </div>
+      </div>
+      <p className="ibpl-opp-summary" aria-live="polite">
+        {line}
+      </p>
+    </div>
+  );
+}
+
+const OPP_METRICS = [
+  { value: "off", label: "Offense" },
+  { value: "def", label: "Defense" },
+  { value: "net", label: "Net rating" },
+];
+/** Opponent strength as the one filter it is (user 2026-11-22): the readers
+ * apply it only when side, N and metric are all set, so picking Top or
+ * Bottom writes all three (N 4 and Net rating unless already chosen), a
+ * second press clears all three, and N and metric rest greyed out while it
+ * is off. The line beneath says what is applied. */
+function OppStrength({
+  p,
+  query,
+  set,
+  rankMax,
+  metricDefault,
+}: {
+  p: string;
+  query: Query;
+  set: (patch: Patch) => void;
+  rankMax: number;
+  metricDefault: string;
+}) {
+  const side = query.opp_rank_side ?? "";
+  const n = query.opp_rank_n ?? "";
+  const metric = query.opp_rank_metric || metricDefault;
+  const metricLabel = OPP_METRICS.find((m) => m.value === metric)?.label;
+  const applied = side && n && metric;
+  return (
+    <div className="ibpl-opp-strength">
+      <div className="control-label" aria-hidden="true">
+        Only games against the
+      </div>
+      <div className="ibpl-starter-row">
+        <PillField
+          id={`${p}_opp_rank_side`}
+          label={
+            <span className="visually-hidden">Only games against the</span>
+          }
+          toggle
+          options={[
+            { value: "top", label: "Top" },
+            { value: "bottom", label: "Bottom" },
+          ]}
+          value={[side]}
+          onChange={(v) =>
+            set(
+              v[0]
+                ? {
+                    opp_rank_side: v[0],
+                    opp_rank_n: n || "4",
+                    opp_rank_metric: metric || "net",
+                  }
+                : {
+                    opp_rank_side: null,
+                    opp_rank_n: null,
+                    opp_rank_metric: null,
+                  },
+            )
+          }
+        />
+        <div className={side ? "" : "is-off"} inert={!side}>
+          <PossStepper
+            id={`${p}_opp_rank_n`}
+            label={<span className="visually-hidden">Number of teams</span>}
+            name="number of teams"
+            min={1}
+            max={rankMax}
+            step={1}
+            value={Number(n) || 4}
+            onChange={(v) => set({ opp_rank_n: String(v) })}
+          />
+        </div>
+      </div>
+      <div className={side ? "" : "is-off"} inert={!side}>
+        <PillField
+          id={`${p}_opp_rank_metric`}
+          label="Teams ranked by"
+          options={OPP_METRICS}
+          value={[metric]}
+          onChange={(v) => set({ opp_rank_metric: v[0] ?? null })}
+        />
+      </div>
+      <p className="ibpl-opp-summary" aria-live="polite">
+        {applied
+          ? `Only games against the ${side} ${n} teams by ${metricLabel?.toLowerCase()}.`
+          : side
+            ? "Not applied: pick the number of teams and a metric."
+            : "Every opponent: pick Top or Bottom to narrow."}
+      </p>
+    </div>
+  );
+}
+
 export function StarterRows({
   p,
   query,
@@ -634,12 +825,7 @@ export function StarterRows({
   query: Query;
   set: (patch: Patch) => void;
 }) {
-  const row = (mode: ReactNode, value: ReactNode) => (
-    <div className="row">
-      <div className="col-sm-6">{mode}</div>
-      <div className="col-sm-6">{value}</div>
-    </div>
-  );
+  const row = (mode: ReactNode) => mode;
   return (
     <>
       <StarterSelects
@@ -648,6 +834,7 @@ export function StarterRows({
         set={set}
         starterKey="own_starters"
         wrap={row}
+        pills
       />
       <StarterSelects
         p={p}
@@ -655,6 +842,7 @@ export function StarterRows({
         set={set}
         starterKey="opp_starters"
         wrap={row}
+        pills
       />
     </>
   );
@@ -714,7 +902,10 @@ export function GameFiltersAccordion({
   ) =>
     bare ? (
       <div className="drawer-subgroup" data-value={value}>
-        <div className="drawer-subtitle">{title}</div>
+        {/* The sheet's section already says "Game filters". */}
+        {value !== "Game Filters" && (
+          <div className="drawer-subtitle">{title}</div>
+        )}
         {children}
       </div>
     ) : (
@@ -764,12 +955,12 @@ export function GameFiltersAccordion({
           () => setAccordionOpen((o) => !o),
           `${p}-game-filters`,
           <>
-            <Selectize
+            <PillField
               id={`${p}_${typeKey}`}
               label={euro ? "Phase" : "Game type"}
               multiple
-              placeholder={euro ? "All phases" : "All game types"}
-              choices={typeChoices}
+              allLabel="All"
+              options={typeChoices}
               value={choiceValues(query[typeKey] ?? "", typeChoices)}
               onChange={(v) => set({ [typeKey]: v.join(",") })}
             />
@@ -782,26 +973,22 @@ export function GameFiltersAccordion({
               value={list(query.opponents ?? "")}
               onChange={(v) => set({ opponents: v.join(",") })}
             />
-            <Selectize
+            <PillField
               id={`${p}_home_away`}
               label="Home/Away"
-              formControl={false}
-              placeholder="All"
-              emptyLabel="All"
-              choices={[
+              allLabel="All"
+              options={[
                 { value: "home", label: "Home" },
                 { value: "away", label: "Away" },
               ]}
               value={[query.home_away ?? ""]}
               onChange={(v) => set({ home_away: v[0] ?? null })}
             />
-            <Selectize
+            <PillField
               id={`${p}_outcome`}
               label="Outcome"
-              formControl={false}
-              placeholder="All"
-              emptyLabel="All"
-              choices={[
+              allLabel="All"
+              options={[
                 { value: "win", label: "Win" },
                 { value: "loss", label: "Loss" },
               ]}
@@ -809,23 +996,22 @@ export function GameFiltersAccordion({
               onChange={(v) => set({ outcome: v[0] ?? null })}
             />
             <hr />
-            <div className="row">
-              <div className="col-sm-6">
+            {/* Bottom-aligned: the two labels wrap to different heights. */}
+            <div className="row align-items-end">
+              <div className="col-6">
                 <Selectize
                   id={`${p}_gn_min`}
-                  label={
-                    euro ? "From Round" : tt("From Game Number (GN)", "gn")
-                  }
+                  label={euro ? "From Round" : tt("From GN", "gn")}
                   placeholder="Any"
                   choices={roundChoices}
                   value={[query.min_gn ?? ""]}
                   onChange={(v) => set({ min_gn: v[0] ?? null })}
                 />
               </div>
-              <div className="col-sm-6">
+              <div className="col-6">
                 <Selectize
                   id={`${p}_gn_max`}
-                  label={euro ? "To Round" : tt("To Game Number (GN)", "gn")}
+                  label={euro ? "To Round" : tt("To GN", "gn")}
                   placeholder="Any"
                   choices={roundChoices}
                   value={[query.max_gn ?? ""]}
@@ -851,45 +1037,12 @@ export function GameFiltersAccordion({
             () => setStrengthOpen((o) => !o),
             `${p}-opp-strength`,
             <>
-              <Selectize
-                id={`${p}_opp_rank_side`}
-                label="Top / Bottom"
-                formControl={false}
-                placeholder="Off"
-                emptyLabel="Off"
-                choices={[
-                  { value: "top", label: "Top" },
-                  { value: "bottom", label: "Bottom" },
-                ]}
-                value={[query.opp_rank_side ?? ""]}
-                onChange={(v) => set({ opp_rank_side: v[0] ?? null })}
-              />
-              <Selectize
-                id={`${p}_opp_rank_n`}
-                label="Rank N"
-                formControl={false}
-                placeholder="--"
-                emptyLabel="--"
-                choices={Array.from({ length: rankMax }, (_, i) => ({
-                  value: String(i + 1),
-                  label: String(i + 1),
-                }))}
-                value={[query.opp_rank_n ?? ""]}
-                onChange={(v) => set({ opp_rank_n: v[0] ?? null })}
-              />
-              <Selectize
-                id={`${p}_opp_rank_metric`}
-                label="Metric"
-                formControl={false}
-                placeholder="--"
-                emptyLabel="--"
-                choices={[
-                  { value: "off", label: "Offense" },
-                  { value: "def", label: "Defense" },
-                  { value: "net", label: "Net rating" },
-                ]}
-                value={[query.opp_rank_metric || oppRankMetricDefault]}
-                onChange={(v) => set({ opp_rank_metric: v[0] ?? null })}
+              <OppStrength
+                p={p}
+                query={query}
+                set={set}
+                rankMax={rankMax}
+                metricDefault={oppRankMetricDefault}
               />
             </>,
             "Opponent Strength",
@@ -1110,9 +1263,11 @@ export function contextChips({
       />,
     );
   if (query.opp_rank_side) {
-    let label = `vs ${query.opp_rank_side}`;
+    const side = query.opp_rank_side === "top" ? "Top" : "Bottom";
+    let label = `vs ${side}`;
     if (query.opp_rank_n) label += ` ${query.opp_rank_n}`;
-    if (query.opp_rank_metric) label += ` ${query.opp_rank_metric}`;
+    const metric = OPP_METRICS.find((m) => m.value === query.opp_rank_metric);
+    if (metric) label += ` by ${metric.label.toLowerCase()}`;
     chips.push(
       <Chip
         key="rank"
@@ -1127,8 +1282,9 @@ export function contextChips({
   const sp = (["own_starters", "opp_starters"] as const)
     .map((k) => {
       const [mode = "", value = ""] = (query[k] ?? "").split(":");
-      return mode && value
-        ? `${k === "own_starters" ? "Own" : "Opp"} ${mode === "gte" ? ">=" : "<="}${value}`
+      const words = starterWords(mode, value);
+      return words
+        ? `${k === "own_starters" ? "Own lineup" : "Opponent"}: ${words}`
         : "";
     })
     .filter(Boolean);
@@ -1136,7 +1292,7 @@ export function contextChips({
     chips.push(
       <Chip
         key="st"
-        label={`Starters: ${sp.join(", ")}`}
+        label={sp.join(" · ")}
         onClear={() => set({ own_starters: null, opp_starters: null })}
       />,
     );
@@ -1289,6 +1445,7 @@ export function StatFilters({
             sideOffset={8}
             collisionPadding={8}
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={(e) => onPageScrollbar(e) && e.preventDefault()}
           >
             <div className="ibpl-stat-pop-head">
               <h3>Filter rows by a stat</h3>

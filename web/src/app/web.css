@@ -1167,9 +1167,11 @@ body:has(.filter-drawer[data-state="open"])::after {
   animation: filter-sheet-scrim 200ms ease;
 }
 @keyframes filter-sheet-scrim { from { opacity: 0; } }
-@media (max-width: 767.98px) {
-  body:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
-}
+/* The page stays put while the sheet is open, at every width (user
+   2026-11-22: on desktop the page's scrollbar, beside the panel, was the
+   one people grabbed, and it moved the page). The panel's own bar is then
+   the one at the screen edge. */
+html:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
 @media (min-width: 768px) {
   [data-radix-popper-content-wrapper]:has(> .filter-drawer) { inset: 0 0 0 auto !important; }
   .filter-drawer {
@@ -2432,3 +2434,41 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 .ps-views-row .view-tabs { flex: 1 1 280px; min-width: 0; }
 .ibpl-pill-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
 .ibpl-pill-switch .btn { border-radius: 20px; }
+/* Opponent strength (2026-11-22): one filter; its N and metric rest greyed out while it is off. */
+.ibpl-opp-strength .is-off { opacity: 0.4; }
+.ibpl-opp-strength .poss-stepper { margin-bottom: 10px; }
+.ibpl-opp-summary { margin: 2px 0 6px; font-size: 0.82rem; color: var(--ibpl-text-dim); }
+/* Starters: the count beside the At least / At most pills. */
+.ibpl-starter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; }
+.ibpl-starter-row .ibpl-pill-field, .ibpl-starter-row .ibpl-pill-switch { margin-bottom: 0; }
+/* Shiny sizes every input container to 300px, which pushed the count to a
+   second row; here the field is only as wide as its pills. */
+.ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
+/* A single digit: a compact stepper (user 2026-11-22). */
+.ibpl-starter-row .poss-stepper-box input { width: 24px; }
+.ibpl-starter-row .poss-stepper-box button { width: 26px; }
+/* Filters sheet, compact (user 2026-11-22: too wide, too much blank space).
+   Inputs fill the sheet instead of Shiny's fixed 300px. */
+@media (min-width: 768px) { .filter-drawer { width: 360px; } }
+.filter-drawer .shiny-input-container:not(.shiny-input-container-inline) { width: 100%; }
+.filter-drawer .form-group { margin-bottom: 10px; }
+.filter-drawer .ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
+.filter-drawer hr { margin: 6px 0 10px; }
+/* Starters: "Own [At least][At most] - 3 +" on one line. */
+.ibpl-starter { margin-bottom: 6px; }
+.ibpl-starter .ibpl-pill-field { display: flex; align-items: center; gap: 4px; }
+.ibpl-starter .ibpl-pill-field > .control-label { flex: none; width: 76px; margin: 0; }
+.ibpl-starter .ibpl-pill-switch { margin: 0; flex-wrap: nowrap; }
+.ibpl-starter .ibpl-pill-switch .btn { white-space: nowrap; padding-inline: 7px; }
+.ibpl-starter .ibpl-starter-row { align-items: center; flex-wrap: nowrap; gap: 6px; }
+.ibpl-starter-row .poss-stepper { gap: 0; }
+.ibpl-opp-strength > .control-label { margin-bottom: 4px; }
+.ibpl-starter-row .poss-stepper { margin-bottom: 0; }
+/* The number reads as one more pill of the row: same height, border and
+   fill as the pills beside it, and no stray margin under the pills. */
+.filter-drawer .ibpl-starter-row > .ibpl-pill-field { margin-bottom: 0; }
+.ibpl-starter-row .poss-stepper-box { height: 31px; border-color: var(--ibpl-border); background: transparent; }
+.ibpl-starter-row .poss-stepper-box input { border-inline: 0; }
+/* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
+   overlay bar was invisible on the dark sheet). */
+.filter-drawer { scrollbar-width: auto; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.7) transparent; scrollbar-gutter: stable; }
