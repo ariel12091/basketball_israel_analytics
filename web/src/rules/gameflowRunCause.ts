@@ -49,6 +49,8 @@ export const OREB_WEIGHTS = {
 } as const;
 export const RULE = {
   leadPts: 2.5,
+  /** ...or this share of the run's net margin, when less (user 2026-11-23). */
+  leadShare: 0.2,
   secondPts: 1.5,
   maxP: 0.1,
   minShots: 4,
@@ -248,16 +250,18 @@ const clean = (f: Factor) =>
   f.obs <= RULE.clean.maxTov &&
   f.expected >= RULE.clean.minExpected;
 
-/** The factors a run's line names: led by one worth 2.5+ points and unusual;
- *  then others from 1.5 points, or the run team barely turning it over; at
- *  most three, biggest first. None without a lead. */
-export function namedFactors(factors: Factor[]): Factor[] {
-  const lead = factors.filter((f) => f.pts >= RULE.leadPts && unusual(f));
+/** The factors a run's line names: led by one worth 2.5+ points (or a fifth
+ *  of the run's net margin, when less) and unusual; then others from 1.5
+ *  points (or the lead bar, when lower), or the run team barely turning it
+ *  over; at most three, biggest first. None without a lead. */
+export function namedFactors(factors: Factor[], net = Infinity): Factor[] {
+  const leadBar = Math.min(RULE.leadPts, RULE.leadShare * net),
+    secondBar = Math.min(RULE.secondPts, leadBar);
+  const lead = factors.filter((f) => f.pts >= leadBar && unusual(f));
   if (!lead.length) return [];
   const second = factors.filter(
     (f) =>
-      !lead.includes(f) &&
-      ((f.pts >= RULE.secondPts && unusual(f)) || clean(f)),
+      !lead.includes(f) && ((f.pts >= secondBar && unusual(f)) || clean(f)),
   );
   return [...lead, ...second]
     .slice(0, RULE.maxClauses)

@@ -45,7 +45,7 @@ export function gameflowSummary(
   };
   const runs = detectRuns(model.steps).map((r) => {
     const results = priors
-      ? factorsSentence(namedFactors(runFactors(model.events, r, priors.priors, priors.heights, surname)), names)
+      ? factorsSentence(namedFactors(runFactors(model.events, r, priors.priors, priors.heights, surname), r.net), names)
       : undefined;
     return { ...r, lines: runExplanation(model, r, names, undefined, undefined, results) };
   });

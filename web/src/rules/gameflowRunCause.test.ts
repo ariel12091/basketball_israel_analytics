@@ -195,6 +195,31 @@ describe("namedFactors", () => {
     ).toEqual([]);
     expect(namedFactors([factor({ pts: 4, p: 0.2 })])).toEqual([]);
   });
+  it("lets a smaller factor lead a small run: a fifth of its net margin", () => {
+    // 673's 16-6: Maccabi rebounded 4 of 5 misses, worth 2.4 of a 10-point run.
+    const reb = factor({ kind: "oreb", obs: 4, n: 5, pts: 2.36, p: 0.063 }),
+      second = factor({
+        end: "other",
+        side: "opp",
+        kind: "tov",
+        pts: 1.6,
+        p: 0.05,
+      });
+    expect(namedFactors([reb], 10)).toEqual([reb]);
+    expect(namedFactors([reb])).toEqual([]);
+    expect(namedFactors([reb], 20)).toEqual([]);
+    // The second bar never sits above the lead bar.
+    const small = factor({ kind: "oreb", pts: 1.7, p: 0.04 }),
+      tov = factor({
+        kind: "tov",
+        end: "other",
+        side: "opp",
+        pts: 1.6,
+        p: 0.04,
+      });
+    expect(namedFactors([small, tov], 8)).toEqual([small, tov]);
+    expect(namedFactors([second], 10)).toEqual([]);
+  });
   it("needs four shots for a shooting factor", () => {
     expect(namedFactors([factor({ n: 3, pts: 3, p: 0.05 })])).toEqual([]);
   });
