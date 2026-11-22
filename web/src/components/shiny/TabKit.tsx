@@ -1353,9 +1353,14 @@ export function StatFilters({
   onChange,
   hint,
   extraNote,
+  more = [],
 }: {
   p: string;
   cols: StatCol[];
+  /** Columns another view offers, each group shown after this view's own
+   * (user 2026-11-22: Four Factors filtered by 3P%). The tab's data joins
+   * them in. */
+  more?: { label: string; cols: StatCol[] }[];
   /** Keep labels for active filters whose column is hidden in this mode. */
   labels?: StatCol[];
   groups?: { label: string; cols: string[] }[];
@@ -1369,9 +1374,10 @@ export function StatFilters({
   const [op, setOp] = useState<"ge" | "le">("ge");
   const [value, setValue] = useState("");
   const valueRef = useRef<HTMLInputElement>(null);
+  const offered = [...cols, ...more.flatMap((m) => m.cols)];
   const label = (c: string) =>
-    (labels ?? cols).find((x) => x.col === c)?.label ?? c;
-  const picked = cols.find((x) => x.col === col);
+    (labels ?? offered).find((x) => x.col === c)?.label ?? c;
+  const picked = offered.find((x) => x.col === col);
   const num = Number(value);
   const ready = !!picked && value.trim() !== "" && Number.isFinite(num);
   const add = () => {
@@ -1381,10 +1387,18 @@ export function StatFilters({
     setOp("ge");
     setValue("");
   };
-  const sections = statSections(cols, groups);
+  const sections = [
+    ...statSections(cols, groups),
+    ...more
+      .map((m) => ({
+        label: m.label,
+        cols: m.cols.map((c) => ({ ...c, short: c.label })),
+      }))
+      .filter((m) => m.cols.length),
+  ];
   const pct =
     hint ??
-    (cols.some((c) => c.label.includes("%"))
+    (offered.some((c) => c.label.includes("%"))
       ? "Percent columns: enter as 0-100."
       : undefined);
   return (
