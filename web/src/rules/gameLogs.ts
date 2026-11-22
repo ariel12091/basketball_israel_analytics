@@ -1,6 +1,7 @@
 import { rRound } from "./round";
-import { applyStatFilters } from "./statFilters";
+import { applyStatFilters, needsOtherView, withOtherView } from "./statFilters";
 import catalogues from "../data/catalogues.json";
+import ui from "../data/shinyUi.json";
 export type League = "il" | "euroleague" | "eurocup";
 export type Row = Record<string, string | number | boolean | null>;
 export type IlGameLogRow = Row & {
@@ -444,10 +445,39 @@ export function shotAverages(rows: Row[]) {
   );
 }
 /** app/R/svc_game_logs.R svc_game_logs composition. */
+/** The stat filter's columns for a league and view. EuroLeague has no shot
+ * columns (its feed has no 2/3-point split per lineup) and numbers rounds,
+ * not games. */
+export function gameLogFilterCols(
+  league: League,
+  view: GameLogParams["view"],
+): { label: string; col: string }[] {
+  const cols = ui.statFilterCols[view];
+  if (league === "il") return cols;
+  return cols
+    .filter((c) => !/Shot|fg[23]_/.test(c.col))
+    .map((c) => (c.col === "gn" ? { label: "Rd", col: "round_number" } : c));
+}
+/** The other view a Game Logs request must read for its stat filters, or
+ * null when every filter is the view's own (Israeli league only). */
+export function gameLogsOtherView(
+  p: GameLogParams,
+): GameLogParams["view"] | null {
+  if (p.league !== "il") return null;
+  const other = p.view === "summary" ? "four_factors" : "summary";
+  const cols = (v: GameLogParams["view"]) =>
+    ui.statFilterCols[v].map((c) => c.col);
+  return needsOtherView(p.stat_filters ?? [], cols(p.view), cols(other))
+    ? other
+    : null;
+}
 export function gameLogs(
   input: SeasonInput | Row[],
   scoreless: Row[] | null,
   p: GameLogParams,
+  /** The other view's rows (gameLogs with that view and no stat filters),
+   * read only when a filter names one of its columns (gameLogsOtherView). */
+  otherRows?: Row[],
 ) {
   const data: SeasonInput = Array.isArray(input) ? { rows: input } : input;
   let rows: Row[];
@@ -460,26 +490,37 @@ export function gameLogs(
         total_poss: r.ff_total_poss ?? r.total_poss,
         minutes: r.ff_minutes ?? r.minutes,
       }));
-    const source = p.view === "summary" ? data.rows : ff,
-      build = p.view === "summary" ? buildSummaryMetrics : buildFfMetrics;
-    rows = joinScheduleInfo(
-      attachPercentiles(
-        build(source, filterGames(schedule, p), p.starters),
-        build(source, schedule, undefined, false),
-        p.view === "summary" ? ["off_ppp", "def_ppp", "net_rtg"] : FF_METRICS,
-      ),
-      schedule,
-    );
+    const viewRows = (view: GameLogParams["view"]) => {
+      const source = view === "summary" ? data.rows : ff,
+        build = view === "summary" ? buildSummaryMetrics : buildFfMetrics;
+      return joinScheduleInfo(
+        attachPercentiles(
+          build(source, filterGames(schedule, p), p.starters),
+          build(source, schedule, undefined, false),
+          view === "summary" ? ["off_ppp", "def_ppp", "net_rtg"] : FF_METRICS,
+        ),
+        schedule,
+      );
+    };
+    rows = viewRows(p.view);
+    // A filter on the other view's column (3P% on Four Factors, say): that
+    // view's shown rows, from its own season data, joined by game and team.
+    if (otherRows) rows = withOtherView(rows, otherRows, key);
     rows =
       p.view === "summary"
         ? summaryDisplay(rows, p.stat_filters, scoreless ?? data.scoreless)
         : ffDisplay(rows, p.stat_filters, scoreless ?? data.scoreless);
   } else
+    // Each EuroLeague row carries both views' numbers, so a filter on either
+    // view's column needs no other read (stat filters added 2026-11-22).
     rows = withScores(
-      attachPercentiles(
-        buildEuroGames(filterGames(data.rows, p), p.starters),
-        buildEuroGames(data.rows, undefined, false),
-        FF_METRICS,
+      applyStatFilters(
+        attachPercentiles(
+          buildEuroGames(filterGames(data.rows, p), p.starters),
+          buildEuroGames(data.rows, undefined, false),
+          FF_METRICS,
+        ),
+        p.stat_filters ?? [],
       ),
     );
   return {

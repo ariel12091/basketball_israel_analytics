@@ -8,6 +8,7 @@ import type { League, Row } from "../rules/gameLogs";
 import { needsOtherView, withOtherView } from "../rules/statFilters";
 import ui from "../data/shinyUi.json";
 import { lineupPage, type LineupView } from "../rules/lineups";
+import type { View } from "../rules/onoff";
 import { lineupPageOptions } from "../lib/lineupPageState";
 import {
   onoffPath,
@@ -17,10 +18,16 @@ import {
   teamRatingsPath,
 } from "../lib/tabQuery";
 import { playerStatsTable } from "../lib/pageState/playerStats";
-import { teamRatingsTable } from "../lib/pageState/teamRatings";
 import {
+  teamOtherViews,
+  teamRatingsTable,
+  teamViewQuery,
+} from "../lib/pageState/teamRatings";
+import {
+  onoffOtherViews,
   onoffPageOptions,
   onoffPsPath,
+  onoffViewQuery,
   onoffQueryDefaults,
   onoffTable,
 } from "../lib/pageState/onoff";
@@ -47,8 +54,13 @@ export async function playerStatsPageAnswer(league: League, s: URLSearchParams) 
  * then the page's own table rules run on the full page query. */
 export async function teamRatingsPageAnswer(league: League, s: URLSearchParams) {
   const query = pageQuery(league, s, TEAM_QUERY_DEFAULTS);
-  const api = new URL(teamRatingsPath(league, query), "http://page.local").searchParams;
-  return teamRatingsTable(await teamRatingsAnswer(league, api), query);
+  const api = (q: typeof query) =>
+    new URL(teamRatingsPath(league, q), "http://page.local").searchParams;
+  // Filters on other views' columns read those views too, one at a time.
+  const others = [];
+  for (const v of teamOtherViews(query))
+    others.push((await teamRatingsAnswer(league, api(teamViewQuery(query, v)))).rows);
+  return teamRatingsTable(await teamRatingsAnswer(league, api(query)), query, others);
 }
 /** shape=table: what a freshly opened On/Off link shows. The population is
  * requested exactly as OnOffClient requests it (onoffPath); auto sets the
@@ -61,7 +73,12 @@ export async function onoffPageAnswer(league: League, search: URLSearchParams) {
   const ps = onoffPageOptions(query, answer, true).psFilters.length
     ? await playerStatFrame(parseContext(api(onoffPsPath(league, query)), league))
     : [];
-  return onoffTable(answer, query, ps);
+  // Filters on other views' columns read those views too, one at a time.
+  const view = (answer.meta.view ?? query.view ?? "summary") as View;
+  const others = [];
+  for (const v of onoffOtherViews(league, query, view))
+    others.push(await onoffAnswer(league, api(onoffPath(league, onoffViewQuery(query, v)))));
+  return onoffTable(answer, query, ps, true, others);
 }
 
 /** The Lineups page's table for its full state (lib/tabQuery lineupsPagePath):

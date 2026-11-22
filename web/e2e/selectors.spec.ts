@@ -165,10 +165,15 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
       .poll(() => new URL(page.url()).searchParams.get("last_n"))
       .toBe(null);
 
-    if (!euro) {
-      await page.locator("#gl_stat_filter_add_btn").click();
+    {
+      // EuroLeague Games has the stat filter too since 2026-11-22.
+      await page
+        .locator(`#${euro ? "eurogl" : "gl"}_stat_filter_add_btn`)
+        .click();
       await page.getByRole("button", { name: "Off PPP", exact: true }).click();
-      await page.locator("#gl_stat_filter_value").fill("105");
+      await page
+        .locator(`#${euro ? "eurogl" : "gl"}_stat_filter_value`)
+        .fill("105");
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.locator(".filter-chip.chip-stat")).toHaveText(
         /Off PPP >= 105/,
@@ -176,7 +181,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
       await expect
         .poll(() => new URL(page.url()).searchParams.get("stats"))
         .toBe('[{"col":"off_ppp","op":"ge","value":105}]');
-    } else await expect(page.locator(".filter-chip-add")).toHaveCount(0);
+    }
 
     await page.locator(".chip-clear-all").click();
     await expect

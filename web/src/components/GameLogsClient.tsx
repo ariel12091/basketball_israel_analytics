@@ -6,7 +6,7 @@ import GameflowPanel from "./shiny/GameflowPanel";
 // ui_tab11_euro_gamelogs.R (EuroLeague, EuroCup), with build_filter_chips(),
 // stat_filter_chips_ui() and setup_chip_clears(). The API computes the table
 // (gameLogs()); the shared pieces live in shiny/TabKit.
-import type { League, Row } from "@/rules/gameLogs";
+import { gameLogFilterCols, type League, type Row } from "@/rules/gameLogs";
 import { gameLogsPath } from "@/lib/tabQuery";
 import ui from "@/data/shinyUi.json";
 import Selectize from "./shiny/Selectize";
@@ -26,6 +26,7 @@ import {
   seasonChipLabel,
   StarterRows,
   StatFilters,
+  otherViewGroups,
   TabFrame,
   teamChoices,
   useTabData,
@@ -81,7 +82,7 @@ export default function GameLogsClient({
   const p = euro ? "eurogl" : "gl";
   const { query, set } = useTabQuery(league);
   const view = query.view === "four_factors" ? "four_factors" : "summary";
-  const stats = euro ? [] : parseStats(query.stats);
+  const stats = parseStats(query.stats);
   const bounds = seasonBounds(league, query.season),
     dflt = defaultDates(league, query.season);
   const url = gameLogsPath(league, query);
@@ -256,16 +257,22 @@ export default function GameLogsClient({
               chips={chips}
               activeCount={activeCount}
               extra={
-                !euro && (
-                  <StatFilters
-                    p={p}
-                    cols={ui.statFilterCols[view]}
-                    filters={stats}
-                    onChange={(f) =>
-                      set({ stats: f.length ? JSON.stringify(f) : null })
-                    }
-                  />
-                )
+                <StatFilters
+                  p={p}
+                  cols={gameLogFilterCols(league, view)}
+                  more={otherViewGroups(
+                    {
+                      summary: gameLogFilterCols(league, "summary"),
+                      four_factors: gameLogFilterCols(league, "four_factors"),
+                    },
+                    view,
+                    { summary: "Summary", four_factors: "Four Factors" },
+                  )}
+                  filters={stats}
+                  onChange={(f) =>
+                    set({ stats: f.length ? JSON.stringify(f) : null })
+                  }
+                />
               }
               active={activeCount > 0 || stats.length > 0}
               onClearAll={reset}

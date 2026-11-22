@@ -5,6 +5,7 @@ import type { League, Row } from "../../rules/gameLogs";
 import { autoBars, autoShare, onoffTableRows, type View } from "../../rules/onoff";
 import { applyPlayerStatFilters, type PsRow } from "../../rules/playerStats";
 import { contextParams, parseStats, type Query } from "../tabQuery";
+import { viewsForFilters } from "../../rules/statFilters";
 
 type Payload = {
   rows: Row[];
@@ -65,12 +66,35 @@ export function onoffTable<A extends Payload>(
   query: Query,
   psRows: PsRow[] = [],
   applyAuto = true,
+  others: Payload[] = [],
 ) {
   const o = onoffPageOptions(query, answer, applyAuto);
+  // Other views' rows as that view shows them (no bars, every team).
+  const shown = others.map((a) =>
+    onoffTableRows(
+      { rows: a.rows, league3p: a.league3p ?? null, view: (a.meta.view ?? "summary") as View },
+      { teams: [], minAll: 0, minOn: 0, filters: [] },
+    ),
+  );
   const rows = onoffTableRows(
     { rows: answer.rows, league3p: answer.league3p ?? null, view: o.view },
     { teams: o.teams, minAll: o.minAll, minOn: o.minOn, filters: o.filters },
     o.psFilters.length ? (r) => applyPlayerStatFilters(r, psRows, o.psFilters) : undefined,
+    shown,
   );
   return { ...answer, rows, meta: { ...answer.meta, shape: "table" as const } };
 }
+
+/** The views a league's On/Off page offers (no Shot Profile for EuroLeague). */
+export const onoffViews = (league: League): View[] =>
+  league === "il" ? ["summary", "four_factors", "shot_profile"] : ["summary", "four_factors"];
+/** The other views whose columns the stat filters name; the page reads each
+ * for the same context (onoffPath with that view). */
+export function onoffOtherViews(league: League, query: Query, view: View): View[] {
+  const cols = Object.fromEntries(
+    onoffViews(league).map((v) => [v, ui.onoffStatFilterCols[v].map((c) => c.col)]),
+  ) as Record<View, string[]>;
+  return viewsForFilters(parseStats(query.stats ?? ""), cols, view);
+}
+/** The same query on another view. */
+export const onoffViewQuery = (query: Query, view: View): Query => ({ ...query, view });

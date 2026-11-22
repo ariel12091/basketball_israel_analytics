@@ -15,9 +15,11 @@ import {
 import { onoffPath } from "@/lib/tabQuery";
 import {
   onoffAutoBase,
+  onoffOtherViews,
   onoffPsPath,
   onoffQueryDefaults,
   onoffTable,
+  onoffViewQuery,
 } from "@/lib/pageState/onoff";
 import { type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
@@ -46,6 +48,7 @@ import {
   seasonChipLabel,
   StarterRows,
   StatFilters,
+  otherViewGroups,
   TabFrame,
   teamChoices,
   tt,
@@ -210,6 +213,19 @@ export default function OnOffClient({
   const ps = useTabData<{ rows: PsRow[]; meta: { version: string } }>(psUrl);
   const psError = psFilters.length > 0 && Boolean(ps.error);
 
+  // Filters on another view's columns read that view for the same context
+  // (at most two others; a fixed number of hooks).
+  const otherViews = onoffOtherViews(league, query, view);
+  const otherUrl = (i: number) =>
+    otherViews[i]
+      ? onoffPath(league, onoffViewQuery(query, otherViews[i]))
+      : null;
+  const o0 = useTabData<Payload>(otherUrl(0)),
+    o1 = useTabData<Payload>(otherUrl(1));
+  const others = [o0, o1].slice(0, otherViews.length);
+  const othersLoading = others.some((o) => o.loading || !o.data);
+  const othersError = others.find((o) => o.error)?.error ?? "";
+
   // The same table the API's shape=table serves; auto off here because
   // useAutoMin has already written its bars into the query.
   const rows = useMemo(
@@ -223,6 +239,7 @@ export default function OnOffClient({
         query,
         ps.data?.rows ?? [],
         false,
+        others.flatMap((o) => (o.data ? [o.data] : [])),
       ).rows,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -234,6 +251,8 @@ export default function OnOffClient({
       query.stats,
       data?.league3p,
       ps.data,
+      o0.data,
+      o1.data,
     ],
   );
 
@@ -251,9 +270,11 @@ export default function OnOffClient({
   }, [notice]);
   const changeView = (label: string) => {
     const next = LABEL_VIEW[label];
+    // Every view's columns can be filtered from any view (user 2026-11-22),
+    // so a switch keeps them all; the notice stays for any other column.
     const offered = new Set(
       [
-        ...ui.onoffStatFilterCols[next],
+        ...views.flatMap((v) => ui.onoffStatFilterCols[v]),
         ...ui.onoffStatFilterCols.player_stats,
       ].map((c) => c.col),
     );
@@ -329,6 +350,13 @@ export default function OnOffClient({
       p={p}
       cols={statCols}
       groups={statGroups(statCols)}
+      more={otherViewGroups(
+        Object.fromEntries(
+          views.map((v) => [v, ui.onoffStatFilterCols[v]]),
+        ) as Record<View, { label: string; col: string }[]>,
+        view,
+        VIEW_LABEL,
+      )}
       filters={allStats}
       hint={psNote}
       onChange={(f: StatFilter[]) =>
@@ -528,9 +556,14 @@ export default function OnOffClient({
           </div>
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}
-            loading={loading || (psFilters.length > 0 && ps.loading)}
-            error={error}
-            retry={retry}
+            loading={
+              loading || (psFilters.length > 0 && ps.loading) || othersLoading
+            }
+            error={error || othersError}
+            retry={() => {
+              retry();
+              others.forEach((o) => o.error && o.retry());
+            }}
             onClear={reset}
           >
             {psError ? (

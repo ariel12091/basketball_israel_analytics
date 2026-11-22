@@ -1301,6 +1301,34 @@ export function contextChips({
 
 type StatCol = { label: string; col: string };
 type StatSection = { label: string; cols: (StatCol & { short: string })[] };
+/** The stat popover's "From <view>" groups: each other view's columns that
+ * neither this view nor an earlier group offers (user 2026-11-22: filter
+ * one view by another's columns). No repeated labels either (user): a
+ * column whose label is already on show is left out, and so is a plain one
+ * ("eFG%") whose "Off" twin is (Teams' Traditional eFG% = Four Factors'
+ * Off eFG%, checked on 2025-26). Off and Def columns are never dropped. */
+export function otherViewGroups<V extends string>(
+  cols: Record<V, StatCol[]>,
+  view: V,
+  labels: Record<V, string>,
+): { label: string; cols: StatCol[] }[] {
+  const seen = new Set(cols[view].flatMap((c) => [c.col, c.label]));
+  const repeated = (c: StatCol) =>
+    seen.has(c.col) ||
+    seen.has(c.label) ||
+    (!/^(Off|Def) /.test(c.label) && seen.has(`Off ${c.label}`));
+  return (Object.keys(cols) as V[])
+    .filter((v) => v !== view)
+    .map((v) => {
+      const own = cols[v].filter((c) => !repeated(c));
+      own.forEach((c) => {
+        seen.add(c.col);
+        seen.add(c.label);
+      });
+      return { label: `From ${labels[v]}`, cols: own };
+    })
+    .filter((g) => g.cols.length);
+}
 /** The stat popover's chip groups: the tab's own groups when it has them,
  * else General / Offense / Defense from the "Off " / "Def " label prefixes
  * (the prefix then drops from the chip, the group says it). A tab with no
@@ -1437,7 +1465,7 @@ export function StatFilters({
               most, value. */}
           <Popover.Content
             id={`${p}_stat_filter_pop`}
-            className="ibpl-stat-pop"
+            className={`ibpl-stat-pop${offered.length > 40 ? " is-wide" : ""}`}
             role="dialog"
             aria-label="Add stat filter"
             side="bottom"

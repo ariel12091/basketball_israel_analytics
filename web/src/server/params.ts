@@ -32,6 +32,7 @@ function list(search: URLSearchParams, name: string): string[] {
 }
 export const FILTER_COLUMNS = [
   "gn",
+  "round_number",
   "minutes",
   "off_ppp",
   "def_ppp",
@@ -157,6 +158,6 @@ export function parseParams(
     outcome,
     starters,
     gn,
-    stat_filters: league === "il" ? filters : [],
+    stat_filters: filters,
   };
 }

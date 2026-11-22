@@ -135,7 +135,6 @@ export function gameLogsPath(league: League, query: Query): string {
   for (const k of ["opp_rank_side", "opp_rank_n", "opp_rank_metric"])
     q.delete(k);
   if (league === "il") q.delete("teams");
-  else q.delete("stats");
   return `/api/v1/${league}/game-logs?${q}`;
 }
 

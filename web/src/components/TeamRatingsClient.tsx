@@ -34,6 +34,7 @@ import {
   seasonChipLabel,
   StarterRows,
   StatFilters,
+  otherViewGroups,
   TabFrame,
   teamChoices,
   useTabData,
@@ -61,7 +62,12 @@ const LABELS: Record<TeamView, string> = {
   shot_profile: "Shot Profile",
   traditional: "Traditional",
 };
-import { teamRatingsPageOptions } from "@/lib/pageState/teamRatings";
+import {
+  teamOtherViews,
+  teamRatingsPageOptions,
+  teamViewQuery,
+  teamWithOtherViews,
+} from "@/lib/pageState/teamRatings";
 export default function TeamRatingsClient({
   league,
   initial,
@@ -81,17 +87,45 @@ export default function TeamRatingsClient({
       initial,
     ),
     updated = useVersion(league, version, retry);
+  // Filters on another view's columns read that view for the same context
+  // (at most three others; a fixed number of hooks).
+  const otherViews = euro ? [] : teamOtherViews(query);
+  const otherUrl = (i: number) =>
+    otherViews[i]
+      ? teamRatingsPath(league, teamViewQuery(query, otherViews[i]))
+      : null;
+  const o0 = useTabData<Payload>(otherUrl(0)),
+    o1 = useTabData<Payload>(otherUrl(1)),
+    o2 = useTabData<Payload>(otherUrl(2));
+  const others = [o0, o1, o2].slice(0, otherViews.length);
+  const othersLoading = others.some((o) => o.loading || !o.data);
+  const othersError = others.find((o) => o.error)?.error ?? "";
   const rows = useMemo(
     () =>
-      teamTableRows(
-        data?.rows ?? EMPTY,
-        data?.previous ?? EMPTY,
-        view,
-        filters,
-        data?.meta.showDelta ?? false,
-        options.defense,
-      ),
-    [data, view, filters, options.defense],
+      othersLoading
+        ? EMPTY
+        : teamTableRows(
+            teamWithOtherViews(
+              data?.rows ?? EMPTY,
+              others.map((o) => o.data?.rows ?? EMPTY),
+            ),
+            data?.previous ?? EMPTY,
+            view,
+            filters,
+            data?.meta.showDelta ?? false,
+            options.defense,
+          ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      data,
+      view,
+      filters,
+      options.defense,
+      othersLoading,
+      o0.data,
+      o1.data,
+      o2.data,
+    ],
   );
   const teams = teamChoices(league, query.season, data?.meta.teams),
     bounds = seasonBounds(league, query.season),
@@ -255,6 +289,7 @@ export default function TeamRatingsClient({
                 <StatFilters
                   p={p}
                   cols={ui.teamStatFilterCols[view]}
+                  more={otherViewGroups(ui.teamStatFilterCols, view, LABELS)}
                   filters={filters}
                   onChange={(f) =>
                     set({ stats: f.length ? JSON.stringify(f) : null })
@@ -318,9 +353,12 @@ export default function TeamRatingsClient({
           </div>
           <OutputArea
             id={euro ? "euroteam_table" : "tr_table"}
-            loading={loading}
-            error={error}
-            retry={retry}
+            loading={loading || othersLoading}
+            error={error || othersError}
+            retry={() => {
+              retry();
+              others.forEach((o) => o.error && o.retry());
+            }}
             onClear={reset}
           >
             {data ? (
