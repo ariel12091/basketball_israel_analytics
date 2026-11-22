@@ -611,6 +611,7 @@ export function StarterSelects({
       <StarterChoice
         id={`${p}_num_starters_${side}`}
         label={tt(own ? "Own" : "Opponent", starterKey)}
+        opponent={!own}
         mode={mode}
         value={value}
         onChange={(v) => set({ [starterKey]: v })}
@@ -665,18 +666,27 @@ function StarterChoice({
   mode,
   value,
   onChange,
+  opponent = false,
 }: {
   id: string;
   label: ReactNode;
   mode: string;
   value: string;
   onChange: (v: string | null) => void;
+  /** The opponent's row says so, so the two lines never read the same. */
+  opponent?: boolean;
 }) {
   const on = mode === "gte" || mode === "lte";
   const n = value === "" ? 3 : Number(value);
   const words = starterWords(mode, value);
   // A hard idea to grasp, so the line spells it out (user 2026-11-22).
-  const line = words ? `Lineups with ${words}.` : "Any lineup.";
+  const line = opponent
+    ? words
+      ? `Opponent lineups with ${words}.`
+      : "Any opponent lineup."
+    : words
+      ? `Lineups with ${words}.`
+      : "Any lineup.";
   return (
     <div className="ibpl-opp-strength ibpl-starter">
       {/* The count sits beside the pills: one row, not two (user). */}
