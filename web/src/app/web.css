@@ -525,6 +525,20 @@ body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-conten
 .ibpl-gameflow-back:hover { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 .ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 a.ibpl-gameflow-back { text-decoration: none; }
+/* The game as a scoreboard (user 2026-11-22): teams in club colours around
+   the final score, the date under them. Phones: its own row under Back;
+   wider: centred on the row, Back at its left. */
+.ibpl-react-gameflow-panel .gf-title { flex: 1 1 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.gf-title strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 1.05rem; line-height: 1.25; }
+.gf-title-score { color: var(--ibpl-text); font-family: var(--ibpl-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gf-title-vs { color: var(--ibpl-text-muted); font-weight: 400; }
+.gf-title-date { color: var(--ibpl-text-muted); font-size: 0.78rem; }
+@media (min-width: 768px) {
+  .ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: grid; grid-template-columns: 1fr auto 1fr; }
+  .ibpl-react-gameflow-panel .ibpl-ribbon-inline-head > :first-child:not(.gf-title) { justify-self: start; }
+  .ibpl-react-gameflow-panel .gf-title { grid-column: 2; align-items: center; text-align: center; }
+  .gf-title strong { justify-content: center; }
+}
 /* Wide screens: the chart fits the window (useFittedLayout), so the controls
    above it share one short row. */
 @media (min-width: 992px) {

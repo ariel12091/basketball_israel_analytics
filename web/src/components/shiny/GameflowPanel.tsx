@@ -1015,6 +1015,20 @@ function PhonePanel({
     </section>
   );
 }
+/** "Sun, Mar 15, 2026" from the schedule's "2026-03-15" (a calendar date,
+ * so read in UTC: no time zone may move it a day). */
+function gameDateLabel(iso: string) {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+}
 /** A run's explanation after its headline: each team's lineups, the results,
  * then the estimated cause. "Team: what happened" / "Estimated cause: ...":
  * the part before the colon is set apart; the text itself is unchanged. */
@@ -1703,7 +1717,28 @@ export function GameflowSurface({
           </button>
         )}
         {backLink}
-        <strong>{data ? withTeams(title, data.meta) : title}</strong>
+        {/* The game as a scoreboard, mid-row (user 2026-11-22): each team
+            in its club colour with its final score, the date under them. */}
+        <div className="gf-title">
+          {data ? (
+            <strong>
+              <span className="gf-team is-own">{data.meta.ownTeam}</span>
+              {data.meta.ownScore != null && data.meta.oppScore != null ? (
+                <span className="gf-title-score">
+                  {data.meta.ownScore} – {data.meta.oppScore}
+                </span>
+              ) : (
+                <span className="gf-title-vs">vs</span>
+              )}
+              <span className="gf-team is-opp">{data.meta.oppTeam}</span>
+            </strong>
+          ) : (
+            <strong>{title}</strong>
+          )}
+          {data?.meta.gameDate && (
+            <span className="gf-title-date">{gameDateLabel(data.meta.gameDate)}</span>
+          )}
+        </div>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>
     </section>

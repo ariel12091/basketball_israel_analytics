@@ -24,7 +24,7 @@ async function read(league: League, game: number, team: number) {
     const euro = league !== "il",
       meta = (
         await q<Row>(
-          `SELECT team_name,opp_team_name,opp_team_id,game_year FROM ${euro ? "euroleague" : "basketball_test"}.final_schedule_mv WHERE game_id=$1::int4 AND team_id=$2::int4${euro ? " AND competition=$3::text" : ""} LIMIT 1`,
+          `SELECT team_name,opp_team_name,opp_team_id,game_year,game_date::text AS game_date,${euro ? "team_points AS team_score,opp_points AS opp_score" : "team_score,opp_score"} FROM ${euro ? "euroleague" : "basketball_test"}.final_schedule_mv WHERE game_id=$1::int4 AND team_id=$2::int4${euro ? " AND competition=$3::text" : ""} LIMIT 1`,
           euro ? [game, team, league === "eurocup" ? "U" : "E"] : [game, team],
         )
       )[0];
@@ -95,6 +95,10 @@ async function read(league: League, game: number, team: number) {
         season: String(meta.game_year),
         ownTeam,
         oppTeam,
+        // The header's final score and date (the schedule's, as Game Logs).
+        gameDate: meta.game_date == null ? null : String(meta.game_date),
+        ownScore: meta.team_score == null ? null : Number(meta.team_score),
+        oppScore: meta.opp_score == null ? null : Number(meta.opp_score),
         ...(identity.has(team) ? { ownIdentity: identity.get(team) } : {}),
         ...(identity.has(oppId) ? { oppIdentity: identity.get(oppId) } : {}),
         ...(ownTeamHe ? { ownTeamHe } : {}),
