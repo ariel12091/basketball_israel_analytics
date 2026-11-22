@@ -148,12 +148,11 @@ export function GameflowView({
     // A swipe across the quarter, and a tap that only closes the run
     // details, must not also count as a tap on the bar under them.
     swallowTap = useRef(false),
-    // Scoring runs (shared_definitions.md, Gameflow run) and the open tip.
+    // Scoring runs (shared_definitions.md, Gameflow run) and the hover tip.
     runs = data.runs,
     [runTip, setRunTip] = useState<{
       run: ExplainedRun;
       box: DOMRect;
-      pinned: boolean;
     } | null>(null);
   const detail = useRef<HTMLElement>(null),
     chartBox = useRef<HTMLDivElement>(null),
@@ -281,19 +280,6 @@ export function GameflowView({
     addEventListener("pointerdown", close, true);
     return () => removeEventListener("pointerdown", close, true);
   }, [detailsOpen]);
-  // A tapped run tip is placed once: touching anywhere else (which is also
-  // how a touch scroll starts) closes it. Not on scroll events: layout can
-  // scroll the page right after the tap.
-  const pinnedTip = runTip?.pinned ?? false;
-  useEffect(() => {
-    if (!pinnedTip) return;
-    const close = (e: PointerEvent) => {
-      if ((e.target as Element).closest?.(".gf-run-chip, .gf-run-tip")) return;
-      setRunTip(null);
-    };
-    addEventListener("pointerdown", close);
-    return () => removeEventListener("pointerdown", close);
-  }, [pinnedTip]);
   // Before paint, whenever what is listed can change.
   useLayoutEffect(() => {
     const el = lineupsBox.current;
@@ -347,22 +333,21 @@ export function GameflowView({
         return;
       }
       const tipRun = r as ExplainedRun | null;
-      // A tap on a chip also lists the run's lineups, as a click on its band
-      // does (user 2026-11-17), and pins its tip; a second tap closes both.
+      // A tap on a chip lists the run's lineups, as a click on its band does
+      // (user 2026-11-17); its explanation sits beside them, in the room under
+      // the chart, never pinned over the bars (user 2026-11-22). A second
+      // tap closes it.
       if (how === "tap") {
-        const open =
-          tipRun != null &&
-          !(run && run.side === tipRun.side && run.start === tipRun.start);
         if (tipRun) selectRun(tipRun);
         else if (run) clear();
-        setRunTip(open ? { run: tipRun, box: box!, pinned: true } : null);
+        setRunTip(null);
         return;
       }
-      // A pointer shows the tip while resting and leaves a pinned one alone.
-      setRunTip((tip) => {
-        if (tip?.pinned) return tip;
-        return tipRun && box ? { run: tipRun, box, pinned: false } : null;
-      });
+      // A pointer shows the tip while resting, but not over the open run:
+      // its explanation is already on screen.
+      const isOpen =
+        tipRun != null && run != null && run.side === tipRun.side && run.start === tipRun.start;
+      setRunTip(tipRun && box && !isOpen ? { run: tipRun, box } : null);
     },
   };
   const prompt = run
@@ -958,27 +943,7 @@ function PhonePanel({
             Show on timeline ›
           </button>
         </div>
-        {run.lines.slice(1).map((line, i, rest) => {
-          // "Team: what happened" / "Estimated cause: ...": the part before
-          // the colon is set apart; the text itself is unchanged.
-          const cut = line.indexOf(": "),
-            cause = i === rest.length - 1;
-          return (
-            <p
-              key={line}
-              className={`gf-run-tip-line${cause ? " is-cause" : ""}`}
-            >
-              {cut > 0 ? (
-                <>
-                  <b className="gf-run-tip-lead">{line.slice(0, cut)}</b>
-                  {line.slice(cut)}
-                </>
-              ) : (
-                line
-              )}
-            </p>
-          );
-        })}
+        <RunLines lines={run.lines.slice(1)} />
         {list}
       </>
     );
@@ -1049,6 +1014,27 @@ function PhonePanel({
       {open && <div className="gf-m-panel-body">{body}</div>}
     </section>
   );
+}
+/** A run's explanation after its headline: each team's lineups, the results,
+ * then the estimated cause. "Team: what happened" / "Estimated cause: ...":
+ * the part before the colon is set apart; the text itself is unchanged. */
+function RunLines({ lines }: { lines: string[] }) {
+  return lines.map((line, i) => {
+    const cut = line.indexOf(": "),
+      cause = i === lines.length - 1;
+    return (
+      <p key={line} className={`gf-run-tip-line${cause ? " is-cause" : ""}`}>
+        {cut > 0 ? (
+          <>
+            <b className="gf-run-tip-lead">{line.slice(0, cut)}</b>
+            {line.slice(cut)}
+          </>
+        ) : (
+          line
+        )}
+      </p>
+    );
+  });
 }
 /** A listed lineup's ratings over its windows, from the five's credited
  * events; null when the reader returned none. */
@@ -1560,6 +1546,16 @@ function GameflowDetails({
               Show all {groups.length} lineups
             </button>
           )}
+        </section>
+      )}
+      {/* Wide: why the run happened, beside its lineups (user 2026-11-22:
+          the pinned tip covered the bars). Phones show it in their panel. */}
+      {run && !compact && (run as ExplainedRun).lines?.length > 1 && (
+        <section className="ibpl-ribbon-detail gf-run-why" aria-label="Run explanation">
+          <div className="ibpl-ribbon-detail-head">
+            {(run as ExplainedRun).lines[0]}
+          </div>
+          <RunLines lines={(run as ExplainedRun).lines.slice(1)} />
         </section>
       )}
     </>

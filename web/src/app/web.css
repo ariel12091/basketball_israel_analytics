@@ -1542,11 +1542,21 @@ html[data-theme="light"] .ibpl-react-gameflow, html[data-theme="light"] .ibpl-re
 .ibpl-gameflow-rtg-toggle button:hover:not(.is-on) { background: var(--ibpl-surface-2); color: var(--ibpl-text); }
 .ibpl-gameflow-rtg-toggle button.is-on { border: 0; }
 
-/* Phone run panel: each team's line leads with the team in bold; the
-   estimated cause sits in a box of its own, upright and readable. */
+/* Run explanation (phone panel, and beside the run's lineups when wide):
+   each team's line leads with the team in bold; the estimated cause sits in
+   a box of its own, upright and readable. */
 .gf-run-tip-lead { color: var(--ibpl-text); font-weight: 700; }
-.gf-m-panel-body .gf-run-tip-line { line-height: 1.45; color: var(--ibpl-text-body); }
-.gf-m-panel-body .gf-run-tip-line.is-cause {
+.gf-m-panel-body .gf-run-tip-line,
+.gf-run-why .gf-run-tip-line { line-height: 1.45; color: var(--ibpl-text-body); }
+.gf-run-why .gf-run-tip-line { margin: 0 0 6px; font-size: 0.8125rem; }
+.gf-run-why .gf-run-tip-line:last-child { margin-bottom: 0; }
+/* Wide: a column at the right of the run's lineups, in the room they leave. */
+.gf-details .gf-run-why { flex: 0 0 380px; width: 380px; align-self: flex-start;
+  max-height: inherit; overflow-y: auto; padding: 10px 12px; border-radius: 10px; }
+.gf-run-why > .ibpl-ribbon-detail-head { margin: 0 0 8px; color: var(--ibpl-text);
+  font-size: 0.8125rem; font-weight: 700; }
+.gf-m-panel-body .gf-run-tip-line.is-cause,
+.gf-run-why .gf-run-tip-line.is-cause {
   padding: 8px 10px;
   border: 1px solid var(--ibpl-border);
   border-left: 3px solid var(--ibpl-text-dim);
@@ -1556,7 +1566,8 @@ html[data-theme="light"] .ibpl-react-gameflow, html[data-theme="light"] .ibpl-re
   font-size: 0.78rem;
   font-style: normal;
 }
-.gf-m-panel-body .gf-run-tip-line.is-cause .gf-run-tip-lead {
+.gf-m-panel-body .gf-run-tip-line.is-cause .gf-run-tip-lead,
+.gf-run-why .gf-run-tip-line.is-cause .gf-run-tip-lead {
   color: var(--ibpl-text-dim);
   font-size: 0.68rem;
   letter-spacing: 0.06em;
