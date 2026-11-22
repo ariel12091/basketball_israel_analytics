@@ -2432,9 +2432,6 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 .ps-views-row .view-tabs { flex: 1 1 280px; min-width: 0; }
 .ibpl-pill-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
 .ibpl-pill-switch .btn { border-radius: 20px; }
-/* Lineup starters (2026-11-22): the sign, a divider, then the count. */
-.ibpl-starter-sign { display: inline-flex; gap: 6px; padding-right: 8px; margin-right: 2px; border-right: 1px solid var(--ibpl-border); }
-.ibpl-starter-pills .btn { min-width: 34px; }
 /* Opponent strength (2026-11-22): one filter; its N and metric rest greyed out while it is off. */
 .ibpl-opp-strength .is-off { opacity: 0.4; }
 .ibpl-opp-strength .poss-stepper { margin-bottom: 10px; }

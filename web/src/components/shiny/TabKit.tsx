@@ -591,8 +591,8 @@ export function StarterSelects({
   starterKey: "own_starters" | "opp_starters";
   /** Lays out the mode select and the value select. */
   wrap: (mode: ReactNode, value: ReactNode) => ReactNode;
-  /** Pills instead of dropdowns (the tabs' Filters sheet; Compare's narrow
-   * A/B cells keep the dropdowns). */
+  /** One worded dropdown for sign and count (the tabs' Filters sheet);
+   * Compare's A/B grid keeps its two dropdowns. */
   pills?: boolean;
 }) {
   const [mode = "", value = ""] = (query[starterKey] ?? "").split(":");
@@ -608,7 +608,7 @@ export function StarterSelects({
     set({ [starterKey]: mode || v ? `${mode}:${v}` : null });
   if (pills)
     return (
-      <StarterPills
+      <StarterChoice
         id={`${p}_num_starters_${side}`}
         label={label}
         mode={mode}
@@ -645,11 +645,22 @@ export function StarterSelects({
     />,
   );
 }
-/** One starters filter as one row (user 2026-11-22: the sign and the count
- * mean nothing apart): a >= / <= switch, then 0-5. No count picked = no
- * filter; a press on the picked count clears it; flipping the sign keeps the
- * count. The sign alone is kept here until a count is picked. */
-function StarterPills({
+/** One starters filter as one dropdown in words (user 2026-11-22: the sign
+ * and the count mean nothing apart, and >= / <= read like a math problem).
+ * "Any lineup" is no filter; values stay gte:N / lte:N. */
+const STARTER_CHOICES: Choice[] = [
+  { value: "gte:5", label: "All 5 starters" },
+  ...[4, 3, 2, 1].map((n) => ({
+    value: `gte:${n}`,
+    label: `At least ${n} starter${n > 1 ? "s" : ""}`,
+  })),
+  ...[4, 3, 2, 1].map((n) => ({
+    value: `lte:${n}`,
+    label: `At most ${n} starter${n > 1 ? "s" : ""}`,
+  })),
+  { value: "lte:0", label: "No starters" },
+];
+function StarterChoice({
   id,
   label,
   mode,
@@ -662,56 +673,18 @@ function StarterPills({
   value: string;
   onChange: (v: string | null) => void;
 }) {
-  const [sign, setSign] = useState(mode === "lte" ? "lte" : "gte");
-  const shown = value ? (mode === "lte" ? "lte" : "gte") : sign;
-  const pill = (on: boolean) =>
-    `btn btn-sm ${on ? "btn-warning" : "btn-outline-secondary"}`;
+  const current = mode && value ? `${mode}:${value}` : "";
   return (
-    <div className="form-group shiny-input-container ibpl-pill-field" id={id}>
-      <div className="control-label" id={`${id}-label`}>
-        {label}
-      </div>
-      <div
-        className="ibpl-pill-switch ibpl-starter-pills"
-        role="group"
-        aria-labelledby={`${id}-label`}
-      >
-        <span className="ibpl-starter-sign" role="group" aria-label="Sign">
-          {(
-            [
-              ["gte", "≥", "At least"],
-              ["lte", "≤", "At most"],
-            ] as const
-          ).map(([m, text, title]) => (
-            <button
-              key={m}
-              type="button"
-              title={title}
-              aria-label={title}
-              aria-pressed={shown === m}
-              className={pill(shown === m)}
-              onClick={() => {
-                setSign(m);
-                if (value) onChange(`${m}:${value}`);
-              }}
-            >
-              {text}
-            </button>
-          ))}
-        </span>
-        {["0", "1", "2", "3", "4", "5"].map((n) => (
-          <button
-            key={n}
-            type="button"
-            aria-pressed={value === n}
-            className={pill(value === n)}
-            onClick={() => onChange(value === n ? null : `${shown}:${n}`)}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Selectize
+      id={id}
+      formControl={false}
+      label={label}
+      placeholder="Any lineup"
+      emptyLabel="Any lineup"
+      choices={STARTER_CHOICES}
+      value={[current]}
+      onChange={(v) => onChange(v[0] || null)}
+    />
   );
 }
 
@@ -794,7 +767,7 @@ function OppStrength({
           ? `Only games against the ${side} ${n} teams by ${metricLabel?.toLowerCase()}.`
           : side
             ? "Not applied: pick the number of teams and a metric."
-            : "Off: games against every opponent."}
+            : "Every opponent: pick Top or Bottom to narrow."}
       </p>
     </div>
   );
@@ -1265,8 +1238,11 @@ export function contextChips({
   const sp = (["own_starters", "opp_starters"] as const)
     .map((k) => {
       const [mode = "", value = ""] = (query[k] ?? "").split(":");
-      return mode && value
-        ? `${k === "own_starters" ? "Own" : "Opp"} ${mode === "gte" ? ">=" : "<="}${value}`
+      const choice = STARTER_CHOICES.find(
+        (c) => c.value === `${mode}:${value}`,
+      );
+      return choice
+        ? `${k === "own_starters" ? "Own lineup" : "Opponent"}: ${choice.label.toLowerCase()}`
         : "";
     })
     .filter(Boolean);
@@ -1274,7 +1250,7 @@ export function contextChips({
     chips.push(
       <Chip
         key="st"
-        label={`Starters: ${sp.join(", ")}`}
+        label={sp.join(" · ")}
         onClear={() => set({ own_starters: null, opp_starters: null })}
       />,
     );
