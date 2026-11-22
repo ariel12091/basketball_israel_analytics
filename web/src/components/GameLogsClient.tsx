@@ -26,6 +26,7 @@ import {
   seasonChipLabel,
   StarterRows,
   StatFilters,
+  otherViewGroups,
   TabFrame,
   teamChoices,
   useTabData,
@@ -260,6 +261,10 @@ export default function GameLogsClient({
                   <StatFilters
                     p={p}
                     cols={ui.statFilterCols[view]}
+                    more={otherViewGroups(ui.statFilterCols, view, {
+                      summary: "Summary",
+                      four_factors: "Four Factors",
+                    })}
                     filters={stats}
                     onChange={(f) =>
                       set({ stats: f.length ? JSON.stringify(f) : null })

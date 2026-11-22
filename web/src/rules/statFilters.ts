@@ -8,6 +8,24 @@ export function needsOtherView(
 ): boolean {
   return filters.some((f) => !own.includes(f.col) && other.includes(f.col));
 }
+/** The other views a page must read for its stat filters: for each filter on
+ * a column this view lacks, the first other view (in `cols` order) that
+ * offers it. Empty when every filter is the view's own. */
+export function viewsForFilters<V extends string>(
+  filters: StatFilter[],
+  cols: Record<V, string[]>,
+  view: V,
+): V[] {
+  const out: V[] = [];
+  for (const f of filters) {
+    if (cols[view].includes(f.col)) continue;
+    const v = (Object.keys(cols) as V[]).find(
+      (k) => k !== view && cols[k].includes(f.col),
+    );
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
 /** Each row gains the fields it lacks from the other view's row with the
  * same key, so a stat filter can read them; its own fields never change. A
  * row with no match gains nothing, and a filter on a missing value fails it

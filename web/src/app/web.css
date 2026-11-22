@@ -1814,12 +1814,15 @@ table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(
 .ibpl-stat-pop {
   z-index: 1070; display: flex; flex-direction: column;
   width: min(440px, calc(100vw - 16px));
-  max-height: min(560px, var(--radix-popover-content-available-height, 80vh));
+  max-height: var(--radix-popover-content-available-height, 85vh);
   background: var(--ibpl-surface); color: var(--ibpl-text);
   border: 1px solid var(--ibpl-border); border-radius: 14px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); overflow: hidden;
 }
 .ibpl-stat-pop[data-state="closed"] { display: none; }
+/* Many columns (Teams lists four views' worth): wider, so every chip shows
+   without scrolling on a desktop screen. */
+.ibpl-stat-pop.is-wide { width: min(640px, calc(100vw - 16px)); }
 .ibpl-stat-pop-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px 16px; }
 .ibpl-stat-pop-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--ibpl-text); }
 .ibpl-stat-pop-x {

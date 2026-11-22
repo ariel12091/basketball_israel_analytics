@@ -1301,6 +1301,24 @@ export function contextChips({
 
 type StatCol = { label: string; col: string };
 type StatSection = { label: string; cols: (StatCol & { short: string })[] };
+/** The stat popover's "From <view>" groups: each other view's columns that
+ * neither this view nor an earlier group offers (user 2026-11-22: filter
+ * one view by another's columns). */
+export function otherViewGroups<V extends string>(
+  cols: Record<V, StatCol[]>,
+  view: V,
+  labels: Record<V, string>,
+): { label: string; cols: StatCol[] }[] {
+  const seen = new Set(cols[view].map((c) => c.col));
+  return (Object.keys(cols) as V[])
+    .filter((v) => v !== view)
+    .map((v) => {
+      const own = cols[v].filter((c) => !seen.has(c.col));
+      own.forEach((c) => seen.add(c.col));
+      return { label: `From ${labels[v]}`, cols: own };
+    })
+    .filter((g) => g.cols.length);
+}
 /** The stat popover's chip groups: the tab's own groups when it has them,
  * else General / Offense / Defense from the "Off " / "Def " label prefixes
  * (the prefix then drops from the chip, the group says it). A tab with no
@@ -1437,7 +1455,7 @@ export function StatFilters({
               most, value. */}
           <Popover.Content
             id={`${p}_stat_filter_pop`}
-            className="ibpl-stat-pop"
+            className={`ibpl-stat-pop${offered.length > 40 ? " is-wide" : ""}`}
             role="dialog"
             aria-label="Add stat filter"
             side="bottom"

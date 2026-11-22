@@ -5,7 +5,7 @@
 import type { Row } from "./gameLogs";
 import { percentRank } from "./gameLogs";
 import { rRound } from "./round";
-import { applyStatFilters } from "./statFilters";
+import { applyStatFilters, withOtherView } from "./statFilters";
 import ui from "../data/shinyUi.json";
 
 const RANKING_BASELINE = ui.rankingBaseline; // global.R
@@ -621,6 +621,9 @@ export function onoffTableRows(
     filters: { col: string; op: "ge" | "le"; value: number }[];
   },
   psFilter: (rows: Row[]) => Row[] = (r) => r,
+  /** Other views' shown rows, for filters on their columns (joined by
+   * player and team before the stat filters run). */
+  others: Row[][] = [],
 ): Row[] {
   const { teams, minAll, minOn, filters } = inputs;
   const filtered =
@@ -634,8 +637,12 @@ export function onoffTableRows(
       : answer.view === "summary"
         ? summaryDerive(narrowed, answer.league3p)
         : narrowed;
-  return applyStatFilters(
+  const joined = others.reduce(
+    (acc, o) => withOtherView(acc, o, (r) => `${r.player_id}|${r.team_id}`),
     shown,
+  );
+  return applyStatFilters(
+    joined,
     filters.filter((f) => !f.col.startsWith("ps_")),
   );
 }

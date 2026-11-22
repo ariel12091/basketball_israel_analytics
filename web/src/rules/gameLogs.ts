@@ -1,6 +1,7 @@
 import { rRound } from "./round";
-import { applyStatFilters } from "./statFilters";
+import { applyStatFilters, needsOtherView, withOtherView } from "./statFilters";
 import catalogues from "../data/catalogues.json";
+import ui from "../data/shinyUi.json";
 export type League = "il" | "euroleague" | "eurocup";
 export type Row = Record<string, string | number | boolean | null>;
 export type IlGameLogRow = Row & {
@@ -444,10 +445,26 @@ export function shotAverages(rows: Row[]) {
   );
 }
 /** app/R/svc_game_logs.R svc_game_logs composition. */
+/** The other view a Game Logs request must read for its stat filters, or
+ * null when every filter is the view's own (Israeli league only). */
+export function gameLogsOtherView(
+  p: GameLogParams,
+): GameLogParams["view"] | null {
+  if (p.league !== "il") return null;
+  const other = p.view === "summary" ? "four_factors" : "summary";
+  const cols = (v: GameLogParams["view"]) =>
+    ui.statFilterCols[v].map((c) => c.col);
+  return needsOtherView(p.stat_filters ?? [], cols(p.view), cols(other))
+    ? other
+    : null;
+}
 export function gameLogs(
   input: SeasonInput | Row[],
   scoreless: Row[] | null,
   p: GameLogParams,
+  /** The other view's rows (gameLogs with that view and no stat filters),
+   * read only when a filter names one of its columns (gameLogsOtherView). */
+  otherRows?: Row[],
 ) {
   const data: SeasonInput = Array.isArray(input) ? { rows: input } : input;
   let rows: Row[];
@@ -460,16 +477,22 @@ export function gameLogs(
         total_poss: r.ff_total_poss ?? r.total_poss,
         minutes: r.ff_minutes ?? r.minutes,
       }));
-    const source = p.view === "summary" ? data.rows : ff,
-      build = p.view === "summary" ? buildSummaryMetrics : buildFfMetrics;
-    rows = joinScheduleInfo(
-      attachPercentiles(
-        build(source, filterGames(schedule, p), p.starters),
-        build(source, schedule, undefined, false),
-        p.view === "summary" ? ["off_ppp", "def_ppp", "net_rtg"] : FF_METRICS,
-      ),
-      schedule,
-    );
+    const viewRows = (view: GameLogParams["view"]) => {
+      const source = view === "summary" ? data.rows : ff,
+        build = view === "summary" ? buildSummaryMetrics : buildFfMetrics;
+      return joinScheduleInfo(
+        attachPercentiles(
+          build(source, filterGames(schedule, p), p.starters),
+          build(source, schedule, undefined, false),
+          view === "summary" ? ["off_ppp", "def_ppp", "net_rtg"] : FF_METRICS,
+        ),
+        schedule,
+      );
+    };
+    rows = viewRows(p.view);
+    // A filter on the other view's column (3P% on Four Factors, say): that
+    // view's shown rows, from its own season data, joined by game and team.
+    if (otherRows) rows = withOtherView(rows, otherRows, key);
     rows =
       p.view === "summary"
         ? summaryDisplay(rows, p.stat_filters, scoreless ?? data.scoreless)

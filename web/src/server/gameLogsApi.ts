@@ -1,5 +1,5 @@
 import "server-only";
-import { gameLogs, type League } from "../rules/gameLogs";
+import { gameLogs, gameLogsOtherView, type League } from "../rules/gameLogs";
 import { getSeason } from "./gameLogsRepo";
 import { parseParams } from "./params";
 import { applyTeamNamesHe, loadTeamNamesHe } from "./teamNames";
@@ -9,8 +9,15 @@ import { applyTeamLogos, loadTeamLogos } from "./teamIdentity";
  * first render (same parameters, same JSON). */
 export async function gameLogsAnswer(league: League, search: URLSearchParams) {
   const p = parseParams(search, league);
-  const season = await getSeason(p),
-    result = gameLogs(season, season.scoreless ?? [], p);
+  const season = await getSeason(p);
+  // A filter on the other view's column reads that view's season too.
+  const other = gameLogsOtherView(p);
+  let otherRows;
+  if (other) {
+    const q = { ...p, view: other, stat_filters: [] };
+    otherRows = gameLogs(await getSeason(q), [], q).rows;
+  }
+  const result = gameLogs(season, season.scoreless ?? [], p, otherRows);
   const schedule = season.schedule ?? season.rows;
   // fetch_teams_min() / euro_fetch_teams(): MIN(team_name) per team id,
   // ordered by name (the Israeli pickers use the catalogue roster first).

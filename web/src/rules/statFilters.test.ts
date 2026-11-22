@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { applyStatFilters, needsOtherView, withOtherView } from "./statFilters";
+import {
+  applyStatFilters,
+  needsOtherView,
+  viewsForFilters,
+  withOtherView,
+} from "./statFilters";
+import { teamRatingsTable } from "../lib/pageState/teamRatings";
 import { lineupTableRows } from "./lineups";
 import type { Row } from "./gameLogs";
 
@@ -52,5 +58,46 @@ describe("stat filters on another view's columns", () => {
     expect(
       applyStatFilters(joined, [{ col: "off_fg3_att", op: "ge", value: 0 }]),
     ).toHaveLength(1);
+  });
+});
+
+describe("views a page reads for its stat filters", () => {
+  const cols = {
+    summary: ["off_ppp", "net_rtg"],
+    four_factors: ["off_ppp", "off_efg"],
+    traditional: ["pts", "tp_pct", "off_efg"],
+  };
+  const f = (col: string) => ({ col, op: "ge" as const, value: 1 });
+  it("names each other view once, the first that offers the column", () => {
+    expect(viewsForFilters([f("off_ppp")], cols, "summary")).toEqual([]);
+    expect(viewsForFilters([f("off_efg"), f("pts")], cols, "summary")).toEqual([
+      "four_factors",
+      "traditional",
+    ]);
+    expect(viewsForFilters([f("tp_pct"), f("pts")], cols, "summary")).toEqual([
+      "traditional",
+    ]);
+  });
+  it("Teams: Four Factors filtered by Traditional's 3P%, joined by team", () => {
+    const answer = {
+      rows: [
+        { team_id: 1, Team: "A", off_efg: 50 },
+        { team_id: 2, Team: "B", off_efg: 55 },
+      ] as Row[],
+      meta: {},
+    };
+    const traditional: Row[] = [
+      { team_id: 1, tp_pct: 38 },
+      { team_id: 2, tp_pct: 31 },
+    ];
+    const out = teamRatingsTable(
+      answer,
+      {
+        view: "four_factors",
+        stats: JSON.stringify([{ col: "tp_pct", op: "ge", value: 35 }]),
+      },
+      [traditional],
+    );
+    expect(out.rows.map((r) => r.team_id)).toEqual([1]);
   });
 });
