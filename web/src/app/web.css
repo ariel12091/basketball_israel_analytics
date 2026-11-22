@@ -2439,6 +2439,9 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 /* Starters: the count beside the At least / At most pills. */
 .ibpl-starter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; }
 .ibpl-starter-row .ibpl-pill-field, .ibpl-starter-row .ibpl-pill-switch { margin-bottom: 0; }
+/* Shiny sizes every input container to 300px, which pushed the count to a
+   second row; here the field is only as wide as its pills. */
+.ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
 .ibpl-starter-row .poss-stepper { margin-bottom: 0; }
 /* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
    overlay bar was invisible on the dark sheet). */
