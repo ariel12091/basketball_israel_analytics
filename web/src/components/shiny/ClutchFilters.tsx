@@ -1,5 +1,5 @@
 "use client";
-import Selectize from "./Selectize";
+import { PillField } from "./PillSwitch";
 import Slider from "./Slider";
 import { tt } from "./TabKit";
 import type { Query, Patch } from "@/lib/tabQuery";
@@ -37,10 +37,10 @@ export default function ClutchFilters({
             value={Number(query.clutch_margin)}
             onChange={(v) => set({ clutch_margin: String(v) })}
           />
-          <Selectize
+          <PillField
             id={`${p}_clutch_status`}
             label="Score status"
-            choices={["all", "leading", "trailing", "tied"].map((value) => ({
+            options={["all", "leading", "trailing", "tied"].map((value) => ({
               value,
               label: value[0].toUpperCase() + value.slice(1),
             }))}

@@ -11,6 +11,7 @@ import ui from "@/data/shinyUi.json";
 import TeamRatingsTable from "./shiny/TeamRatingsTable";
 import ClutchFilters from "./shiny/ClutchFilters";
 import Selectize from "./shiny/Selectize";
+import { PillField } from "./shiny/PillSwitch";
 import DateRangeInput from "./shiny/DateRangeInput";
 import { type Block } from "./shiny/Blocks";
 import ViewTabs from "./shiny/ViewTabs";
@@ -284,10 +285,10 @@ export default function TeamRatingsClient({
                       </div>
                       <span>Opponent</span>
                     </div>
-                    <Selectize
+                    <PillField
                       id={`${p}_trad_display_mode`}
                       label="Traditional display mode"
-                      choices={[
+                      options={[
                         { value: "per_game", label: "Per Game" },
                         { value: "per75", label: "Per 75 Possessions" },
                         { value: "per40", label: "Per 40 Minutes" },

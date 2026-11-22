@@ -17,6 +17,7 @@ import ui from "@/data/shinyUi.json";
 import { type Block } from "./shiny/Blocks";
 import layout from "@/data/layoutUi.json";
 import Selectize from "./shiny/Selectize";
+import { PillField } from "./shiny/PillSwitch";
 import DateRangeInput from "./shiny/DateRangeInput";
 import PossStepper from "./shiny/PossStepper";
 import ViewTabs from "./shiny/ViewTabs";
@@ -289,10 +290,10 @@ export default function LineupsClient({
                 value={Number(query.clutch_margin)}
                 onChange={(v) => set({ clutch_margin: String(v) })}
               />
-              <Selectize
+              <PillField
                 id={`${p}_clutch_status`}
                 label="Score status"
-                choices={[
+                options={[
                   { value: "all", label: "All" },
                   { value: "leading", label: "Leading" },
                   { value: "trailing", label: "Trailing" },
