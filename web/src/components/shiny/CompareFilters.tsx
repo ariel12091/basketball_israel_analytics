@@ -119,7 +119,7 @@ export function CompareDates({
         />
       )}
       {showGN && (
-        <div className="row">
+        <div className="row align-items-end">
           <div className="col-6">
             <CompareGn
               q={q}

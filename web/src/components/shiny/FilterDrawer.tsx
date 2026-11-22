@@ -22,6 +22,14 @@ export type DrawerSection = {
   body: ReactNode;
 };
 
+/** A press on the page's own scrollbar lands on <html> (the scrim covers
+ * everything else): it scrolls the page, it is not a click away from the
+ * panel (user 2026-11-22: the panel closed when its scrollbar was dragged).
+ * Shared with the stat-filter popover. */
+export function onPageScrollbar(e: { target: EventTarget | null }) {
+  return e.target === document.documentElement;
+}
+
 export default function FilterDrawer({
   trigger,
   open,
@@ -87,7 +95,10 @@ export default function FilterDrawer({
         // click in them is not a click away from the filters.
         onInteractOutside={(e) => {
           const t = e.target as HTMLElement | null;
-          if (t?.closest(".selectize-dropdown, .datepicker, .dropdown-menu"))
+          if (
+            t?.closest(".selectize-dropdown, .datepicker, .dropdown-menu") ||
+            onPageScrollbar(e)
+          )
             e.preventDefault();
         }}
         // Escape inside a dropdown closes the dropdown, not the panel.

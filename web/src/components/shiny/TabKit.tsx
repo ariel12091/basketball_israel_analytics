@@ -47,7 +47,10 @@ import { PillField } from "./PillSwitch";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
-import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+import FilterDrawer, {
+  onPageScrollbar,
+  type DrawerSection,
+} from "./FilterDrawer";
 import { ClearFiltersContext } from "./EmptyState";
 import * as Popover from "@radix-ui/react-popover";
 import { ToolsSlotProvider } from "./toolsSlot";
@@ -603,29 +606,14 @@ export function StarterSelects({
   const setValue = (v: string) =>
     set({ [starterKey]: mode || v ? `${mode}:${v}` : null });
   if (pills)
-    return wrap(
-      <PillField
-        id={`${p}_num_starters_${side}_mode`}
-        label={label}
-        allLabel="All"
-        options={[
-          { value: "gte", label: "≥", title: "At least" },
-          { value: "lte", label: "≤", title: "At most" },
-        ]}
-        value={[mode]}
-        onChange={(v) => setMode(v[0] ?? "")}
-      />,
-      <PillField
+    return (
+      <StarterPills
         id={`${p}_num_starters_${side}`}
-        label={own ? "Own value" : "Opp value"}
-        toggle
-        options={["0", "1", "2", "3", "4", "5"].map((n) => ({
-          value: n,
-          label: n,
-        }))}
-        value={[value]}
-        onChange={(v) => setValue(v[0] ?? "")}
-      />,
+        label={label}
+        mode={mode}
+        value={value}
+        onChange={(v) => set({ [starterKey]: v })}
+      />
     );
   return wrap(
     <Selectize
@@ -656,6 +644,76 @@ export function StarterSelects({
     />,
   );
 }
+/** One starters filter as one row (user 2026-11-22: the sign and the count
+ * mean nothing apart): a >= / <= switch, then 0-5. No count picked = no
+ * filter; a press on the picked count clears it; flipping the sign keeps the
+ * count. The sign alone is kept here until a count is picked. */
+function StarterPills({
+  id,
+  label,
+  mode,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: ReactNode;
+  mode: string;
+  value: string;
+  onChange: (v: string | null) => void;
+}) {
+  const [sign, setSign] = useState(mode === "lte" ? "lte" : "gte");
+  const shown = value ? (mode === "lte" ? "lte" : "gte") : sign;
+  const pill = (on: boolean) =>
+    `btn btn-sm ${on ? "btn-warning" : "btn-outline-secondary"}`;
+  return (
+    <div className="form-group shiny-input-container ibpl-pill-field" id={id}>
+      <div className="control-label" id={`${id}-label`}>
+        {label}
+      </div>
+      <div
+        className="ibpl-pill-switch ibpl-starter-pills"
+        role="group"
+        aria-labelledby={`${id}-label`}
+      >
+        <span className="ibpl-starter-sign" role="group" aria-label="Sign">
+          {(
+            [
+              ["gte", "≥", "At least"],
+              ["lte", "≤", "At most"],
+            ] as const
+          ).map(([m, text, title]) => (
+            <button
+              key={m}
+              type="button"
+              title={title}
+              aria-label={title}
+              aria-pressed={shown === m}
+              className={pill(shown === m)}
+              onClick={() => {
+                setSign(m);
+                if (value) onChange(`${m}:${value}`);
+              }}
+            >
+              {text}
+            </button>
+          ))}
+        </span>
+        {["0", "1", "2", "3", "4", "5"].map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={value === n}
+            className={pill(value === n)}
+            onClick={() => onChange(value === n ? null : `${shown}:${n}`)}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function StarterRows({
   p,
   query,
@@ -665,12 +723,7 @@ export function StarterRows({
   query: Query;
   set: (patch: Patch) => void;
 }) {
-  const row = (mode: ReactNode, value: ReactNode) => (
-    <div className="row">
-      <div className="col-sm-6">{mode}</div>
-      <div className="col-sm-6">{value}</div>
-    </div>
-  );
+  const row = (mode: ReactNode) => mode;
   return (
     <>
       <StarterSelects
@@ -838,7 +891,8 @@ export function GameFiltersAccordion({
               onChange={(v) => set({ outcome: v[0] ?? null })}
             />
             <hr />
-            <div className="row">
+            {/* Bottom-aligned: the two labels wrap to different heights. */}
+            <div className="row align-items-end">
               <div className="col-sm-6">
                 <Selectize
                   id={`${p}_gn_min`}
@@ -1299,6 +1353,7 @@ export function StatFilters({
             sideOffset={8}
             collisionPadding={8}
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={(e) => onPageScrollbar(e) && e.preventDefault()}
           >
             <div className="ibpl-stat-pop-head">
               <h3>Filter rows by a stat</h3>
