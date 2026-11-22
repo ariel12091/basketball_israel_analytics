@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import {
   Fragment,
   useCallback,
@@ -1015,6 +1016,22 @@ function PhonePanel({
     </section>
   );
 }
+/** A club's logo beside its name in the title (catalogue row, "Team logo");
+ * decorative, as the name says the same. Nothing when it has none or fails. */
+function TitleLogo({ src }: { src?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return null;
+  return (
+    <Image
+      src={src}
+      alt=""
+      width={32}
+      height={32}
+      className="gf-title-logo"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 /** "Sun, Mar 15, 2026" from the schedule's "2026-03-15" (a calendar date,
  * so read in UTC: no time zone may move it a day). */
 function gameDateLabel(iso: string) {
@@ -1722,7 +1739,10 @@ export function GameflowSurface({
         <div className="gf-title">
           {data ? (
             <strong>
-              <span className="gf-team is-own">{data.meta.ownTeam}</span>
+              <span className="gf-title-side">
+                <TitleLogo src={data.meta.ownIdentity?.logo} />
+                <span className="gf-team is-own">{data.meta.ownTeam}</span>
+              </span>
               {data.meta.ownScore != null && data.meta.oppScore != null ? (
                 <span className="gf-title-score">
                   {data.meta.ownScore} – {data.meta.oppScore}
@@ -1730,7 +1750,11 @@ export function GameflowSurface({
               ) : (
                 <span className="gf-title-vs">vs</span>
               )}
-              <span className="gf-team is-opp">{data.meta.oppTeam}</span>
+              {/* Mirrored: the opponent's logo on the outside. */}
+              <span className="gf-title-side">
+                <span className="gf-team is-opp">{data.meta.oppTeam}</span>
+                <TitleLogo src={data.meta.oppIdentity?.logo} />
+              </span>
             </strong>
           ) : (
             <strong>{title}</strong>

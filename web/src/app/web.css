@@ -532,6 +532,9 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-title strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 1.05rem; line-height: 1.25; }
 .gf-title-score { color: var(--ibpl-text); font-family: var(--ibpl-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gf-title-vs { color: var(--ibpl-text-muted); font-weight: 400; }
+.gf-title-side { display: inline-flex; align-items: center; gap: 8px; }
+.gf-title strong { align-items: center; }
+.gf-title-logo { width: 32px; height: 32px; object-fit: contain; flex: none; }
 .gf-title-date { color: var(--ibpl-text-muted); font-size: 0.78rem; }
 @media (min-width: 768px) {
   .ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: grid; grid-template-columns: 1fr auto 1fr; }
