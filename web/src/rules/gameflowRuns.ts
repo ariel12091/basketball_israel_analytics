@@ -328,6 +328,21 @@ function causeLine(
       : `${changes[0].team}'s lineup change at ${changes[0].at} ${results ? "also " : ""}lines up with the run`;
   return `Estimated cause: ${results ? `${results}; ${change}` : change}. A timing match, not proof.`;
 }
+/**
+ * The Israeli "Estimated cause" (shared_definitions.md, Gameflow run cause,
+ * since 2026-11-22): what happened at both ends against what the players on
+ * the floor usually do (`factorsSentence`, rules/gameflowRunCause.ts), then
+ * the same lineup-change wording as `causeLine`.
+ */
+function priorCauseLine(results: string | null, changes: { team: string; at: string }[]) {
+  const what = results ?? "no single result stood out against what these players usually do";
+  if (!changes.length) return `Estimated cause: ${what}.`;
+  const change =
+    changes.length === 2
+      ? `both teams changed lineups just before (${changes.map((c) => `${c.team} at ${c.at}`).join(", ")}), so no lineup is credited`
+      : `${changes[0].team}'s lineup change at ${changes[0].at} ${results ? "also " : ""}lines up with the run`;
+  return `Estimated cause: ${what}; ${change}. A timing match, not proof.`;
+}
 const swing = (m: number) => (m > 0 ? `up ${m}` : m < 0 ? `down ${-m}` : "level");
 const pct = (made: number, att: number) => `${rRound((100 * made) / att, 0)}%`;
 function standoutLine(team: string, s: Standout) {
@@ -361,7 +376,11 @@ export function runExplanation(
   names: Record<Side, string>,
   standouts: Standout[] = runStandouts(model.events, run),
   lineups: RunLineups = runLineups(model, run),
+  /** Israeli league: the factors sentence (null = nothing stood out). When
+   *  given, it replaces the standouts and their lines (D43). */
+  results?: string | null,
 ): string[] {
+  const byPriors = results !== undefined;
   const at = (t: number) => periodClock(t, model.bounds),
     since = (t: number) => periodClock(t, model.bounds, true),
     sign = run.side === "own" ? 1 : -1;
@@ -380,19 +399,16 @@ export function runExplanation(
           : `this five had been on since ${since(l.onSince)}${change}`;
       return `${names[l.side]}: ${five}${during}`;
     }),
-    ...standouts.map((s) => standoutLine(names[s.side], s)),
+    ...(byPriors ? [] : standouts.map((s) => standoutLine(names[s.side], s))),
   ];
   // A change "lines up" only when it came shortly before the run's first
   // point; when both teams changed, neither is credited (spec anti-goal).
   const close = lineups.filter(
     (l) => l.cameIn.length && run.start - l.onSince <= CHANGE_WINDOW,
   );
+  const changes = close.map((l) => ({ team: names[l.side], at: since(l.onSince) }));
   lines.push(
-    causeLine(
-      standouts,
-      close.map((l) => ({ team: names[l.side], at: since(l.onSince) })),
-      names,
-    ),
+    byPriors ? priorCauseLine(results ?? null, changes) : causeLine(standouts, changes, names),
   );
   return lines;
 }

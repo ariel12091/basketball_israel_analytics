@@ -38,6 +38,14 @@ credits a free throw to the lineup that drew the foul too since migration 062
   `causeLine` via `runExplanation`, `periodClock`, `windowLabel`).
   `rules/gameflowSummary.ts` runs once on the server; the API returns
   `runs` / `players`, which the page and the Ask `gameflow` tool read.
+- Israeli runs are explained against the players' own records (since
+  2026-11-22; contract rows Gameflow run cause and run player priors):
+  `server/runPriors.ts` reads each player's counts once per game (this
+  season's other games + earlier seasons via the person key, ~0.3 s cold);
+  `rules/gameflowRunCause.ts` turns each shot, possession and missed shot
+  into a chance and names the factors. The reader's events carry `actor`
+  (shooter / turnover / rebounder). EuroLeague keeps the standouts (D43).
+  Fixtures carry no priors, so the browser specs still see the standouts.
 - Every moment/window reads "Q3 2:25 – Q4 2:31" (`windowLabel`); durations
   stay m:ss.
 - Phones (`GameflowView` compact): sticky header (strip + quarter tabs +
