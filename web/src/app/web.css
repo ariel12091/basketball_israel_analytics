@@ -2443,8 +2443,24 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
    second row; here the field is only as wide as its pills. */
 .ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
 /* A single digit: a compact stepper (user 2026-11-22). */
-.ibpl-starter-row .poss-stepper-box input { width: 26px; }
-.ibpl-starter-row .poss-stepper-box button { width: 28px; }
+.ibpl-starter-row .poss-stepper-box input { width: 24px; }
+.ibpl-starter-row .poss-stepper-box button { width: 26px; }
+/* Filters sheet, compact (user 2026-11-22: too wide, too much blank space).
+   Inputs fill the sheet instead of Shiny's fixed 300px. */
+@media (min-width: 768px) { .filter-drawer { width: 360px; } }
+.filter-drawer .shiny-input-container:not(.shiny-input-container-inline) { width: 100%; }
+.filter-drawer .form-group { margin-bottom: 10px; }
+.filter-drawer .ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
+.filter-drawer hr { margin: 6px 0 10px; }
+/* Starters: "Own [At least][At most] - 3 +" on one line. */
+.ibpl-starter { margin-bottom: 6px; }
+.ibpl-starter .ibpl-pill-field { display: flex; align-items: center; gap: 4px; }
+.ibpl-starter .ibpl-pill-field > .control-label { flex: none; width: 76px; margin: 0; }
+.ibpl-starter .ibpl-pill-switch { margin: 0; flex-wrap: nowrap; }
+.ibpl-starter .ibpl-pill-switch .btn { white-space: nowrap; padding-inline: 7px; }
+.ibpl-starter .ibpl-starter-row { align-items: center; flex-wrap: nowrap; gap: 6px; }
+.ibpl-starter-row .poss-stepper { gap: 0; }
+.ibpl-opp-strength > .control-label { margin-bottom: 4px; }
 .ibpl-starter-row .poss-stepper { margin-bottom: 0; }
 /* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
    overlay bar was invisible on the dark sheet). */

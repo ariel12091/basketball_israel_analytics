@@ -610,7 +610,7 @@ export function StarterSelects({
     return (
       <StarterChoice
         id={`${p}_num_starters_${side}`}
-        label={label}
+        label={tt(own ? "Own" : "Opponent", starterKey)}
         mode={mode}
         value={value}
         onChange={(v) => set({ [starterKey]: v })}
@@ -674,9 +674,8 @@ function StarterChoice({
 }) {
   const on = mode === "gte" || mode === "lte";
   const n = value === "" ? 3 : Number(value);
-  const words = starterWords(mode, value);
   return (
-    <div className="ibpl-opp-strength">
+    <div className="ibpl-opp-strength ibpl-starter">
       {/* The count sits beside the pills: one row, not two (user). */}
       <div className="ibpl-starter-row">
         <PillField
@@ -703,9 +702,6 @@ function StarterChoice({
           />
         </div>
       </div>
-      <p className="ibpl-opp-summary" aria-live="polite">
-        {words ? `Lineups with ${words}.` : "Any lineup."}
-      </p>
     </div>
   );
 }
@@ -740,45 +736,54 @@ function OppStrength({
   const applied = side && n && metric;
   return (
     <div className="ibpl-opp-strength">
-      <PillField
-        id={`${p}_opp_rank_side`}
-        label="Only games against the"
-        toggle
-        options={[
-          { value: "top", label: "Top" },
-          { value: "bottom", label: "Bottom" },
-        ]}
-        value={[side]}
-        onChange={(v) =>
-          set(
-            v[0]
-              ? {
-                  opp_rank_side: v[0],
-                  opp_rank_n: n || "4",
-                  opp_rank_metric: metric || "net",
-                }
-              : {
-                  opp_rank_side: null,
-                  opp_rank_n: null,
-                  opp_rank_metric: null,
-                },
-          )
-        }
-      />
-      <div className={side ? "" : "is-off"} inert={!side}>
-        <PossStepper
-          id={`${p}_opp_rank_n`}
-          label="Number of teams"
-          name="number of teams"
-          min={1}
-          max={rankMax}
-          step={1}
-          value={Number(n) || 4}
-          onChange={(v) => set({ opp_rank_n: String(v) })}
+      <div className="control-label" aria-hidden="true">
+        Only games against the
+      </div>
+      <div className="ibpl-starter-row">
+        <PillField
+          id={`${p}_opp_rank_side`}
+          label={
+            <span className="visually-hidden">Only games against the</span>
+          }
+          toggle
+          options={[
+            { value: "top", label: "Top" },
+            { value: "bottom", label: "Bottom" },
+          ]}
+          value={[side]}
+          onChange={(v) =>
+            set(
+              v[0]
+                ? {
+                    opp_rank_side: v[0],
+                    opp_rank_n: n || "4",
+                    opp_rank_metric: metric || "net",
+                  }
+                : {
+                    opp_rank_side: null,
+                    opp_rank_n: null,
+                    opp_rank_metric: null,
+                  },
+            )
+          }
         />
+        <div className={side ? "" : "is-off"} inert={!side}>
+          <PossStepper
+            id={`${p}_opp_rank_n`}
+            label={<span className="visually-hidden">Number of teams</span>}
+            name="number of teams"
+            min={1}
+            max={rankMax}
+            step={1}
+            value={Number(n) || 4}
+            onChange={(v) => set({ opp_rank_n: String(v) })}
+          />
+        </div>
+      </div>
+      <div className={side ? "" : "is-off"} inert={!side}>
         <PillField
           id={`${p}_opp_rank_metric`}
-          label="Ranked by"
+          label="Teams ranked by"
           options={OPP_METRICS}
           value={[metric]}
           onChange={(v) => set({ opp_rank_metric: v[0] ?? null })}
@@ -881,7 +886,10 @@ export function GameFiltersAccordion({
   ) =>
     bare ? (
       <div className="drawer-subgroup" data-value={value}>
-        <div className="drawer-subtitle">{title}</div>
+        {/* The sheet's section already says "Game filters". */}
+        {value !== "Game Filters" && (
+          <div className="drawer-subtitle">{title}</div>
+        )}
         {children}
       </div>
     ) : (
@@ -974,22 +982,20 @@ export function GameFiltersAccordion({
             <hr />
             {/* Bottom-aligned: the two labels wrap to different heights. */}
             <div className="row align-items-end">
-              <div className="col-sm-6">
+              <div className="col-6">
                 <Selectize
                   id={`${p}_gn_min`}
-                  label={
-                    euro ? "From Round" : tt("From Game Number (GN)", "gn")
-                  }
+                  label={euro ? "From Round" : tt("From GN", "gn")}
                   placeholder="Any"
                   choices={roundChoices}
                   value={[query.min_gn ?? ""]}
                   onChange={(v) => set({ min_gn: v[0] ?? null })}
                 />
               </div>
-              <div className="col-sm-6">
+              <div className="col-6">
                 <Selectize
                   id={`${p}_gn_max`}
-                  label={euro ? "To Round" : tt("To Game Number (GN)", "gn")}
+                  label={euro ? "To Round" : tt("To GN", "gn")}
                   placeholder="Any"
                   choices={roundChoices}
                   value={[query.max_gn ?? ""]}
