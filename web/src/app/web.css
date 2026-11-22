@@ -1805,11 +1805,73 @@ table.dataTable tbody > tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(var(
   .home-team-default .form-check-input, .home-team-default .form-check-input::before { transition: none; }
 }
 
-/* Stat filter popover (Radix, 2026-11-16): Bootstrap's .popover is absolutely
-   placed; inside Radix's positioned wrapper it sits in normal flow. */
-.popover.ibpl-stat-pop { position: relative; z-index: 1070; max-width: min(320px, calc(100vw - 16px)); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
-.popover.ibpl-stat-pop[data-state="closed"] { display: none; }
-.ibpl-stat-pop-arrow { fill: var(--ibpl-surface); stroke: var(--ibpl-border); }
+/* Stat filter popover (Radix; redesigned 2026-11-22): every column shows as a
+   chip, grouped; the rule (column, >= / <=, value, Add) sits in a footer row
+   that never scrolls away. Only the chip area scrolls, and only when the
+   viewport is too short for it. */
+.ibpl-stat-pop {
+  z-index: 1070; display: flex; flex-direction: column;
+  width: min(440px, calc(100vw - 16px));
+  max-height: min(560px, var(--radix-popover-content-available-height, 80vh));
+  background: var(--ibpl-surface); color: var(--ibpl-text);
+  border: 1px solid var(--ibpl-border); border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); overflow: hidden;
+}
+.ibpl-stat-pop[data-state="closed"] { display: none; }
+.ibpl-stat-pop-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px 16px; }
+.ibpl-stat-pop-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--ibpl-text); }
+.ibpl-stat-pop-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ibpl-text-dim); cursor: pointer;
+}
+.ibpl-stat-pop-x:hover { background: rgba(var(--ibpl-accent-rgb), 0.12); color: var(--ibpl-text); }
+.ibpl-stat-pop-cols { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 16px 12px; overscroll-behavior: contain; }
+.ibpl-stat-pop-group + .ibpl-stat-pop-group { margin-top: 10px; }
+.ibpl-stat-pop-group-label {
+  margin-bottom: 6px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ibpl-text-dim);
+}
+.ibpl-stat-pop-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ibpl-stat-pop-chip {
+  padding: 4px 11px; border: 1px solid var(--ibpl-border); border-radius: 999px;
+  background: transparent; color: var(--ibpl-text-body); font-size: 0.8rem;
+  line-height: 1.35; white-space: nowrap; cursor: pointer;
+  transition: background var(--ibpl-btn-ease), border-color var(--ibpl-btn-ease), color var(--ibpl-btn-ease);
+}
+.ibpl-stat-pop-chip:hover { border-color: var(--ibpl-accent); color: var(--ibpl-text); }
+.ibpl-stat-pop-chip[aria-pressed="true"] { background: var(--ibpl-accent); border-color: var(--ibpl-accent); color: #1a1409; font-weight: 700; }
+.ibpl-stat-pop-rule {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px 10px 16px; border-top: 1px solid var(--ibpl-border);
+  background: rgba(var(--ibpl-accent-rgb), 0.05);
+}
+.ibpl-stat-pop-picked { flex: 1 1 100%; font-size: 0.85rem; font-weight: 700; color: var(--ibpl-accent); }
+.ibpl-stat-pop-picked.is-empty { font-weight: 400; color: var(--ibpl-text-dim); }
+.ibpl-stat-pop-op { display: inline-flex; border: 1px solid var(--ibpl-border); border-radius: 999px; padding: 2px; }
+.ibpl-stat-pop-op button {
+  min-width: 36px; height: 30px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ibpl-text-body); font-size: 1rem; cursor: pointer;
+}
+.ibpl-stat-pop-op button[aria-pressed="true"] { background: var(--ibpl-accent); color: #1a1409; font-weight: 700; }
+.ibpl-stat-pop-value {
+  flex: 1 1 80px; min-width: 0; height: 36px; padding: 0 12px;
+  border: 1px solid var(--ibpl-border); border-radius: 999px;
+  background: var(--ibpl-bg); color: var(--ibpl-text); font-size: 0.9rem;
+}
+.ibpl-stat-pop-value:focus { outline: none; border-color: var(--ibpl-accent); box-shadow: 0 0 0 2px rgba(var(--ibpl-accent-rgb), 0.3); }
+.ibpl-stat-pop-add {
+  height: 36px; padding: 0 18px; border: 1px solid var(--ibpl-accent); border-radius: 999px;
+  background: var(--ibpl-accent); color: #1a1409; font-weight: 700; cursor: pointer;
+}
+.ibpl-stat-pop-add:disabled { opacity: 0.4; cursor: not-allowed; }
+.ibpl-stat-pop-hint { padding: 0 16px 10px; font-size: 0.75rem; color: var(--ibpl-text-dim); background: rgba(var(--ibpl-accent-rgb), 0.05); }
+.ibpl-stat-pop-chip:focus-visible, .ibpl-stat-pop-op button:focus-visible,
+.ibpl-stat-pop-add:focus-visible, .ibpl-stat-pop-x:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
+@media (pointer: coarse) {
+  .ibpl-stat-pop-chip { padding: 7px 13px; font-size: 0.85rem; }
+}
+@media (prefers-reduced-motion: reduce) { .ibpl-stat-pop-chip { transition: none; } }
 
 /* ---- Empty, loading and error states (user 2026-11-16) -------------------- */
 /* No rows: a short card where the table would be. */

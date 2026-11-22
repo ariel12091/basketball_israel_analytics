@@ -202,6 +202,10 @@ export default function Selectize({
               top: "100%",
               left: 0,
             }}
+            // A press on the list's scrollbar (or a group header) would move
+            // focus off the input, and its blur closes the list: the bar could
+            // never be dragged. Keep focus on the input, as selectize.js does.
+            onMouseDown={(e) => e.preventDefault()}
           >
             <div
               className="selectize-dropdown-content"
