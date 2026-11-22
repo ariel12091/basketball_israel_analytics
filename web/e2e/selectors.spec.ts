@@ -167,8 +167,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
 
     if (!euro) {
       await page.locator("#gl_stat_filter_add_btn").click();
-      await page.locator("#gl_stat_filter_col-selectized").click();
-      await page.getByRole("option", { name: "Off PPP", exact: true }).click();
+      await page.getByRole("button", { name: "Off PPP", exact: true }).click();
       await page.locator("#gl_stat_filter_value").fill("105");
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.locator(".filter-chip.chip-stat")).toHaveText(

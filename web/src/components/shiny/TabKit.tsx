@@ -1144,6 +1144,47 @@ export function contextChips({
 }
 
 type StatCol = { label: string; col: string };
+type StatSection = { label: string; cols: (StatCol & { short: string })[] };
+/** The stat popover's chip groups: the tab's own groups when it has them,
+ * else General / Offense / Defense from the "Off " / "Def " label prefixes
+ * (the prefix then drops from the chip, the group says it). A tab with no
+ * such prefixes gets one unlabelled group. */
+export function statSections(
+  cols: StatCol[],
+  groups?: { label: string; cols: string[] }[],
+): StatSection[] {
+  if (groups)
+    return groups
+      .map((g) => ({
+        label: g.label,
+        cols: cols
+          .filter((c) => g.cols.includes(c.col))
+          .map((c) => ({ ...c, short: c.label })),
+      }))
+      .filter((s) => s.cols.length);
+  const side = (c: StatCol) =>
+    c.label.startsWith("Off ")
+      ? "Off"
+      : c.label.startsWith("Def ")
+        ? "Def"
+        : "";
+  if (!cols.some(side))
+    return [{ label: "", cols: cols.map((c) => ({ ...c, short: c.label })) }];
+  return (
+    [
+      ["", "General"],
+      ["Off", "Offense"],
+      ["Def", "Defense"],
+    ] as const
+  )
+    .map(([key, label]) => ({
+      label,
+      cols: cols
+        .filter((c) => side(c) === key)
+        .map((c) => ({ ...c, short: key ? c.label.slice(4) : c.label })),
+    }))
+    .filter((s) => s.cols.length);
+}
 /** stat_filter_chips_ui(): the active stat chips and the "+ Stat filter"
  * popover (bslib popover: Column, Operator, Value, Add). `groups` renders the
  * column menu's optgroups (stat_filter_choices()). */
@@ -1171,28 +1212,23 @@ export function StatFilters({
   const [col, setCol] = useState("");
   const [op, setOp] = useState<"ge" | "le">("ge");
   const [value, setValue] = useState("");
-  const all = useMemo(() => cols, [cols]);
+  const valueRef = useRef<HTMLInputElement>(null);
   const label = (c: string) =>
-    (labels ?? all).find((x) => x.col === c)?.label ?? c;
+    (labels ?? cols).find((x) => x.col === c)?.label ?? c;
+  const picked = cols.find((x) => x.col === col);
+  const num = Number(value);
+  const ready = !!picked && value.trim() !== "" && Number.isFinite(num);
   const add = () => {
-    const picked = all.find((x) => x.label === col);
-    const v = Number(value);
-    if (!picked || value.trim() === "" || !Number.isFinite(v)) return;
-    onChange([...filters, { col: picked.col, op, value: v }]);
+    if (!ready) return;
+    onChange([...filters, { col, op, value: num }]);
     setCol("");
     setOp("ge");
     setValue("");
   };
-  const choices = groups
-    ? groups.flatMap((g) =>
-        all
-          .filter((c) => g.cols.includes(c.col))
-          .map((c) => ({ value: c.label, label: c.label, group: g.label })),
-      )
-    : all.map((c) => ({ value: c.label, label: c.label }));
+  const sections = statSections(cols, groups);
   const pct =
     hint ??
-    (all.some((c) => c.label.includes("%"))
+    (cols.some((c) => c.label.includes("%"))
       ? "Percent columns: enter as 0-100."
       : undefined);
   return (
@@ -1225,100 +1261,105 @@ export function StatFilters({
           </button>
         </Popover.Trigger>
         <Popover.Portal>
+          {/* Every column is on show at once, grouped, as chips (user
+              2026-11-22: a scrolling list hid what could be filtered). The
+              rule is built below as one sentence: column, at least / at
+              most, value. */}
           <Popover.Content
             id={`${p}_stat_filter_pop`}
-            className="popover bs-popover-auto fade show ibpl-stat-pop"
+            className="ibpl-stat-pop"
             role="dialog"
             aria-label="Add stat filter"
             side="bottom"
-            align="center"
+            align="start"
             sideOffset={8}
             collisionPadding={8}
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <Popover.Arrow className="ibpl-stat-pop-arrow" width={14} height={7} />
-            <h3 className="popover-header">Add stat filter</h3>
-            <div className="popover-body">
-              <div className={`${p}-stat-popover`} style={{ minWidth: 220 }}>
-                <Selectize
-                  id={`${p}_stat_filter_col`}
-                  label="Column"
-                  formControl={false}
-                  placeholder="Choose..."
-                  style={{ width: "100%" }}
-                  choices={choices}
-                  value={[col]}
-                  onChange={(v) => setCol(v[0] ?? "")}
-                />
-                <div
-                  className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
-                  role="radiogroup"
-                  aria-labelledby={`${p}_stat_filter_op-label`}
-                >
-                  <label
-                    className="control-label"
-                    id={`${p}_stat_filter_op-label`}
-                  >
-                    Operator
-                  </label>
-                  <div className="shiny-options-group">
-                    {(["ge", "le"] as const).map((o) => (
-                      <label key={o} className="radio-inline">
-                        <input
-                          type="radio"
-                          name={`${p}_stat_filter_op`}
-                          value={o}
-                          checked={op === o}
-                          onChange={() => setOp(o)}
-                        />
-                        <span>{o === "ge" ? ">=" : "<="}</span>
-                      </label>
+            <div className="ibpl-stat-pop-head">
+              <h3>Filter rows by a stat</h3>
+              <Popover.Close aria-label="Close" className="ibpl-stat-pop-x">
+                <i className="bi bi-x-lg" aria-hidden="true"></i>
+              </Popover.Close>
+            </div>
+            <div
+              className="ibpl-stat-pop-cols"
+              id={`${p}_stat_filter_col`}
+              role="group"
+              aria-label="Column"
+            >
+              {sections.map((s) => (
+                <div key={s.label || "all"} className="ibpl-stat-pop-group">
+                  {s.label && (
+                    <div className="ibpl-stat-pop-group-label">{s.label}</div>
+                  )}
+                  <div className="ibpl-stat-pop-chips">
+                    {s.cols.map((c) => (
+                      <button
+                        key={c.col}
+                        type="button"
+                        className="ibpl-stat-pop-chip"
+                        aria-pressed={col === c.col}
+                        aria-label={c.label}
+                        onClick={() => {
+                          setCol(col === c.col ? "" : c.col);
+                          valueRef.current?.focus({ preventScroll: true });
+                        }}
+                      >
+                        {c.short}
+                      </button>
                     ))}
                   </div>
                 </div>
-                <div
-                  className="form-group shiny-input-container"
-                  style={{ width: "100%" }}
-                >
-                  <label
-                    className="control-label"
-                    htmlFor={`${p}_stat_filter_value`}
-                  >
-                    Value
-                  </label>
-                  <input
-                    id={`${p}_stat_filter_value`}
-                    type="number"
-                    className="shiny-input-number form-control"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && !e.nativeEvent.isComposing && add()
-                    }
-                  />
-                </div>
-                {pct && <div className="small text-muted mb-2">{pct}</div>}
-                <button
-                  className="btn btn-default action-button btn-sm btn-primary w-100"
-                  type="button"
-                  onClick={add}
-                >
-                  Add
-                </button>
-              </div>
-              <Popover.Close
-                aria-label="Close"
-                className="btn-close"
-                style={{
-                  position: "absolute",
-                  top: "0.6rem",
-                  right: "0.25rem",
-                  width: "0.55rem",
-                  height: "0.55rem",
-                  backgroundSize: "0.55rem",
-                }}
-              />
+              ))}
             </div>
+            <div className="ibpl-stat-pop-rule">
+              <span
+                className={`ibpl-stat-pop-picked${picked ? "" : " is-empty"}`}
+              >
+                {picked?.label ?? "Pick a column"}
+              </span>
+              <div
+                className="ibpl-stat-pop-op"
+                role="group"
+                aria-label="Operator"
+              >
+                {(["ge", "le"] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    aria-pressed={op === o}
+                    title={o === "ge" ? "At least" : "At most"}
+                    onClick={() => setOp(o)}
+                  >
+                    {o === "ge" ? "≥" : "≤"}
+                  </button>
+                ))}
+              </div>
+              <input
+                ref={valueRef}
+                id={`${p}_stat_filter_value`}
+                type="number"
+                inputMode="decimal"
+                aria-label="Value"
+                placeholder="Value"
+                className="ibpl-stat-pop-value"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && !e.nativeEvent.isComposing && add()
+                }
+              />
+              <button
+                type="button"
+                className="ibpl-stat-pop-add"
+                disabled={!ready}
+                onClick={add}
+              >
+                Add
+              </button>
+            </div>
+            {pct && <div className="ibpl-stat-pop-hint">{pct}</div>}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

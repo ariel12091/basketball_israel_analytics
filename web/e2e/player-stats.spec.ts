@@ -113,10 +113,9 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     );
     await clearAll(page);
     await page.locator("#ts_stat_filter_add_btn").click();
-    await page.locator("#ts_stat_filter_col-selectized").fill("PTS");
     await page
       .getByRole("dialog", { name: "Add stat filter" })
-      .getByRole("option", { name: "PTS", exact: true })
+      .getByRole("button", { name: "PTS", exact: true })
       .click();
     await page.locator("#ts_stat_filter_value").fill("10");
     await page
