@@ -2436,3 +2436,10 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 .ibpl-opp-strength .is-off { opacity: 0.4; }
 .ibpl-opp-strength .poss-stepper { margin-bottom: 10px; }
 .ibpl-opp-summary { margin: 2px 0 6px; font-size: 0.82rem; color: var(--ibpl-text-dim); }
+/* Starters: the count beside the At least / At most pills. */
+.ibpl-starter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; }
+.ibpl-starter-row .ibpl-pill-field, .ibpl-starter-row .ibpl-pill-switch { margin-bottom: 0; }
+.ibpl-starter-row .poss-stepper { margin-bottom: 0; }
+/* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
+   overlay bar was invisible on the dark sheet). */
+.filter-drawer { scrollbar-width: thin; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.55) transparent; scrollbar-gutter: stable; }

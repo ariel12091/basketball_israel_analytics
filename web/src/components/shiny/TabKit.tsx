@@ -677,28 +677,31 @@ function StarterChoice({
   const words = starterWords(mode, value);
   return (
     <div className="ibpl-opp-strength">
-      <PillField
-        id={`${id}_mode`}
-        label={label}
-        toggle
-        options={[
-          { value: "gte", label: "At least" },
-          { value: "lte", label: "At most" },
-        ]}
-        value={[on ? mode : ""]}
-        onChange={(v) => onChange(v[0] ? `${v[0]}:${n}` : null)}
-      />
-      <div className={on ? "" : "is-off"} inert={!on}>
-        <PossStepper
-          id={id}
-          label="Number of starters"
-          name="number of starters"
-          min={0}
-          max={5}
-          step={1}
-          value={n}
-          onChange={(v) => onChange(`${mode}:${v}`)}
+      {/* The count sits beside the pills: one row, not two (user). */}
+      <div className="ibpl-starter-row">
+        <PillField
+          id={`${id}_mode`}
+          label={label}
+          toggle
+          options={[
+            { value: "gte", label: "At least" },
+            { value: "lte", label: "At most" },
+          ]}
+          value={[on ? mode : ""]}
+          onChange={(v) => onChange(v[0] ? `${v[0]}:${n}` : null)}
         />
+        <div className={on ? "" : "is-off"} inert={!on}>
+          <PossStepper
+            id={id}
+            label={<span className="visually-hidden">Number of starters</span>}
+            name="number of starters"
+            min={0}
+            max={5}
+            step={1}
+            value={n}
+            onChange={(v) => onChange(`${mode}:${v}`)}
+          />
+        </div>
       </div>
       <p className="ibpl-opp-summary" aria-live="polite">
         {words ? `Lineups with ${words}.` : "Any lineup."}
