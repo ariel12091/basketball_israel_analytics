@@ -2442,6 +2442,9 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 /* Shiny sizes every input container to 300px, which pushed the count to a
    second row; here the field is only as wide as its pills. */
 .ibpl-starter-row > .ibpl-pill-field.shiny-input-container { width: auto; }
+/* A single digit: a compact stepper (user 2026-11-22). */
+.ibpl-starter-row .poss-stepper-box input { width: 26px; }
+.ibpl-starter-row .poss-stepper-box button { width: 28px; }
 .ibpl-starter-row .poss-stepper { margin-bottom: 0; }
 /* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
    overlay bar was invisible on the dark sheet). */
