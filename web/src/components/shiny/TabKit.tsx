@@ -648,18 +648,17 @@ export function StarterSelects({
 /** One starters filter as one dropdown in words (user 2026-11-22: the sign
  * and the count mean nothing apart, and >= / <= read like a math problem).
  * "Any lineup" is no filter; values stay gte:N / lte:N. */
-const STARTER_CHOICES: Choice[] = [
-  { value: "gte:5", label: "All 5 starters" },
-  ...[4, 3, 2, 1].map((n) => ({
-    value: `gte:${n}`,
-    label: `At least ${n} starter${n > 1 ? "s" : ""}`,
-  })),
-  ...[4, 3, 2, 1].map((n) => ({
-    value: `lte:${n}`,
-    label: `At most ${n} starter${n > 1 ? "s" : ""}`,
-  })),
-  { value: "lte:0", label: "No starters" },
-];
+function starterWords(mode: string, value: string): string | null {
+  if ((mode !== "gte" && mode !== "lte") || !/^[0-5]$/.test(value)) return null;
+  const n = Number(value);
+  if (mode === "gte" && n === 5) return "all 5 starters";
+  if (mode === "lte" && n === 0) return "no starters";
+  return `${mode === "gte" ? "at least" : "at most"} ${n} starter${n === 1 ? "" : "s"}`;
+}
+/** Laid out as Opponent strength is (user 2026-11-22): At least / At most
+ * pills, then the number of starters; picking a pill writes both (3 unless
+ * already chosen), a second press clears it, and the number rests greyed
+ * out while nothing is picked. */
 function StarterChoice({
   id,
   label,
@@ -673,18 +672,38 @@ function StarterChoice({
   value: string;
   onChange: (v: string | null) => void;
 }) {
-  const current = mode && value ? `${mode}:${value}` : "";
+  const on = mode === "gte" || mode === "lte";
+  const n = value === "" ? 3 : Number(value);
+  const words = starterWords(mode, value);
   return (
-    <Selectize
-      id={id}
-      formControl={false}
-      label={label}
-      placeholder="Any lineup"
-      emptyLabel="Any lineup"
-      choices={STARTER_CHOICES}
-      value={[current]}
-      onChange={(v) => onChange(v[0] || null)}
-    />
+    <div className="ibpl-opp-strength">
+      <PillField
+        id={`${id}_mode`}
+        label={label}
+        toggle
+        options={[
+          { value: "gte", label: "At least" },
+          { value: "lte", label: "At most" },
+        ]}
+        value={[on ? mode : ""]}
+        onChange={(v) => onChange(v[0] ? `${v[0]}:${n}` : null)}
+      />
+      <div className={on ? "" : "is-off"} inert={!on}>
+        <PossStepper
+          id={id}
+          label="Number of starters"
+          name="number of starters"
+          min={0}
+          max={5}
+          step={1}
+          value={n}
+          onChange={(v) => onChange(`${mode}:${v}`)}
+        />
+      </div>
+      <p className="ibpl-opp-summary" aria-live="polite">
+        {words ? `Lineups with ${words}.` : "Any lineup."}
+      </p>
+    </div>
   );
 }
 
@@ -1238,11 +1257,9 @@ export function contextChips({
   const sp = (["own_starters", "opp_starters"] as const)
     .map((k) => {
       const [mode = "", value = ""] = (query[k] ?? "").split(":");
-      const choice = STARTER_CHOICES.find(
-        (c) => c.value === `${mode}:${value}`,
-      );
-      return choice
-        ? `${k === "own_starters" ? "Own lineup" : "Opponent"}: ${choice.label.toLowerCase()}`
+      const words = starterWords(mode, value);
+      return words
+        ? `${k === "own_starters" ? "Own lineup" : "Opponent"}: ${words}`
         : "";
     })
     .filter(Boolean);
