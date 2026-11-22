@@ -1167,9 +1167,11 @@ body:has(.filter-drawer[data-state="open"])::after {
   animation: filter-sheet-scrim 200ms ease;
 }
 @keyframes filter-sheet-scrim { from { opacity: 0; } }
-@media (max-width: 767.98px) {
-  body:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
-}
+/* The page stays put while the sheet is open, at every width (user
+   2026-11-22: on desktop the page's scrollbar, beside the panel, was the
+   one people grabbed, and it moved the page). The panel's own bar is then
+   the one at the screen edge. */
+html:has(.filter-drawer[data-state="open"]) { overflow: hidden; }
 @media (min-width: 768px) {
   [data-radix-popper-content-wrapper]:has(> .filter-drawer) { inset: 0 0 0 auto !important; }
   .filter-drawer {
@@ -2469,4 +2471,4 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 .ibpl-starter-row .poss-stepper-box input { border-inline: 0; }
 /* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
    overlay bar was invisible on the dark sheet). */
-.filter-drawer { scrollbar-width: thin; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.55) transparent; scrollbar-gutter: stable; }
+.filter-drawer { scrollbar-width: auto; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.7) transparent; scrollbar-gutter: stable; }
