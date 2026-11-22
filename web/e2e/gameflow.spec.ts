@@ -358,14 +358,18 @@ test("Gameflow marks game 673's runs and explains the defining one", async ({
   expect(three).toBeGreaterThan(2);
   expect(lines[three]).toMatch(/\d+% from three \(\d+\/\d+\), \d+% the rest of the game \(\d+\/\d+\) — shooting variance$/);
   expect(lines.at(-1)).toMatch(/^Estimated cause/);
-  // A click on the chip also lists the run's lineups, as a click on its band
-  // does; a second click closes both.
+  // A click on the chip lists the run's lineups, as a click on its band
+  // does, with the explanation beside them instead of a tip over the bars;
+  // a second click closes both.
   const runLineups = page.getByRole("region", { name: "Run lineups" });
+  const why = page.getByRole("region", { name: "Run explanation" });
   await defining.click();
   await expect(runLineups).toBeVisible();
-  await expect(tip).toBeVisible();
+  await expect(why).toContainText("Estimated cause");
+  await expect(tip).toHaveCount(0);
   await defining.click();
   await expect(runLineups).toHaveCount(0);
+  await expect(why).toHaveCount(0);
   // Chips never overlap.
   const boxes = await chips.evaluateAll((els) =>
     els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right, r.top, r.bottom]),
