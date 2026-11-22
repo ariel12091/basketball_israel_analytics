@@ -44,6 +44,7 @@ import ui from "@/data/shinyUi.json";
 import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
 import { PillField } from "./PillSwitch";
+import PossStepper from "./PossStepper";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
@@ -714,6 +715,91 @@ function StarterPills({
   );
 }
 
+const OPP_METRICS = [
+  { value: "off", label: "Offense" },
+  { value: "def", label: "Defense" },
+  { value: "net", label: "Net rating" },
+];
+/** Opponent strength as the one filter it is (user 2026-11-22): the readers
+ * apply it only when side, N and metric are all set, so picking Top or
+ * Bottom writes all three (N 4 and Net rating unless already chosen), a
+ * second press clears all three, and N and metric rest greyed out while it
+ * is off. The line beneath says what is applied. */
+function OppStrength({
+  p,
+  query,
+  set,
+  rankMax,
+  metricDefault,
+}: {
+  p: string;
+  query: Query;
+  set: (patch: Patch) => void;
+  rankMax: number;
+  metricDefault: string;
+}) {
+  const side = query.opp_rank_side ?? "";
+  const n = query.opp_rank_n ?? "";
+  const metric = query.opp_rank_metric || metricDefault;
+  const metricLabel = OPP_METRICS.find((m) => m.value === metric)?.label;
+  const applied = side && n && metric;
+  return (
+    <div className="ibpl-opp-strength">
+      <PillField
+        id={`${p}_opp_rank_side`}
+        label="Only games against the"
+        toggle
+        options={[
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ]}
+        value={[side]}
+        onChange={(v) =>
+          set(
+            v[0]
+              ? {
+                  opp_rank_side: v[0],
+                  opp_rank_n: n || "4",
+                  opp_rank_metric: metric || "net",
+                }
+              : {
+                  opp_rank_side: null,
+                  opp_rank_n: null,
+                  opp_rank_metric: null,
+                },
+          )
+        }
+      />
+      <div className={side ? "" : "is-off"} inert={!side}>
+        <PossStepper
+          id={`${p}_opp_rank_n`}
+          label="Number of teams"
+          name="number of teams"
+          min={1}
+          max={rankMax}
+          step={1}
+          value={Number(n) || 4}
+          onChange={(v) => set({ opp_rank_n: String(v) })}
+        />
+        <PillField
+          id={`${p}_opp_rank_metric`}
+          label="Ranked by"
+          options={OPP_METRICS}
+          value={[metric]}
+          onChange={(v) => set({ opp_rank_metric: v[0] ?? null })}
+        />
+      </div>
+      <p className="ibpl-opp-summary" aria-live="polite">
+        {applied
+          ? `Only games against the ${side} ${n} teams by ${metricLabel?.toLowerCase()}.`
+          : side
+            ? "Not applied: pick the number of teams and a metric."
+            : "Off: games against every opponent."}
+      </p>
+    </div>
+  );
+}
+
 export function StarterRows({
   p,
   query,
@@ -934,40 +1020,12 @@ export function GameFiltersAccordion({
             () => setStrengthOpen((o) => !o),
             `${p}-opp-strength`,
             <>
-              <PillField
-                id={`${p}_opp_rank_side`}
-                label="Top / Bottom"
-                allLabel="Off"
-                options={[
-                  { value: "top", label: "Top" },
-                  { value: "bottom", label: "Bottom" },
-                ]}
-                value={[query.opp_rank_side ?? ""]}
-                onChange={(v) => set({ opp_rank_side: v[0] ?? null })}
-              />
-              <Selectize
-                id={`${p}_opp_rank_n`}
-                label="Rank N"
-                formControl={false}
-                placeholder="--"
-                emptyLabel="--"
-                choices={Array.from({ length: rankMax }, (_, i) => ({
-                  value: String(i + 1),
-                  label: String(i + 1),
-                }))}
-                value={[query.opp_rank_n ?? ""]}
-                onChange={(v) => set({ opp_rank_n: v[0] ?? null })}
-              />
-              <PillField
-                id={`${p}_opp_rank_metric`}
-                label="Metric"
-                options={[
-                  { value: "off", label: "Offense" },
-                  { value: "def", label: "Defense" },
-                  { value: "net", label: "Net rating" },
-                ]}
-                value={[query.opp_rank_metric || oppRankMetricDefault]}
-                onChange={(v) => set({ opp_rank_metric: v[0] ?? null })}
+              <OppStrength
+                p={p}
+                query={query}
+                set={set}
+                rankMax={rankMax}
+                metricDefault={oppRankMetricDefault}
               />
             </>,
             "Opponent Strength",
@@ -1188,9 +1246,11 @@ export function contextChips({
       />,
     );
   if (query.opp_rank_side) {
-    let label = `vs ${query.opp_rank_side}`;
+    const side = query.opp_rank_side === "top" ? "Top" : "Bottom";
+    let label = `vs ${side}`;
     if (query.opp_rank_n) label += ` ${query.opp_rank_n}`;
-    if (query.opp_rank_metric) label += ` ${query.opp_rank_metric}`;
+    const metric = OPP_METRICS.find((m) => m.value === query.opp_rank_metric);
+    if (metric) label += ` by ${metric.label.toLowerCase()}`;
     chips.push(
       <Chip
         key="rank"
