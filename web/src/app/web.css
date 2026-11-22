@@ -535,9 +535,18 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-title-side { display: inline-flex; align-items: center; gap: 8px; }
 .gf-title strong { align-items: center; }
 .gf-title-logo { width: 32px; height: 32px; object-fit: contain; flex: none; }
-/* Phones: the opponent wraps to its own line, so its logo leads it too. */
+.gf-title-pts { display: none; }
+/* Phones (user 2026-11-22): one row per team -- logo, name, its score -- with
+   the scores in one column and no dash between them. */
 @media (max-width: 767.98px) {
-  .gf-title-side:last-child { flex-direction: row-reverse; }
+  .gf-title strong { display: grid; grid-template-columns: auto auto auto; justify-content: start; align-items: center; gap: 4px 10px; }
+  .gf-title-side { display: contents; }
+  .gf-title-score, .gf-title-vs { display: none; }
+  .gf-title-side:first-child > * { grid-row: 1; }
+  .gf-title-side:last-child > * { grid-row: 2; }
+  .gf-title-side > .gf-title-logo { grid-column: 1; }
+  .gf-title-side > .gf-team { grid-column: 2; }
+  .gf-title-pts { display: block; grid-column: 3; color: var(--ibpl-text); font-family: var(--ibpl-font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 }
 .gf-title-date { color: var(--ibpl-text-muted); font-size: 0.78rem; }
 @media (min-width: 768px) {

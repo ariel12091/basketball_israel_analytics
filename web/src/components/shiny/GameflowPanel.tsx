@@ -1739,9 +1739,12 @@ export function GameflowSurface({
         <div className="gf-title">
           {data ? (
             <strong>
+              {/* Each side's own score is shown only on phones, where the
+                  teams stack in two rows and the middle score is hidden. */}
               <span className="gf-title-side">
                 <TitleLogo src={data.meta.ownIdentity?.logo} />
                 <span className="gf-team is-own">{data.meta.ownTeam}</span>
+                <span className="gf-title-pts">{data.meta.ownScore}</span>
               </span>
               {data.meta.ownScore != null && data.meta.oppScore != null ? (
                 <span className="gf-title-score">
@@ -1754,6 +1757,7 @@ export function GameflowSurface({
               <span className="gf-title-side">
                 <span className="gf-team is-opp">{data.meta.oppTeam}</span>
                 <TitleLogo src={data.meta.oppIdentity?.logo} />
+                <span className="gf-title-pts">{data.meta.oppScore}</span>
               </span>
             </strong>
           ) : (
