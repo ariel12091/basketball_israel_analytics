@@ -445,6 +445,19 @@ export function shotAverages(rows: Row[]) {
   );
 }
 /** app/R/svc_game_logs.R svc_game_logs composition. */
+/** The stat filter's columns for a league and view. EuroLeague has no shot
+ * columns (its feed has no 2/3-point split per lineup) and numbers rounds,
+ * not games. */
+export function gameLogFilterCols(
+  league: League,
+  view: GameLogParams["view"],
+): { label: string; col: string }[] {
+  const cols = ui.statFilterCols[view];
+  if (league === "il") return cols;
+  return cols
+    .filter((c) => !/Shot|fg[23]_/.test(c.col))
+    .map((c) => (c.col === "gn" ? { label: "Rd", col: "round_number" } : c));
+}
 /** The other view a Game Logs request must read for its stat filters, or
  * null when every filter is the view's own (Israeli league only). */
 export function gameLogsOtherView(
@@ -498,11 +511,16 @@ export function gameLogs(
         ? summaryDisplay(rows, p.stat_filters, scoreless ?? data.scoreless)
         : ffDisplay(rows, p.stat_filters, scoreless ?? data.scoreless);
   } else
+    // Each EuroLeague row carries both views' numbers, so a filter on either
+    // view's column needs no other read (stat filters added 2026-11-22).
     rows = withScores(
-      attachPercentiles(
-        buildEuroGames(filterGames(data.rows, p), p.starters),
-        buildEuroGames(data.rows, undefined, false),
-        FF_METRICS,
+      applyStatFilters(
+        attachPercentiles(
+          buildEuroGames(filterGames(data.rows, p), p.starters),
+          buildEuroGames(data.rows, undefined, false),
+          FF_METRICS,
+        ),
+        p.stat_filters ?? [],
       ),
     );
   return {
