@@ -62,14 +62,10 @@ test("Traditional: opponent side and possession scaling update the URL and value
   await expect(page.locator(".dataTables_info")).toContainText("14 entries");
   await page.getByRole("switch", { name: "Opponent statistics" }).check();
   await expect(page).toHaveURL(/side=defense/);
-  const mode = page.getByRole("combobox", {
-    name: "Traditional display mode",
-    exact: true,
-  });
-  await mode.fill("Per 75");
-  await mode.press("ArrowDown");
-  await mode.press("Enter");
-  await mode.press("Escape");
+  await page
+    .getByRole("group", { name: "Traditional display mode", exact: true })
+    .getByRole("button", { name: "Per 75 Possessions", exact: true })
+    .click();
   await expect(page).toHaveURL(/display=per75/);
   await expect(
     page.getByRole("button", { name: "Download Opponent CSV", exact: true }),

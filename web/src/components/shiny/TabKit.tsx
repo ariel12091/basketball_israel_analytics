@@ -43,6 +43,7 @@ import { choiceValues } from "@/lib/choices";
 import ui from "@/data/shinyUi.json";
 import Navbar, { seasonLabel, type TabId } from "./Navbar";
 import Selectize, { type Choice } from "./Selectize";
+import { PillField } from "./PillSwitch";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
@@ -578,6 +579,7 @@ export function StarterSelects({
   set,
   starterKey,
   wrap,
+  pills = false,
 }: {
   p: string;
   query: Query;
@@ -585,18 +587,51 @@ export function StarterSelects({
   starterKey: "own_starters" | "opp_starters";
   /** Lays out the mode select and the value select. */
   wrap: (mode: ReactNode, value: ReactNode) => ReactNode;
+  /** Pills instead of dropdowns (the tabs' Filters sheet; Compare's narrow
+   * A/B cells keep the dropdowns). */
+  pills?: boolean;
 }) {
   const [mode = "", value = ""] = (query[starterKey] ?? "").split(":");
   const own = starterKey === "own_starters",
     side = own ? "off" : "def";
+  const label = tt(
+    own ? "Own lineup starters" : "Opponent lineup starters",
+    starterKey,
+  );
+  const setMode = (m: string) =>
+    set({ [starterKey]: m || value ? `${m}:${value}` : null });
+  const setValue = (v: string) =>
+    set({ [starterKey]: mode || v ? `${mode}:${v}` : null });
+  if (pills)
+    return wrap(
+      <PillField
+        id={`${p}_num_starters_${side}_mode`}
+        label={label}
+        allLabel="All"
+        options={[
+          { value: "gte", label: "≥", title: "At least" },
+          { value: "lte", label: "≤", title: "At most" },
+        ]}
+        value={[mode]}
+        onChange={(v) => setMode(v[0] ?? "")}
+      />,
+      <PillField
+        id={`${p}_num_starters_${side}`}
+        label={own ? "Own value" : "Opp value"}
+        toggle
+        options={["0", "1", "2", "3", "4", "5"].map((n) => ({
+          value: n,
+          label: n,
+        }))}
+        value={[value]}
+        onChange={(v) => setValue(v[0] ?? "")}
+      />,
+    );
   return wrap(
     <Selectize
       id={`${p}_num_starters_${side}_mode`}
       formControl={false}
-      label={tt(
-        own ? "Own lineup starters" : "Opponent lineup starters",
-        starterKey,
-      )}
+      label={label}
       placeholder="ALL"
       emptyLabel="ALL"
       choices={[
@@ -604,9 +639,7 @@ export function StarterSelects({
         { value: "lte", label: "At most (<=)" },
       ]}
       value={[mode]}
-      onChange={(v) =>
-        set({ [starterKey]: v[0] || value ? `${v[0] ?? ""}:${value}` : null })
-      }
+      onChange={(v) => setMode(v[0] ?? "")}
     />,
     <Selectize
       id={`${p}_num_starters_${side}`}
@@ -619,9 +652,7 @@ export function StarterSelects({
         label: n,
       }))}
       value={[value]}
-      onChange={(v) =>
-        set({ [starterKey]: mode || v[0] ? `${mode}:${v[0] ?? ""}` : null })
-      }
+      onChange={(v) => setValue(v[0] ?? "")}
     />,
   );
 }
@@ -648,6 +679,7 @@ export function StarterRows({
         set={set}
         starterKey="own_starters"
         wrap={row}
+        pills
       />
       <StarterSelects
         p={p}
@@ -655,6 +687,7 @@ export function StarterRows({
         set={set}
         starterKey="opp_starters"
         wrap={row}
+        pills
       />
     </>
   );
@@ -764,12 +797,12 @@ export function GameFiltersAccordion({
           () => setAccordionOpen((o) => !o),
           `${p}-game-filters`,
           <>
-            <Selectize
+            <PillField
               id={`${p}_${typeKey}`}
               label={euro ? "Phase" : "Game type"}
               multiple
-              placeholder={euro ? "All phases" : "All game types"}
-              choices={typeChoices}
+              allLabel="All"
+              options={typeChoices}
               value={choiceValues(query[typeKey] ?? "", typeChoices)}
               onChange={(v) => set({ [typeKey]: v.join(",") })}
             />
@@ -782,26 +815,22 @@ export function GameFiltersAccordion({
               value={list(query.opponents ?? "")}
               onChange={(v) => set({ opponents: v.join(",") })}
             />
-            <Selectize
+            <PillField
               id={`${p}_home_away`}
               label="Home/Away"
-              formControl={false}
-              placeholder="All"
-              emptyLabel="All"
-              choices={[
+              allLabel="All"
+              options={[
                 { value: "home", label: "Home" },
                 { value: "away", label: "Away" },
               ]}
               value={[query.home_away ?? ""]}
               onChange={(v) => set({ home_away: v[0] ?? null })}
             />
-            <Selectize
+            <PillField
               id={`${p}_outcome`}
               label="Outcome"
-              formControl={false}
-              placeholder="All"
-              emptyLabel="All"
-              choices={[
+              allLabel="All"
+              options={[
                 { value: "win", label: "Win" },
                 { value: "loss", label: "Loss" },
               ]}
@@ -851,13 +880,11 @@ export function GameFiltersAccordion({
             () => setStrengthOpen((o) => !o),
             `${p}-opp-strength`,
             <>
-              <Selectize
+              <PillField
                 id={`${p}_opp_rank_side`}
                 label="Top / Bottom"
-                formControl={false}
-                placeholder="Off"
-                emptyLabel="Off"
-                choices={[
+                allLabel="Off"
+                options={[
                   { value: "top", label: "Top" },
                   { value: "bottom", label: "Bottom" },
                 ]}
@@ -877,13 +904,10 @@ export function GameFiltersAccordion({
                 value={[query.opp_rank_n ?? ""]}
                 onChange={(v) => set({ opp_rank_n: v[0] ?? null })}
               />
-              <Selectize
+              <PillField
                 id={`${p}_opp_rank_metric`}
                 label="Metric"
-                formControl={false}
-                placeholder="--"
-                emptyLabel="--"
-                choices={[
+                options={[
                   { value: "off", label: "Offense" },
                   { value: "def", label: "Defense" },
                   { value: "net", label: "Net rating" },
