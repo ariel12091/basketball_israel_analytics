@@ -1303,18 +1303,27 @@ type StatCol = { label: string; col: string };
 type StatSection = { label: string; cols: (StatCol & { short: string })[] };
 /** The stat popover's "From <view>" groups: each other view's columns that
  * neither this view nor an earlier group offers (user 2026-11-22: filter
- * one view by another's columns). */
+ * one view by another's columns). A column whose label is already on show
+ * is left out too (user: no repeated labels; Teams' Summary GP and
+ * Traditional GP, Four Factors' Off eFG% and Traditional eFG% are the same
+ * numbers, checked on 2025-26), ignoring a leading "Off ". */
 export function otherViewGroups<V extends string>(
   cols: Record<V, StatCol[]>,
   view: V,
   labels: Record<V, string>,
 ): { label: string; cols: StatCol[] }[] {
-  const seen = new Set(cols[view].map((c) => c.col));
+  const name = (c: StatCol) => c.label.replace(/^Off /, "");
+  const seen = new Set(cols[view].flatMap((c) => [c.col, name(c)]));
   return (Object.keys(cols) as V[])
     .filter((v) => v !== view)
     .map((v) => {
-      const own = cols[v].filter((c) => !seen.has(c.col));
-      own.forEach((c) => seen.add(c.col));
+      const own = cols[v].filter(
+        (c) => !seen.has(c.col) && !seen.has(name(c)),
+      );
+      own.forEach((c) => {
+        seen.add(c.col);
+        seen.add(name(c));
+      });
       return { label: `From ${labels[v]}`, cols: own };
     })
     .filter((g) => g.cols.length);
