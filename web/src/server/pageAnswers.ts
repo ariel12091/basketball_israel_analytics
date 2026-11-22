@@ -4,7 +4,9 @@ import "server-only";
 // page does, then runs the page's own table rules (lib/pageState/,
 // lineupPage). The routes, the server-rendered Lineups page and the Ask chat
 // call these; the browser pages run the same rules on the population.
-import type { League } from "../rules/gameLogs";
+import type { League, Row } from "../rules/gameLogs";
+import { needsOtherView, withOtherView } from "../rules/statFilters";
+import ui from "../data/shinyUi.json";
 import { lineupPage, type LineupView } from "../rules/lineups";
 import { lineupPageOptions } from "../lib/lineupPageState";
 import {
@@ -83,10 +85,21 @@ export async function lineupsPageAnswer(
   )
     throw new ParamError("min_poss", "Expected 0-100000");
   const answer = await lineupsAnswer(league, search);
-  const page = lineupPage(
-    answer.rows,
-    lineupPageOptions(search, p.view as LineupView),
-  );
+  const options = lineupPageOptions(search, p.view as LineupView);
+  // A filter on the other view's column (3P% on Four Factors, say) reads that
+  // view's rows for the same context, joined by lineup.
+  const otherView = p.view === "summary" ? "four_factors" : "summary";
+  const cols = (v: LineupView) => ui.lineupStatFilterCols[v].map((c) => c.col);
+  let rows = answer.rows;
+  if (
+    needsOtherView(options.stats, cols(p.view as LineupView), cols(otherView))
+  ) {
+    const s = new URLSearchParams(search);
+    s.set("view", otherView);
+    const key = (r: Row) => `${r.team_id}|${r.sub_lineup_hash}`;
+    rows = withOtherView(rows, (await lineupsAnswer(league, s)).rows, key);
+  }
+  const page = lineupPage(rows, options);
   return {
     ...answer,
     rows: page.rows,

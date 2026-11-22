@@ -467,6 +467,19 @@ export default function LineupsClient({
                 <StatFilters
                   p={p}
                   cols={ui.lineupStatFilterCols[view]}
+                  more={[
+                    {
+                      label: `From ${view === "summary" ? "Four Factors" : "Summary"}`,
+                      cols: ui.lineupStatFilterCols[
+                        view === "summary" ? "four_factors" : "summary"
+                      ].filter(
+                        (c) =>
+                          !ui.lineupStatFilterCols[view].some(
+                            (o) => o.col === c.col,
+                          ),
+                      ),
+                    },
+                  ]}
                   filters={filters}
                   onChange={(fs) =>
                     set({ stats: fs.length ? JSON.stringify(fs) : null })
