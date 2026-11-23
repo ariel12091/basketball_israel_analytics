@@ -202,9 +202,10 @@ describe("runExplanation", () => {
       "Hapoel Tel-Aviv 17% inside the arc (1/6), 54% the rest of the game (15/28)",
     );
     // The strongest result that is not from three leads; the threes follow;
-    // both teams changed just before, so neither lineup is credited.
+    // both teams changed just before, each with what its newcomer did in the
+    // run (user 2026-11-23).
     expect(l[5]).toBe(
-      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game), with Maccabi Tel-Aviv's hot three-point shooting on top; both teams also changed lineups just before (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so no lineup is credited. A timing match, not proof.",
+      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game), with Maccabi Tel-Aviv's hot three-point shooting on top; both teams changed lineups just before: Maccabi Tel-Aviv brought in Dibartolomeo at Q3 3:54, who played the whole run, and Hapoel Tel-Aviv brought in Blayzer at Q3 3:01, who played 2:25 of the run and lost that stretch 10-1. A timing match, not proof.",
     );
     expect(l).toHaveLength(6);
   });
@@ -226,16 +227,16 @@ describe("runExplanation", () => {
     // Move Hapoel's change far back: only Maccabi's 3:54 change is close.
     const far = lu.map((x) => (x.side === "opp" ? { ...x, onSince: d.start - 400 } : x));
     expect(runExplanation(model673, d, names, [], far).at(-1)).toBe(
-      "Estimated cause: Maccabi Tel-Aviv's lineup change at Q3 3:54 lines up with the run. A timing match, not proof.",
+      "Estimated cause: Maccabi Tel-Aviv brought in Dibartolomeo just before (Q3 3:54), who played the whole run. A timing match, not proof.",
     );
     const oppOnly = lu.map((x) => (x.side === "own" ? { ...x, onSince: d.start - 400 } : x));
     expect(runExplanation(model673, d, names, [], oppOnly).at(-1)).toBe(
-      "Estimated cause: Hapoel Tel-Aviv's lineup change at Q3 3:01 lines up with the run. A timing match, not proof.",
+      "Estimated cause: Hapoel Tel-Aviv brought in Blayzer just before (Q3 3:01), who played 2:25 of the run and lost that stretch 10-1. A timing match, not proof.",
     );
     // A result and one team's change: both named.
     const twos = runStandouts(model673.events, d).filter((x) => !x.variance);
     expect(runExplanation(model673, d, names, twos, far).at(-1)).toBe(
-      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game); Maccabi Tel-Aviv's lineup change at Q3 3:54 also lines up with the run. A timing match, not proof.",
+      "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game); Maccabi Tel-Aviv brought in Dibartolomeo just before (Q3 3:54), who played the whole run. A timing match, not proof.",
     );
   });
   it("reads the margin from the run team's side", () => {
@@ -248,7 +249,7 @@ describe("runExplanation", () => {
       { side: "own" as const, metric: "fg3" as const, inRun: { made: 9, att: 12 }, rest: { made: 3, att: 17 }, variance: true },
     ];
     expect(runExplanation(model673, r, names, three).at(-1)).toBe(
-      "Estimated cause: Maccabi Tel-Aviv's hot three-point shooting; both teams also changed lineups just before (Maccabi Tel-Aviv at Q3 3:54, Hapoel Tel-Aviv at Q3 3:01), so no lineup is credited. A timing match, not proof.",
+      "Estimated cause: Maccabi Tel-Aviv's hot three-point shooting; both teams changed lineups just before: Maccabi Tel-Aviv brought in Dibartolomeo at Q3 3:54, who played the whole run, and Hapoel Tel-Aviv brought in Blayzer at Q3 3:01, who played 2:25 of the run and lost that stretch 10-1. A timing match, not proof.",
     );
     const lu = runLineups(model673, r).map((x) => ({ ...x, onSince: r.start - 400 }));
     expect(runExplanation(model673, r, names, three, lu).at(-1)).toBe(
