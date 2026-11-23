@@ -42,6 +42,11 @@ export const SHRINK = { fg2: 55, fg3: 89, ft: 25, tov: 300, reb: 400 } as const;
 /** Offensive-rebound model, fitted on every missed field goal of 2025-26
  *  (15,915): log-odds per unit of the offense five's OREB rate relative to the
  *  league, the defense five's DREB rate, and the height edge per 10 cm. */
+/** How much of the five's turnover edge (its players' mean rate over the
+ *  league's) a possession keeps: two ball-handlers on together each handle it
+ *  less, so a five differs less than its players' average. Fitted on every
+ *  possession of 2025-26 held out game by game (user 2026-11-23). */
+export const TOV_FIVE_WEIGHT = 0.6;
 export const OREB_WEIGHTS = {
   offense: 0.95,
   defense: -0.22,
@@ -182,7 +187,7 @@ export function runFactors(
         return pr ? shrunk(pr.tov, SHRINK.tov, L.tovPlayer) : L.tovPlayer;
       });
       return rates.length >= 4
-        ? (L.tovTeam * mean(rates)) / L.tovPlayer
+        ? L.tovTeam * (1 + TOV_FIVE_WEIGHT * (mean(rates) / L.tovPlayer - 1))
         : L.tovTeam;
     };
     push(
@@ -255,7 +260,10 @@ const clean = (f: Factor) =>
 /** The factors a run's line names: led by one worth 2.5+ points (or a fifth
  *  of the run's net margin, when less) and unusual; then others from 1.5
  *  points (or the lead bar, when lower), or the run team barely turning it
- *  over; at most three, biggest first. None without a lead. */
+ *  over. At most three: the biggest lead, then the most unusual of the
+ *  rest (user 2026-11-23: 8 turnovers in 19 possessions, chance 1.6%, over
+ *  1/6 on twos, 5.4%, though 0.07 points smaller); shown biggest first.
+ *  None without a lead. */
 export function namedFactors(factors: Factor[], net = Infinity): Factor[] {
   const leadBar = Math.min(RULE.leadPts, RULE.leadShare * net),
     secondBar = Math.min(RULE.secondPts, leadBar);
@@ -265,9 +273,13 @@ export function namedFactors(factors: Factor[], net = Infinity): Factor[] {
     (f) =>
       !lead.includes(f) && ((f.pts >= secondBar && unusual(f)) || clean(f)),
   );
-  return [...lead, ...second]
-    .slice(0, RULE.maxClauses)
-    .sort((a, b) => b.pts - a.pts);
+  const [top, ...rest] = [...lead].sort((a, b) => b.pts - a.pts);
+  return [
+    top,
+    ...[...rest, ...second]
+      .sort((a, b) => a.p - b.p || b.pts - a.pts)
+      .slice(0, RULE.maxClauses - 1),
+  ].sort((a, b) => b.pts - a.pts);
 }
 
 /** Whole numbers from 2 up, one decimal below (1.96 reads "2", not "2.0"). */
@@ -327,7 +339,9 @@ export type LineupProfile = {
 export const PROFILE = {
   small: 2.01,
   big: 2.0,
-  tov: [0.82, 1.15],
+  /** The five's turnover edge after TOV_FIVE_WEIGHT: the old bars on the
+   *  players' mean (0.82, 1.15), carried through 1 + 0.6 x (mean - 1). */
+  tov: [0.892, 1.09],
   oreb: [0.81, 1.25],
   dreb: [0.89, 1.14],
   fg3: [0.331, 0.378],
@@ -360,7 +374,7 @@ export function lineupProfile(
   return {
     tallest: known ? Math.max(...hs) : null,
     meanHeight: known ? mean(hs) : null,
-    tov: mean(five.map((p) => rate(p, "tov"))) / L.tovPlayer,
+    tov: 1 + TOV_FIVE_WEIGHT * (mean(five.map((p) => rate(p, "tov"))) / L.tovPlayer - 1),
     oreb: mean(five.map((p) => rate(p, "oreb"))) / L.orebPlayer,
     dreb: mean(five.map((p) => rate(p, "dreb"))) / L.drebPlayer,
     fg3: mean(five.map((p) => rate(p, "fg3"))),

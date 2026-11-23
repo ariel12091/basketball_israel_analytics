@@ -166,6 +166,15 @@ describe("runFactors", () => {
       )!;
     expect(a.expected).toBeGreaterThan(b.expected);
   });
+  it("keeps 0.6 of the five's turnover edge over the league (TOV_FIVE_WEIGHT)", () => {
+    const events = [1, 2, 3, 4].flatMap((i) => ev("opp", 110 + i, "fg2", false, "6"));
+    // Players at twice the league rate, with a record far bigger than K.
+    const twice = Object.fromEntries(OPP.map((p) => [`opp:${p}`, prior({ tov: [76e5, 1e8] })]));
+    const f = runFactors(events, run, priorsOf(twice), new Map(), surname).find(
+      (x) => x.kind === "tov" && x.end === "other",
+    )!;
+    expect(f.expected / 4).toBeCloseTo(LEAGUE.tovTeam * (1 + 0.6 * (2 - 1)), 4);
+  });
   it("expects more offensive rebounds from a five of rebounders, and from a taller five", () => {
     const events = [1, 2, 3, 4, 5, 6].flatMap((i) =>
       ev("own", 100 + i, "fg2", false, "1"),
@@ -253,6 +262,17 @@ describe("namedFactors", () => {
   it("names at most three, biggest first", () => {
     const fs = [5, 4, 3, 2.6].map((pts) => factor({ pts, p: 0.01 }));
     expect(namedFactors(fs).map((f) => f.pts)).toEqual([5, 4, 3]);
+  });
+  it("fills the slots after the biggest lead with the most unusual results", () => {
+    // 673's 37-5: 8 turnovers in 19 (chance 1.6%) beat 1/6 on twos (5.4%)
+    // and 0/6 from three (6.4%), though both are a little bigger.
+    const fs = [
+      factor({ kind: "fg3", pts: 13.9, p: 0.007 }),
+      factor({ kind: "fg3", side: "opp", end: "other", pts: 6.6, p: 0.064 }),
+      factor({ kind: "fg2", side: "opp", end: "other", pts: 4.89, p: 0.054 }),
+      factor({ kind: "tov", side: "opp", end: "other", n: 19, pts: 4.82, p: 0.016 }),
+    ];
+    expect(namedFactors(fs).map((f) => `${f.side}:${f.kind}`)).toEqual(["own:fg3", "opp:fg2", "opp:tov"]);
   });
 });
 
