@@ -383,14 +383,15 @@ describe("factor reasons (Gameflow lineup profile)", () => {
     );
     expect(lineupProfile("own", OWN, priorsOf({}), H("own", OWN.slice(0, 4), [1.9, 1.9, 1.9, 1.9])).tallest).toBeNull();
   });
-  it("counts a trait when the fives that have it played half the run together", () => {
+  it("counts a trait when the fives that have it played a third of the run together", () => {
     const small = lineupProfile("own", OWN, priorsOf({}), H("own", OWN, [1.9, 1.92, 1.95, 1.98, 2.0]));
     const small2 = lineupProfile("own", OWN, priorsOf({}), H("own", OWN, [1.9, 1.92, 1.95, 1.98, 2.01]));
     const tall = lineupProfile("own", OWN, priorsOf({}), H("own", OWN, [1.95, 1.96, 1.98, 2.02, 2.04]));
     const mixed = [{ profile: small, secs: 35 }, { profile: small2, secs: 30 }, { profile: tall, secs: 35 }];
     expect(factorReason("oreb", mixed, on(avg), 100)).toBe("fives no taller than 2.01 m");
-    // 35 of 100 s small: not enough.
-    expect(factorReason("oreb", [{ profile: small, secs: 35 }, { profile: tall, secs: 65 }], on(avg), 100)).toBeNull();
+    // (a 200 s run: 70 s small is a third and a minute; 60 s is not a third)
+    expect(factorReason("oreb", [{ profile: small, secs: 70 }, { profile: tall, secs: 130 }], on(avg), 200)).toBe("a five no taller than 2.00 m");
+    expect(factorReason("oreb", [{ profile: small, secs: 60 }, { profile: tall, secs: 140 }], on(avg), 200)).toBeNull();
   });
   it("names turnovers, threes and the shooters around a two each on its own factor", () => {
     const sloppy = lineupProfile("own", OWN, all("own", OWN, prior({ tov: [60, 1000], fg3: [45, 100], fg2: [100, 200] })), new Map());
@@ -399,9 +400,9 @@ describe("factor reasons (Gameflow lineup profile)", () => {
     // Players who take few threes: no accurate shooter.
     const paint = lineupProfile("own", OWN, all("own", OWN, prior({ fg2: [200, 400], fg3: [5, 20] })), new Map());
     expect(paint.shooters).toBe(0);
-    expect(factorReason("fg2", on(paint), on(avg), 100)).toBe("a five with no accurate shooter");
+    expect(factorReason("fg2", on(paint), on(avg), 100)).toBe("a poor-spacing five");
     const five = lineupProfile("own", OWN, priorsOf({}), new Map()); // no record = league-average, a shooter
-    expect(factorReason("fg2", on(five), on(avg), 100)).toBe("a five of accurate shooters");
+    expect(factorReason("fg2", on(five), on(avg), 100)).toBe("a good-spacing five");
   });
   it("lists each five a team used in the run with its time", () => {
     const model = ribbonModel(fixture673 as unknown as RawRibbon, 2, "il", 673);

@@ -372,7 +372,8 @@ export const PROFILE = {
   fewShooters: 1,
   manyShooters: 5,
   /** The fives described must have played this share of the run, and a minute. */
-  minShare: 0.5,
+  /** ... a third of the run (user 2026-11-23: half was too much). */
+  minShare: 1 / 3,
   minSecs: 60,
 } as const;
 
@@ -462,7 +463,7 @@ const five = (one: boolean, what: string) => (one ? `a ${what} five` : `${what} 
 /** Why a named factor's expected count is high or low (user 2026-11-23), from
  *  the fives of the team on offense and of the one defending: "a turnover-prone
  *  five", "a five no taller than 2.01 m", "against a weak defensive-rebounding
- *  five", "a five with one accurate shooter"... At most two; none for free
+ *  five", "a good-spacing five"... At most two; none for free
  *  throws. */
 export function factorReason(
   kind: FactorKind,
@@ -491,11 +492,9 @@ export function factorReason(
     out.push(t(offense, (p) => p.fg3 <= P.fg3[0], () => "poor three-point shooters"));
   }
   if (kind === "fg2") {
-    out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one, w) => {
-      const n = Math.max(...w.map((p) => p.shooters));
-      return `${one ? "a five" : "fives"} with ${n ? `only ${n} accurate shooter${n === 1 ? "" : "s"}` : "no accurate shooter"}`;
-    }));
-    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => `${one ? "a five" : "fives"} of accurate shooters`));
+    // Spacing (user 2026-11-23: "good spacing five").
+    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => five(one, "good-spacing")));
+    out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one) => five(one, "poor-spacing")));
   }
   if (kind === "oreb") {
     out.push(t(offense, (p) => p.oreb >= P.oreb[1], (one) => five(one, "strong offensive-rebounding")));
