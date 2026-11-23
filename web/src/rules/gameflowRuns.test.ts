@@ -239,6 +239,25 @@ describe("runExplanation", () => {
       "Estimated cause: Hapoel Tel-Aviv's two-point shooting (17% vs 54% the rest of the game); Maccabi Tel-Aviv brought in Dibartolomeo just before (Q3 3:54), who played the whole run. A timing match, not proof.",
     );
   });
+  it("leaves out a change whose newcomers played under a minute of the run", () => {
+    const d = runs.find((r) => r.defining)!;
+    const lu = runLineups(model673, d);
+    // Hapoel's Blayzer as if he had gone off after 40 s of the run.
+    const brief = lu.map((x) =>
+      x.side === "opp" ? { ...x, stint: { ...x.stint, secs: 40, whole: false } } : x,
+    );
+    expect(runExplanation(model673, d, names, [], brief).at(-1)).toBe(
+      "Estimated cause: Maccabi Tel-Aviv brought in Dibartolomeo just before (Q3 3:54), who played the whole run. A timing match, not proof.",
+    );
+    // Both brief: no lineup clause, and no false "neither team changed".
+    const none = lu.map((x) => ({ ...x, stint: { ...x.stint, secs: 40, whole: false } }));
+    expect(runExplanation(model673, d, names, [], none).at(-1)).toBe(
+      "Estimated cause: no result stood out against the rest of the game.",
+    );
+    expect(runExplanation(model673, d, names, undefined, none, null).at(-1)).toBe(
+      "Estimated cause: no single result stood out against what these players usually do.",
+    );
+  });
   it("reads the margin from the run team's side", () => {
     const hapoel = runs.find((r) => r.side === "opp")!;
     expect(lines(hapoel)[0]).toMatch(/^Hapoel Tel-Aviv 30-4 · Q2 2:50 – Q3 4:18 · from (down|up|level)/);

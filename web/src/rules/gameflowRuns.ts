@@ -21,6 +21,9 @@ export const RUN_MAX = 3;
 /** A lineup change "lines up" with a run when it came at most this many
  *  seconds before the run's first point. */
 export const CHANGE_WINDOW = 120;
+/** ...and is named only when the players who came in played at least this
+ *  many seconds of the run (user 2026-11-23). */
+export const MIN_CHANGE_STINT = 60;
 
 export type Run = {
   side: Side;
@@ -366,6 +369,9 @@ function causeLine(
   standouts: Standout[],
   changes: Change[],
   names: Record<Side, string>,
+  /** A change came just before but was left out (under MIN_CHANGE_STINT):
+   *  "neither team changed lineups" would be false, so say nothing. */
+  dropped = false,
 ) {
   const lead = standouts.find((s) => !s.variance),
     three = standouts.find((s) => s.variance);
@@ -379,6 +385,8 @@ function causeLine(
       ? threes(three)
       : null;
   const minutes = `${CHANGE_WINDOW / 60} minutes`;
+  if (dropped && !changes.length)
+    return `Estimated cause: ${results ?? "no result stood out against the rest of the game"}.`;
   if (!results && !changes.length)
     return `Estimated cause: neither team changed lineups in the ${minutes} before the run, and no result stood out against the rest of the game.`;
   if (!changes.length)
@@ -460,14 +468,21 @@ export function runExplanation(
   const close = lineups.filter(
     (l) => l.cameIn.length && run.start - l.onSince <= CHANGE_WINDOW,
   );
-  const changes = close.map((l) => ({
+  // A newcomer who played under a minute of the run (e.g. on for the last
+  // seconds of a quarter) says nothing about it (user 2026-11-23).
+  const named = close.filter(
+    (l) => l.stint.whole || l.stint.secs >= MIN_CHANGE_STINT,
+  );
+  const changes = named.map((l) => ({
     team: names[l.side],
     at: since(l.onSince),
     who: andList(l.cameIn.map(surnameOf)),
     did: stintDid(l.stint),
   }));
   lines.push(
-    byPriors ? priorCauseLine(results ?? null, changes) : causeLine(standouts, changes, names),
+    byPriors
+      ? priorCauseLine(results ?? null, changes)
+      : causeLine(standouts, changes, names, close.length > named.length),
   );
   return lines;
 }
