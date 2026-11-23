@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   factorsSentence,
+  lineupProfile,
+  mainFives,
   namedFactors,
   poissonBinomialTail,
+  profileLine,
+  profileTraits,
   runFactors,
   type Factor,
   type PlayerPrior,
@@ -17,6 +21,7 @@ import fixture673 from "./__fixtures__/gameflow-673.json";
 const LEAGUE = {
   fg2: 0.53,
   fg3: 0.35,
+  fg3Share: 0.41,
   ft: 0.73,
   tovPlayer: 0.038,
   tovTeam: 0.19,
@@ -332,5 +337,48 @@ describe("runExplanation with the players' priors (Israeli league)", () => {
     const lines = runExplanation(model, r, names);
     expect(lines.at(-1)).toMatch(/^Estimated cause: /);
     expect(lines.at(-1)).not.toMatch(/what these players usually do/);
+  });
+});
+
+describe("lineup profile (Gameflow lineup profile)", () => {
+  const H = (hs: number[]) =>
+    new Map(OWN.map((p, i) => [`own:${p}`, hs[i]] as [string, number]));
+  it("names a small five and one with few shooters, from the players' records", () => {
+    // Two players take half their shots from three, three take none.
+    const shooter = prior({ fg2: [50, 100], fg3: [35, 100] }),
+      big = prior({ fg2: [100, 200] });
+    const priors = priorsOf({ "own:1": shooter, "own:2": shooter, "own:3": big, "own:4": big, "own:5": big });
+    const p = lineupProfile("own", OWN, priors, H([1.9, 1.92, 1.95, 1.98, 2.01]));
+    expect(p.shooters).toBe(2);
+    expect(p.tallest).toBe(2.01);
+    expect(profileTraits(p)).toEqual(["small (tallest 2.01 m)", "only 2 three-point shooters"]);
+  });
+  it("says nothing of an average five, and leaves size out without every height", () => {
+    // Four league-average players (41% of shots from three) and one non-shooter.
+    const p = lineupProfile("own", OWN, priorsOf({ "own:5": prior({ fg2: [100, 200] }) }), H([1.9, 1.92, 1.95, 1.98]));
+    expect(p.tallest).toBeNull();
+    expect(profileTraits(p)).toEqual([]);
+  });
+  it("names turnovers and rebounding against the league", () => {
+    const sloppy = prior({ tov: [60, 1000], oreb: [10, 1000] });
+    const priors = priorsOf({ ...Object.fromEntries(OWN.map((p) => [`own:${p}`, sloppy])), "own:5": prior({ fg2: [100, 200], tov: [60, 1000], oreb: [10, 1000] }) });
+    expect(profileTraits(lineupProfile("own", OWN, priors, new Map()))).toEqual([
+      "turnover-prone (45% above the league)",
+      "weak on the offensive glass (42% below the league)",
+    ]);
+  });
+  it("profiles a team's five only when it played half the run and a minute", () => {
+    const model = ribbonModel(fixture673 as unknown as RawRibbon, 2, "il", 673);
+    const r: Run = { ...run, start: 0, end: 400 };
+    const fives = mainFives(model, r, ["own", "opp"]);
+    for (const f of fives) {
+      expect(f.five).toHaveLength(5);
+      expect(f.secs).toBeGreaterThanOrEqual(200);
+    }
+    expect(mainFives(model, { ...r, end: 30 }, ["own", "opp"])).toEqual([]);
+    const sloppy = prior({ tov: [60, 1000] });
+    const all = new Map(model.lanes.map((l) => [`${l.side}:${l.player_key}`, sloppy]));
+    const line = profileLine(model, r, { own: "A", opp: "B" }, { players: all, league: LEAGUE }, new Map(), surname);
+    expect(line).toMatch(/^Lineup profile: A's main five in the run \(P\d+, P\d+, P\d+, P\d+, P\d+; (the whole run|\d+:\d\d of 6:40)\): five three-point shooters and turnover-prone \(45% above the league\); B's/);
   });
 });

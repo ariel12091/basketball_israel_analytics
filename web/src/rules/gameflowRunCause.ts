@@ -7,7 +7,7 @@
 // comes from their exact distribution (Poisson-binomial), not a normal curve.
 // The priors are counts from the reader (server/runPriors.ts); this file
 // shrinks them toward the league and compares.
-import type { GameflowEvent, Side } from "./gameflow";
+import { clock, type GameflowEvent, type RibbonModel, type Side } from "./gameflow";
 import type { Run } from "./gameflowRuns";
 import { rRound } from "./round";
 
@@ -19,6 +19,8 @@ export type PlayerPrior = Record<
 export type LeagueRates = {
   fg2: number;
   fg3: number;
+  /** Threes per field-goal attempt. */
+  fg3Share: number;
   ft: number;
   /** Turnovers per player per floor possession, and per team possession. */
   tovPlayer: number;
@@ -307,4 +309,157 @@ export function factorsSentence(
         `${names[s]} ${list(named.filter((f) => f.side === s).map(clause))}`,
     )
     .join("; ");
+}
+
+/** "Gameflow lineup profile": what a five usually does, from its players'
+ *  records shrunk as above. Rates are relative to the league (1 = average). */
+export type LineupProfile = {
+  tallest: number | null;
+  meanHeight: number | null;
+  /** Players taking at least PROFILE.shooterShare of their shots from three. */
+  shooters: number;
+  tov: number;
+  oreb: number;
+  dreb: number;
+  /** Three-point percentage, each player weighted by his share of threes. */
+  fg3: number;
+};
+/** The bars sit near the 5th and 95th percentiles of 2026-27's fives,
+ *  weighted by floor time (75 games, 6,029 minutes; user 2026-11-23). */
+export const PROFILE = {
+  /** Pseudo-attempts pulling a player's three-point share to the league's. */
+  shareShrink: 30,
+  shooterShare: 0.3,
+  small: 2.01,
+  big: 2.0,
+  fewShooters: 2,
+  tov: [0.82, 1.15],
+  oreb: [0.81, 1.25],
+  dreb: [0.89, 1.14],
+  fg3: [0.331, 0.378],
+  /** The five named must have played this share of the run, and a minute. */
+  minShare: 0.5,
+  minSecs: 60,
+} as const;
+
+export function lineupProfile(
+  side: Side,
+  five: string[],
+  priors: RunPriors,
+  heights: Map<string, number>,
+): LineupProfile {
+  const L = priors.league;
+  const per = five.map((p) => {
+    const pr = priors.players.get(`${side}:${p}`);
+    const share = pr
+      ? (pr.fg3[1] + PROFILE.shareShrink * L.fg3Share) /
+        (pr.fg2[1] + pr.fg3[1] + PROFILE.shareShrink)
+      : L.fg3Share;
+    return {
+      share,
+      fg3: pr ? shrunk(pr.fg3, SHRINK.fg3, L.fg3) : L.fg3,
+      tov: pr ? shrunk(pr.tov, SHRINK.tov, L.tovPlayer) : L.tovPlayer,
+      oreb: pr ? shrunk(pr.oreb, SHRINK.reb, L.orebPlayer) : L.orebPlayer,
+      dreb: pr ? shrunk(pr.dreb, SHRINK.reb, L.drebPlayer) : L.drebPlayer,
+    };
+  });
+  const hs = five
+    .map((p) => heights.get(`${side}:${p}`))
+    .filter((h): h is number => h != null);
+  const known = hs.length === five.length && hs.length > 0;
+  return {
+    tallest: known ? Math.max(...hs) : null,
+    meanHeight: known ? mean(hs) : null,
+    shooters: per.filter((x) => x.share >= PROFILE.shooterShare).length,
+    tov: mean(per.map((x) => x.tov)) / L.tovPlayer,
+    oreb: mean(per.map((x) => x.oreb)) / L.orebPlayer,
+    dreb: mean(per.map((x) => x.dreb)) / L.drebPlayer,
+    fg3:
+      per.reduce((a, x) => a + x.fg3 * x.share, 0) /
+      per.reduce((a, x) => a + x.share, 0),
+  };
+}
+
+const vsLeague = (x: number) =>
+  `${Math.round(Math.abs(x - 1) * 100)}% ${x > 1 ? "above" : "below"} the league`;
+/** A five's strengths and weaknesses, rarest-first order fixed: size,
+ *  shooters, ball security, glass, three-point accuracy. */
+export function profileTraits(p: LineupProfile): string[] {
+  const P = PROFILE,
+    out: string[] = [];
+  if (p.tallest != null && p.tallest <= P.small)
+    out.push(`small (tallest ${p.tallest.toFixed(2)} m)`);
+  else if (p.meanHeight != null && p.meanHeight >= P.big)
+    out.push(`big (average ${p.meanHeight.toFixed(2)} m)`);
+  if (p.shooters <= P.fewShooters)
+    out.push(
+      p.shooters
+        ? `only ${p.shooters} three-point shooter${p.shooters === 1 ? "" : "s"}`
+        : "no three-point shooter",
+    );
+  else if (p.shooters === 5) out.push("five three-point shooters");
+  if (p.tov >= P.tov[1]) out.push(`turnover-prone (${vsLeague(p.tov)})`);
+  else if (p.tov <= P.tov[0]) out.push(`careful with the ball (turnovers ${vsLeague(p.tov)})`);
+  if (p.oreb >= P.oreb[1]) out.push(`strong on the offensive glass (${vsLeague(p.oreb)})`);
+  else if (p.oreb <= P.oreb[0]) out.push(`weak on the offensive glass (${vsLeague(p.oreb)})`);
+  if (p.dreb >= P.dreb[1]) out.push(`strong on the defensive glass (${vsLeague(p.dreb)})`);
+  else if (p.dreb <= P.dreb[0]) out.push(`weak on the defensive glass (${vsLeague(p.dreb)})`);
+  const pct = Math.round(p.fg3 * 1000) / 10;
+  if (p.fg3 >= P.fg3[1]) out.push(`good from three (${pct}% expected)`);
+  else if (p.fg3 <= P.fg3[0]) out.push(`poor from three (${pct}% expected)`);
+  return out;
+}
+
+/** Each team's five with the most floor time in the run, when it played at
+ *  least half of it and a minute. */
+export function mainFives(model: RibbonModel, run: Run, order: Side[]) {
+  return order.flatMap((side) => {
+    const by = new Map<string, { five: Set<string>; secs: Set<string>; t: number }>();
+    for (const l of model.lanes) {
+      if (l.side !== side) continue;
+      const s = Math.max(run.start, l.start_elapsed),
+        e = Math.min(run.end, l.end_elapsed);
+      if (e <= s) continue;
+      const v = by.get(l.lineup_key) ?? { five: new Set(), secs: new Set(), t: 0 };
+      v.five.add(l.player_key);
+      const seg = `${l.start_elapsed}`;
+      if (!v.secs.has(seg)) {
+        v.secs.add(seg);
+        v.t += e - s;
+      }
+      by.set(l.lineup_key, v);
+    }
+    const best = [...by.values()].sort((a, b) => b.t - a.t)[0];
+    const len = run.end - run.start;
+    return best &&
+      best.five.size === 5 &&
+      best.t >= PROFILE.minSecs &&
+      best.t >= PROFILE.minShare * len
+      ? [{ side, five: [...best.five], secs: best.t }]
+      : [];
+  });
+}
+
+/** "Lineup profile: Hapoel Tel-Aviv's main five in the run (Blakeney, ...;
+ *  3:10 of 4:40): small (tallest 2.01 m) and turnover-prone (18% above
+ *  the league)."; null when neither main five stands out. */
+export function profileLine(
+  model: RibbonModel,
+  run: Run,
+  names: Record<Side, string>,
+  priors: RunPriors,
+  heights: Map<string, number>,
+  surname: (side: Side, player: string) => string,
+): string | null {
+  const order: Side[] = [run.side, other(run.side)];
+  const parts = mainFives(model, run, order).flatMap(({ side, five, secs }) => {
+    const traits = profileTraits(lineupProfile(side, five, priors, heights));
+    if (!traits.length) return [];
+    const len = run.end - run.start,
+      when = secs >= len ? "the whole run" : `${clock(secs)} of ${clock(len)}`;
+    return [
+      `${names[side]}'s main five in the run (${five.map((p) => surname(side, p)).join(", ")}; ${when}): ${list(traits)}`,
+    ];
+  });
+  return parts.length ? `Lineup profile: ${parts.join("; ")}.` : null;
 }
