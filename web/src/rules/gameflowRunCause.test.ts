@@ -259,20 +259,15 @@ describe("namedFactors", () => {
       clean,
     ]);
   });
-  it("names at most three, biggest first", () => {
-    const fs = [5, 4, 3, 2.6].map((pts) => factor({ pts, p: 0.01 }));
-    expect(namedFactors(fs).map((f) => f.pts)).toEqual([5, 4, 3]);
-  });
-  it("fills the slots after the biggest lead with the most unusual results", () => {
-    // 673's 37-5: 8 turnovers in 19 (chance 1.6%) beat 1/6 on twos (5.4%)
-    // and 0/6 from three (6.4%), though both are a little bigger.
+  it("names every factor that qualifies, biggest first", () => {
+    // 673's 37-5: four qualify, all named.
     const fs = [
-      factor({ kind: "fg3", pts: 13.9, p: 0.007 }),
-      factor({ kind: "fg3", side: "opp", end: "other", pts: 6.6, p: 0.064 }),
-      factor({ kind: "fg2", side: "opp", end: "other", pts: 4.89, p: 0.054 }),
       factor({ kind: "tov", side: "opp", end: "other", n: 19, pts: 4.82, p: 0.016 }),
+      factor({ kind: "fg3", pts: 13.9, p: 0.007 }),
+      factor({ kind: "fg2", side: "opp", end: "other", pts: 4.89, p: 0.054 }),
+      factor({ kind: "fg3", side: "opp", end: "other", pts: 6.6, p: 0.064 }),
     ];
-    expect(namedFactors(fs).map((f) => `${f.side}:${f.kind}`)).toEqual(["own:fg3", "opp:fg2", "opp:tov"]);
+    expect(namedFactors(fs).map((f) => `${f.side}:${f.kind}`)).toEqual(["own:fg3", "opp:fg3", "opp:fg2", "opp:tov"]);
   });
 });
 

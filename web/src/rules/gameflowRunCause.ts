@@ -59,7 +59,6 @@ export const RULE = {
   secondPts: 1.5,
   maxP: 0.1,
   minShots: 4,
-  maxClauses: 3,
   /** "Barely turned it over": at most 1 in 8+ possessions, 2+ expected. */
   clean: { minPoss: 8, maxTov: 1, minExpected: 2 },
 } as const;
@@ -260,10 +259,8 @@ const clean = (f: Factor) =>
 /** The factors a run's line names: led by one worth 2.5+ points (or a fifth
  *  of the run's net margin, when less) and unusual; then others from 1.5
  *  points (or the lead bar, when lower), or the run team barely turning it
- *  over. At most three: the biggest lead, then the most unusual of the
- *  rest (user 2026-11-23: 8 turnovers in 19 possessions, chance 1.6%, over
- *  1/6 on twos, 5.4%, though 0.07 points smaller); shown biggest first.
- *  None without a lead. */
+ *  over; every one that qualifies, biggest first (user 2026-11-23: no cap;
+ *  2026-27 has at most four). None without a lead. */
 export function namedFactors(factors: Factor[], net = Infinity): Factor[] {
   const leadBar = Math.min(RULE.leadPts, RULE.leadShare * net),
     secondBar = Math.min(RULE.secondPts, leadBar);
@@ -273,13 +270,7 @@ export function namedFactors(factors: Factor[], net = Infinity): Factor[] {
     (f) =>
       !lead.includes(f) && ((f.pts >= secondBar && unusual(f)) || clean(f)),
   );
-  const [top, ...rest] = [...lead].sort((a, b) => b.pts - a.pts);
-  return [
-    top,
-    ...[...rest, ...second]
-      .sort((a, b) => a.p - b.p || b.pts - a.pts)
-      .slice(0, RULE.maxClauses - 1),
-  ].sort((a, b) => b.pts - a.pts);
+  return [...lead, ...second].sort((a, b) => b.pts - a.pts);
 }
 
 /** Whole numbers from 2 up, one decimal below (1.96 reads "2", not "2.0"). */
