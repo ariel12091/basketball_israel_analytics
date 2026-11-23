@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   factorsSentence,
+  factorReason,
   lineupProfile,
   mainFives,
   namedFactors,
   poissonBinomialTail,
-  profileLine,
-  profileTraits,
   runFactors,
   type Factor,
   type PlayerPrior,
@@ -21,7 +20,6 @@ import fixture673 from "./__fixtures__/gameflow-673.json";
 const LEAGUE = {
   fg2: 0.53,
   fg3: 0.35,
-  fg3Share: 0.41,
   ft: 0.73,
   tovPlayer: 0.038,
   tovTeam: 0.19,
@@ -340,45 +338,45 @@ describe("runExplanation with the players' priors (Israeli league)", () => {
   });
 });
 
-describe("lineup profile (Gameflow lineup profile)", () => {
-  const H = (hs: number[]) =>
-    new Map(OWN.map((p, i) => [`own:${p}`, hs[i]] as [string, number]));
-  it("names a small five and one with few shooters, from the players' records", () => {
-    // Two players take half their shots from three, three take none.
-    const shooter = prior({ fg2: [50, 100], fg3: [35, 100] }),
-      big = prior({ fg2: [100, 200] });
-    const priors = priorsOf({ "own:1": shooter, "own:2": shooter, "own:3": big, "own:4": big, "own:5": big });
-    const p = lineupProfile("own", OWN, priors, H([1.9, 1.92, 1.95, 1.98, 2.01]));
-    expect(p.shooters).toBe(2);
-    expect(p.tallest).toBe(2.01);
-    expect(profileTraits(p)).toEqual(["small (tallest 2.01 m)", "only 2 three-point shooters"]);
+
+describe("factor reasons (Gameflow lineup profile)", () => {
+  const H = (side: Side, five: string[], hs: number[]) =>
+    new Map(five.map((p, i) => [`${side}:${p}`, hs[i]] as [string, number]));
+  const avg = lineupProfile("own", OWN, priorsOf({}), new Map());
+  it("says nothing of an average five", () => {
+    for (const k of ["fg2", "fg3", "ft", "tov", "oreb"] as const)
+      expect(factorReason(k, avg, avg)).toBeNull();
   });
-  it("says nothing of an average five, and leaves size out without every height", () => {
-    // Four league-average players (41% of shots from three) and one non-shooter.
-    const p = lineupProfile("own", OWN, priorsOf({ "own:5": prior({ fg2: [100, 200] }) }), H([1.9, 1.92, 1.95, 1.98]));
-    expect(p.tallest).toBeNull();
-    expect(profileTraits(p)).toEqual([]);
+  it("names a small five, and a defense weak on its glass, for offensive rebounds", () => {
+    const small = lineupProfile("own", OWN, priorsOf({}), H("own", OWN, [1.9, 1.92, 1.95, 1.98, 2.01]));
+    expect(small.tallest).toBe(2.01);
+    expect(factorReason("oreb", small, avg)).toBe("a five no taller than 2.01 m");
+    const thin = prior({ dreb: [20, 1000] });
+    const def = lineupProfile("opp", OPP, priorsOf(Object.fromEntries(OPP.map((p) => [`opp:${p}`, thin]))), new Map());
+    expect(factorReason("oreb", small, def)).toBe(
+      "a five no taller than 2.01 m and against a weak defensive-rebounding five",
+    );
+    // Size is left out unless every height is known.
+    expect(lineupProfile("own", OWN, priorsOf({}), H("own", OWN.slice(0, 4), [1.9, 1.9, 1.9, 1.9])).tallest).toBeNull();
   });
-  it("names turnovers and rebounding against the league", () => {
-    const sloppy = prior({ tov: [60, 1000], oreb: [10, 1000] });
-    const priors = priorsOf({ ...Object.fromEntries(OWN.map((p) => [`own:${p}`, sloppy])), "own:5": prior({ fg2: [100, 200], tov: [60, 1000], oreb: [10, 1000] }) });
-    expect(profileTraits(lineupProfile("own", OWN, priors, new Map()))).toEqual([
-      "turnover-prone (45% above the league)",
-      "weak on the offensive glass (42% below the league)",
-    ]);
+  it("names a turnover-prone five for turnovers and shooters for threes only", () => {
+    const sloppy = prior({ tov: [60, 1000], fg3: [45, 100] });
+    const p = lineupProfile("own", OWN, priorsOf(Object.fromEntries(OWN.map((x) => [`own:${x}`, sloppy]))), new Map());
+    expect(factorReason("tov", p, avg)).toBe("a turnover-prone five");
+    expect(factorReason("fg3", p, avg)).toBe("good three-point shooters");
+    expect(factorReason("fg2", p, avg)).toBeNull();
   });
   it("profiles a team's five only when it played half the run and a minute", () => {
     const model = ribbonModel(fixture673 as unknown as RawRibbon, 2, "il", 673);
-    const r: Run = { ...run, start: 0, end: 400 };
-    const fives = mainFives(model, r, ["own", "opp"]);
-    for (const f of fives) {
-      expect(f.five).toHaveLength(5);
-      expect(f.secs).toBeGreaterThanOrEqual(200);
-    }
-    expect(mainFives(model, { ...r, end: 30 }, ["own", "opp"])).toEqual([]);
-    const sloppy = prior({ tov: [60, 1000] });
-    const all = new Map(model.lanes.map((l) => [`${l.side}:${l.player_key}`, sloppy]));
-    const line = profileLine(model, r, { own: "A", opp: "B" }, { players: all, league: LEAGUE }, new Map(), surname);
-    expect(line).toMatch(/^Lineup profile: A's main five in the run \(P\d+, P\d+, P\d+, P\d+, P\d+; (the whole run|\d+:\d\d of 6:40)\): five three-point shooters and turnover-prone \(45% above the league\); B's/);
+    const fives = mainFives(model, { ...run, start: 0, end: 400 });
+    expect([...fives.values()].every((f) => f.length === 5)).toBe(true);
+    expect(fives.size).toBeGreaterThan(0);
+    expect(mainFives(model, { ...run, start: 0, end: 30 }).size).toBe(0);
+  });
+  it("puts the reason inside the clause's brackets", () => {
+    const f = factor({ end: "other", side: "opp", kind: "oreb", obs: 0, n: 7, expected: 2.1, pts: 2.3, p: 0.05, why: "a five no taller than 2.01 m" });
+    expect(factorsSentence([f], { own: "A", opp: "B" })).toBe(
+      "B rebounded none of 7 misses (expected 2, a five no taller than 2.01 m)",
+    );
   });
 });

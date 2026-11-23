@@ -94,7 +94,6 @@ teams AS (
 league AS (
   SELECT SUM(fgm - "3pm")::float / NULLIF(SUM(fga - "3pa"), 0) AS fg2,
          SUM("3pm")::float / NULLIF(SUM("3pa"), 0) AS fg3,
-         SUM("3pa")::float / NULLIF(SUM(fga), 0) AS fg3_share,
          SUM(ftm)::float / NULLIF(SUM(fta), 0) AS ft,
          SUM(tov)::float / NULLIF(SUM(poss_on_floor), 0) AS tov_player,
          SUM(oreb)::float / NULLIF(SUM(poss_on_floor), 0) AS oreb_player,
@@ -168,7 +167,6 @@ export async function readRunPriors(
     league: {
       fg2: n(L.fg2),
       fg3: n(L.fg3),
-      fg3Share: n(L.fg3_share),
       ft: n(L.ft),
       tovPlayer: n(L.tov_player),
       tovTeam: n(L.tov_team),

@@ -5,7 +5,7 @@
 import type { RibbonModel, Side } from "./gameflow";
 import { detectRuns, runExplanation, surnameOf, type Run } from "./gameflowRuns";
 import { stintRatings } from "./gameflowRatings";
-import { factorsSentence, namedFactors, profileLine, runFactors, type RunPriors } from "./gameflowRunCause";
+import { factorsSentence, namedFactors, runFactors, withReasons, type RunPriors } from "./gameflowRunCause";
 
 export type ExplainedRun = Run & { lines: string[] };
 export type PlayerRating = {
@@ -38,14 +38,15 @@ export function gameflowSummary(
     surnameOf(label.get(`${side}:${player}`) ?? player);
   const runs = detectRuns(model.steps).map((r) => {
     const results = priors
-      ? factorsSentence(namedFactors(runFactors(model.events, r, priors.priors, priors.heights, surname), r.net), names)
+      ? factorsSentence(
+          withReasons(
+            namedFactors(runFactors(model.events, r, priors.priors, priors.heights, surname), r.net),
+            model, r, priors.priors, priors.heights,
+          ),
+          names,
+        )
       : undefined;
     const lines = runExplanation(model, r, names, undefined, undefined, results);
-    // What the main fives usually do, before the cause (which stays last).
-    const profile = priors
-      ? profileLine(model, r, names, priors.priors, priors.heights, surname)
-      : null;
-    if (profile) lines.splice(-1, 0, profile);
     return { ...r, lines };
   });
   const players = model.totals.map((t) => {
