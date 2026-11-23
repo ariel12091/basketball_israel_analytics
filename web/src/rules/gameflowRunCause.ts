@@ -353,13 +353,13 @@ export type LineupProfile = {
   tov: number;
   oreb: number;
   dreb: number;
-  /** Three-point percentage, the five's mean. */
-  fg3: number;
   /** Accurate three-point shooters (SPACING). */
   shooters: number;
 };
 /** The bars sit near the 5th and 95th percentiles of 2026-27's fives,
- *  weighted by floor time (75 games, 6,029 minutes; user 2026-11-23). */
+ *  weighted by floor time (75 games, 6,029 minutes; user 2026-11-23), except
+ *  manyShooters: 4+ accurate shooters is 28% of floor time (user 2026-11-23:
+ *  the reason is context for the count, not a prediction). */
 export const PROFILE = {
   small: 2.01,
   big: 2.0,
@@ -368,9 +368,8 @@ export const PROFILE = {
   tov: [0.892, 1.09],
   oreb: [0.81, 1.25],
   dreb: [0.89, 1.14],
-  fg3: [0.331, 0.378],
   fewShooters: 1,
-  manyShooters: 5,
+  manyShooters: 4,
   /** The fives described must have played this share of the run, and a minute. */
   /** ... a third of the run (user 2026-11-23: half was too much). */
   minShare: 1 / 3,
@@ -384,10 +383,9 @@ export function lineupProfile(
   heights: Map<string, number>,
 ): LineupProfile {
   const L = priors.league;
-  const rate = (p: string, k: "fg3" | "tov" | "oreb" | "dreb") => {
+  const rate = (p: string, k: "tov" | "oreb" | "dreb") => {
     const pr = priors.players.get(`${side}:${p}`);
     const [lg, n] = {
-      fg3: [L.fg3, SHRINK.fg3],
       tov: [L.tovPlayer, SHRINK.tov],
       oreb: [L.orebPlayer, SHRINK.reb],
       dreb: [L.drebPlayer, SHRINK.reb],
@@ -404,7 +402,6 @@ export function lineupProfile(
     tov: 1 + TOV_FIVE_WEIGHT * (mean(five.map((p) => rate(p, "tov"))) / L.tovPlayer - 1),
     oreb: mean(five.map((p) => rate(p, "oreb"))) / L.orebPlayer,
     dreb: mean(five.map((p) => rate(p, "dreb"))) / L.drebPlayer,
-    fg3: mean(five.map((p) => rate(p, "fg3"))),
     shooters: five.filter((p) => isShooter(priors.players.get(`${side}:${p}`), L)).length,
   };
 }
@@ -442,8 +439,8 @@ export function runFives(
 }
 
 type Profiled = { profile: LineupProfile; secs: number };
-/** A trait counts when the fives that have it together played at least half
- *  the run and a minute (user 2026-11-23: a team that goes small across
+/** A trait counts when the fives that have it together played at least a
+ *  third of the run and a minute (user 2026-11-23: a team that goes small across
  *  several substitutions still went small). The text is singular for one
  *  five ("a turnover-prone five"), plural for several ("turnover-prone fives"). */
 function trait(
@@ -463,7 +460,7 @@ const five = (one: boolean, what: string) => (one ? `a ${what} five` : `${what} 
 /** Why a named factor's expected count is high or low (user 2026-11-23), from
  *  the fives of the team on offense and of the one defending: "a turnover-prone
  *  five", "a five no taller than 2.01 m", "against a weak defensive-rebounding
- *  five", "a good-spacing five"... At most two; none for free
+ *  five", "a five spread with shooters"... At most two; none for free
  *  throws. */
 export function factorReason(
   kind: FactorKind,
@@ -485,16 +482,16 @@ export function factorReason(
   const out: (string | null)[] = [];
   if (kind === "tov") {
     out.push(t(offense, (p) => p.tov >= P.tov[1], (one) => five(one, "turnover-prone")));
-    out.push(t(offense, (p) => p.tov <= P.tov[0], (one) => (one ? "a five careful with the ball" : "fives careful with the ball")));
+    out.push(t(offense, (p) => p.tov <= P.tov[0], (one) => five(one, "low-turnover")));
   }
-  if (kind === "fg3") {
-    out.push(t(offense, (p) => p.fg3 >= P.fg3[1], () => "good three-point shooters"));
-    out.push(t(offense, (p) => p.fg3 <= P.fg3[0], () => "poor three-point shooters"));
-  }
-  if (kind === "fg2") {
-    // Spacing (user 2026-11-23: "good spacing five").
-    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => five(one, "good-spacing")));
-    out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one) => five(one, "poor-spacing")));
+  if (kind === "fg2" || kind === "fg3") {
+    // A five to be guarded at the line, for twos (spacing) and threes alike
+    // (user 2026-11-23: both read as "shooters").
+    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => `${one ? "a five" : "fives"} spread with shooters`));
+    out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one, w) => {
+      const n = Math.max(...w.map((p) => p.shooters));
+      return `${one ? "a five" : "fives"} with ${n ? "only one" : "no"} three-point shooter`;
+    }));
   }
   if (kind === "oreb") {
     out.push(t(offense, (p) => p.oreb >= P.oreb[1], (one) => five(one, "strong offensive-rebounding")));
