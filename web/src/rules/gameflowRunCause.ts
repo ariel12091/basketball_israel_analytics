@@ -460,7 +460,7 @@ const five = (one: boolean, what: string) => (one ? `a ${what} five` : `${what} 
 /** Why a named factor's expected count is high or low (user 2026-11-23), from
  *  the fives of the team on offense and of the one defending: "a turnover-prone
  *  five", "a five no taller than 2.01 m", "against a weak defensive-rebounding
- *  five", "a five spread with shooters"... At most two; none for free
+ *  five", "a shooting five"... At most two; none for free
  *  throws. */
 export function factorReason(
   kind: FactorKind,
@@ -487,7 +487,7 @@ export function factorReason(
   if (kind === "fg2" || kind === "fg3") {
     // A five to be guarded at the line, for twos (spacing) and threes alike
     // (user 2026-11-23: both read as "shooters").
-    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => `${one ? "a five" : "fives"} spread with shooters`));
+    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => five(one, "shooting")));
     out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one, w) => {
       const n = Math.max(...w.map((p) => p.shooters));
       return `${one ? "a five" : "fives"} with ${n ? "only one" : "no"} three-point shooter`;

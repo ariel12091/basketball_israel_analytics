@@ -396,14 +396,14 @@ describe("factor reasons (Gameflow lineup profile)", () => {
   it("names turnovers, threes and the shooters around a two each on its own factor", () => {
     const sloppy = lineupProfile("own", OWN, all("own", OWN, prior({ tov: [60, 1000], fg3: [45, 100], fg2: [100, 200] })), new Map());
     expect(factorReason("tov", on(sloppy), on(avg), 100)).toBe("a turnover-prone five");
-    expect(factorReason("fg3", on(sloppy), on(avg), 100)).toBe("a five spread with shooters");
+    expect(factorReason("fg3", on(sloppy), on(avg), 100)).toBe("a shooting five");
     // Players who take few threes: no accurate shooter.
     const paint = lineupProfile("own", OWN, all("own", OWN, prior({ fg2: [200, 400], fg3: [5, 20] })), new Map());
     expect(paint.shooters).toBe(0);
     expect(factorReason("fg2", on(paint), on(avg), 100)).toBe("a five with no three-point shooter");
     expect(factorReason("fg3", on(paint), on(avg), 100)).toBe("a five with no three-point shooter");
     const five = lineupProfile("own", OWN, priorsOf({}), new Map()); // no record = league-average, a shooter
-    expect(factorReason("fg2", on(five), on(avg), 100)).toBe("a five spread with shooters");
+    expect(factorReason("fg2", on(five), on(avg), 100)).toBe("a shooting five");
     const careful = lineupProfile("own", OWN, all("own", OWN, prior({ tov: [20, 1000] })), new Map());
     expect(factorReason("tov", on(careful), on(avg), 100)).toBe("a low-turnover five");
   });
