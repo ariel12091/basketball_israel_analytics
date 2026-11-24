@@ -791,11 +791,6 @@ export function GameflowView({
             clear();
             setPanelRuns(true);
           }}
-          onShow={(r) => {
-            setQuarter(quarterOf(r.start));
-            setFull(false);
-            setPanelOpen(false);
-          }}
           onClear={() => {
             clear();
             setPanelOpen(false);
@@ -875,7 +870,6 @@ function PhonePanel({
   selectionKey,
   onRun,
   onAllRuns,
-  onShow,
   onClear,
 }: {
   /** How many lineups the open panel lists, named on its button. */
@@ -894,7 +888,6 @@ function PhonePanel({
   list: ReactNode;
   onRun: (r: ExplainedRun) => void;
   onAllRuns: () => void;
-  onShow: (r: ExplainedRun) => void;
   onClear: () => void;
 }) {
   const team = (r: ExplainedRun) =>
@@ -948,9 +941,6 @@ function PhonePanel({
         <div className="gf-m-links">
           <button type="button" className="gf-m-link" onClick={onAllRuns}>
             ‹ All runs
-          </button>
-          <button type="button" className="gf-m-link" onClick={() => onShow(run)}>
-            Show on timeline ›
           </button>
         </div>
         {(prev || next) && (
