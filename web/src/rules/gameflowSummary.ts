@@ -3,8 +3,9 @@
 // their explanation lines (gameflowRuns.ts) and each player's whole-game
 // credited ratings (gameflowRatings.ts). Nothing here re-derives a count.
 import type { RibbonModel, Side } from "./gameflow";
-import { detectRuns, runExplanation, type Run } from "./gameflowRuns";
+import { detectRuns, runExplanation, surnameOf, type Run } from "./gameflowRuns";
 import { stintRatings } from "./gameflowRatings";
+import { factorsSentence, namedFactors, runFactors, withReasons, type RunPriors } from "./gameflowRunCause";
 
 export type ExplainedRun = Run & { lines: string[] };
 export type PlayerRating = {
@@ -28,11 +29,26 @@ export type PlayerRating = {
 export function gameflowSummary(
   model: RibbonModel,
   names: Record<Side, string>,
+  /** Israeli league: player priors and heights (m) by `${side}:${player}`,
+   *  for the run explanation judged against the players (D43 otherwise). */
+  priors?: { priors: RunPriors; heights: Map<string, number> } | null,
 ): { runs: ExplainedRun[]; players: PlayerRating[] } {
-  const runs = detectRuns(model.steps).map((r) => ({
-    ...r,
-    lines: runExplanation(model, r, names),
-  }));
+  const label = new Map(model.lanes.map((l) => [`${l.side}:${l.player_key}`, l.player_label]));
+  const surname = (side: Side, player: string) =>
+    surnameOf(label.get(`${side}:${player}`) ?? player);
+  const runs = detectRuns(model.steps).map((r) => {
+    const results = priors
+      ? factorsSentence(
+          withReasons(
+            namedFactors(runFactors(model.events, r, priors.priors, priors.heights, surname), r.net),
+            model, r, priors.priors, priors.heights,
+          ),
+          names,
+        )
+      : undefined;
+    const lines = runExplanation(model, r, names, undefined, undefined, results);
+    return { ...r, lines };
+  });
   const players = model.totals.map((t) => {
     const label =
       model.lanes.find((l) => l.side === t.side && l.player_key === t.player_key)

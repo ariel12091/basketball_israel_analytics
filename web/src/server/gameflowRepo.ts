@@ -9,6 +9,7 @@ import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { ownerName, readPlayerNames } from "./playerNames";
 import { readTeamIdentity } from "./teamIdentity";
+import { readRunPriors } from "./runPriors";
 import { applyTeamNamesHe, readTeamNamesHe, teamNameHe } from "./teamNames";
 export function parseGameflow(search: URLSearchParams) {
   const id = (key: string) => {
@@ -67,7 +68,20 @@ async function read(league: League, game: number, team: number) {
       ownTeam = String(meta.team_name ?? "Own"),
       oppTeam = String(meta.opp_team_name ?? "Opponent");
     // Runs and player ratings, once, for the page and the API/chat alike.
-    const summary = gameflowSummary(model, { own: ownTeam, opp: oppTeam });
+    // Israeli runs are judged against the players' own records (D43).
+    const priors = raw.events?.length
+      ? await readRunPriors(q, league, game, Number(meta.game_year), team)
+      : null;
+    const heights = new Map(
+      (raw.heights ?? []).flatMap((h) =>
+        h.height_m == null ? [] : [[`${Number(h.team_id) === team ? "own" : "opp"}:${h.player_id}`, Number(h.height_m)] as const],
+      ),
+    );
+    const summary = gameflowSummary(
+      model,
+      { own: ownTeam, opp: oppTeam },
+      priors ? { priors, heights } : null,
+    );
     // Each club's colours and logo (catalogue rows): Gameflow draws each side
     // in its own club's colours.
     const oppId = Number(meta.opp_team_id),

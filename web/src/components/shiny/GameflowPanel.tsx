@@ -791,11 +791,6 @@ export function GameflowView({
             clear();
             setPanelRuns(true);
           }}
-          onShow={(r) => {
-            setQuarter(quarterOf(r.start));
-            setFull(false);
-            setPanelOpen(false);
-          }}
           onClear={() => {
             clear();
             setPanelOpen(false);
@@ -804,6 +799,13 @@ export function GameflowView({
       )}
     </div>
   );
+}
+/** The run before (-1) or after (+1) this one in game time, either team's,
+ * or null past either end. */
+function stepRun<R extends Run>(runs: R[], run: Run, dir: 1 | -1): R | null {
+  const order = [...runs].sort((a, b) => a.start - b.start),
+    i = order.findIndex((r) => r.start === run.start && r.side === run.side);
+  return i >= 0 ? (order[i + dir] ?? null) : null;
 }
 const stintLineups = (data: GameflowPayload, w: BarWindow) =>
   aggregateSegments(
@@ -868,7 +870,6 @@ function PhonePanel({
   selectionKey,
   onRun,
   onAllRuns,
-  onShow,
   onClear,
 }: {
   /** How many lineups the open panel lists, named on its button. */
@@ -887,7 +888,6 @@ function PhonePanel({
   list: ReactNode;
   onRun: (r: ExplainedRun) => void;
   onAllRuns: () => void;
-  onShow: (r: ExplainedRun) => void;
   onClear: () => void;
 }) {
   const team = (r: ExplainedRun) =>
@@ -934,16 +934,31 @@ function PhonePanel({
     // The headline line's window and swing ("Q3 2:25 – Q4 2:31 · from down 20
     // to up 12") sit under the title; the body starts at the lineups.
     sub = run.lines[0]?.split(" · ").slice(1).join(" · ") || window(run);
+    const prev = stepRun(data.runs as ExplainedRun[], run, -1),
+      next = stepRun(data.runs as ExplainedRun[], run, 1);
     body = (
       <>
         <div className="gf-m-links">
           <button type="button" className="gf-m-link" onClick={onAllRuns}>
             ‹ All runs
           </button>
-          <button type="button" className="gf-m-link" onClick={() => onShow(run)}>
-            Show on timeline ›
-          </button>
         </div>
+        {(prev || next) && (
+          <div className="gf-m-links gf-run-step">
+            {prev ? (
+              <button type="button" className="gf-m-link" onClick={() => onRun(prev)}>
+                ‹ Previous run
+              </button>
+            ) : (
+              <span />
+            )}
+            {next && (
+              <button type="button" className="gf-m-link" onClick={() => onRun(next)}>
+                Next run ›
+              </button>
+            )}
+          </div>
+        )}
         <RunLines lines={run.lines.slice(1)} />
         {list}
       </>
@@ -1587,6 +1602,36 @@ function GameflowDetails({
             {(run as ExplainedRun).lines[0]}
           </div>
           <RunLines lines={(run as ExplainedRun).lines.slice(1)} />
+          {(() => {
+            const prev = stepRun(data.runs, run, -1),
+              next = stepRun(data.runs, run, 1);
+            return (
+              (prev || next) && (
+                <div className="gf-m-links gf-run-step">
+                  {prev ? (
+                    <button
+                      type="button"
+                      className="gf-m-link"
+                      onClick={() => dispatch({ type: "run", run: prev })}
+                    >
+                      ‹ Previous run
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  {next && (
+                    <button
+                      type="button"
+                      className="gf-m-link"
+                      onClick={() => dispatch({ type: "run", run: next })}
+                    >
+                      Next run ›
+                    </button>
+                  )}
+                </div>
+              )
+            );
+          })()}
         </section>
       )}
     </>

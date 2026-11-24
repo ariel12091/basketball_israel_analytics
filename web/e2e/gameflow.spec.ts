@@ -413,12 +413,17 @@ test("Phone: the runs are listed in the panel and explained there", async ({
   expect(lines.some((l) => /\d+% from three \(\d+\/\d+\).*shooting variance$/.test(l))).toBe(true);
   expect(lines.at(-1)).toMatch(/^Estimated cause/);
   await expect(page.getByRole("region", { name: "Run lineups", exact: true })).toBeVisible();
-  // Back to the list, and from a run to its place on the timeline.
+  // The last run has no next; back to the list, then step between runs,
+  // each one shown in its own quarter.
+  await expect(page.getByRole("button", { name: "Next run ›" })).toHaveCount(0);
   await page.getByRole("button", { name: "‹ All runs" }).click();
   await expect(rows).toHaveCount(3);
   await rows.nth(1).click();
-  await page.getByRole("button", { name: "Show on timeline ›" }).click();
-  await expect(panelBar(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("tab", { name: "Q2", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Next run ›" }).click();
+  await expect(panelBar(page)).toContainText("Maccabi Tel-Aviv 37-5 run · defining stretch");
+  await expect(page.getByRole("tab", { name: "Q3", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "‹ Previous run" }).click();
   await expect(page.getByRole("tab", { name: "Q2", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator('[data-quarter="2"] .gf-run-band.is-open')).toHaveCount(1);
 });

@@ -79,6 +79,26 @@ for (const [league, game, team] of [
     });
     expect(body.events).toBeGreaterThan(0);
   });
+test("Gameflow explains Israeli runs against the players' records live", async ({ page }) => {
+  // Gameflow run cause (2026-11-22): the priors reader ran, so the defining
+  // 37-5 names Maccabi's 9/12 threes against what its shooters usually make,
+  // and no rest-of-game standout is left; EuroLeague keeps the standouts (D43).
+  await page.goto("/il/gameflow?game_id=673&team_id=2");
+  const lines = await page.evaluate(async () => {
+    const r = await fetch("/api/v1/il/gameflow?game_id=673&team_id=2");
+    return ((await r.json()).runs as { pts: number; oppPts: number; lines: string[] }[]).map((x) => ({
+      score: `${x.pts}-${x.oppPts}`,
+      lines: x.lines,
+    }));
+  });
+  const defining = lines.find((x) => x.score === "37-5")!;
+  expect(defining.lines.at(-1)).toMatch(/^Estimated cause: .*Maccabi Tel-Aviv went 9\/12 from three \(expected \d/);
+  // Both teams changed just before it: each change with what its newcomer did (2026-11-23).
+  expect(defining.lines.at(-1)).toContain("Maccabi Tel-Aviv brought in Dibartolomeo at Q3 3:54, who played the whole run");
+  // A small run can be led by a smaller factor, a fifth of its margin (2026-11-23).
+  expect(lines.find((x) => x.score === "16-6")!.lines.at(-1)).toMatch(/Maccabi Tel-Aviv rebounded 4 of 5 misses \(expected/);
+  for (const x of lines) expect(x.lines.join(" ")).not.toContain("the rest of the game");
+});
 test("Gameflow lineups list players shortest to tallest live", async ({ page }) => {
   // basket.co.il heights (user 2026-11-12): DiBartolomeo 1.83 m always
   // before Sorkin 2.08 m in any lineup that has both.

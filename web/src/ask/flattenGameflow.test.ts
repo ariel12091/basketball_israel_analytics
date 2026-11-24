@@ -12,7 +12,7 @@ describe("flatten gameflow", () => {
       "Hapoel Tel-Aviv 30-4 Q2 2:50 – Q3 4:18 no",
       "Maccabi Tel-Aviv 37-5 Q3 2:25 – Q4 2:31 yes",
     ]);
-    expect(String(runs[2].explanation)).toMatch(/Estimated cause: Hapoel Tel-Aviv's two-point shooting .* so no lineup is credited/);
+    expect(String(runs[2].explanation)).toMatch(/Estimated cause: Hapoel Tel-Aviv's two-point shooting .* Hapoel Tel-Aviv brought in Blayzer at Q3 3:01, who played 2:25 of the run and lost that stretch 10-1/);
   });
   it("and one row per player with the card's ratings", () => {
     const dib = rows.find((r) => r.section === "player" && String(r.player).includes("DIBARTOLOMEO"))!;

@@ -11,7 +11,7 @@ import type {
   Side,
 } from "./gameflow";
 import { rRound } from "./round";
-import { aggregateSegments, points, type Segment } from "./gameflow";
+import { aggregateSegments, clock, points, type Segment } from "./gameflow";
 
 /** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP
  *  (8, not 10, since 2026-11-17: the user counts an 11-2 as a run). */
@@ -21,6 +21,9 @@ export const RUN_MAX = 3;
 /** A lineup change "lines up" with a run when it came at most this many
  *  seconds before the run's first point. */
 export const CHANGE_WINDOW = 120;
+/** ...and is named only when the players who came in played at least this
+ *  many seconds of the run (user 2026-11-23). */
+export const MIN_CHANGE_STINT = 60;
 
 export type Run = {
   side: Side;
@@ -143,6 +146,10 @@ export type RunLineup = {
   /** Lineup changes after the run's first point, up to its last. */
   changesDuring: number;
   stayedOn: boolean;
+  /** The players who came in (`cameIn`), from the run's first point while all
+   *  of them stayed on, up to the run's end: seconds and the score, their
+   *  team's points first (user 2026-11-23). */
+  stint: { secs: number; pf: number; pa: number; whole: boolean };
 };
 export type RunLineups = RunLineup[];
 
@@ -188,6 +195,22 @@ export function runLineups(model: RibbonModel, run: Run): RunLineups {
     }
     // No five before it (tip-off, or a gap in the lanes): nobody came in.
     const known = before.length > 0;
+    // The players who came in, while all of them stayed on (their bars).
+    const inKeys = known ? [...nowKeys].filter((k) => !beforeKeys.has(k)) : [];
+    const stintEnd = Math.min(
+      run.end,
+      ...inKeys.map(
+        (k) =>
+          bars.find(
+            (b) =>
+              b.player_key === k &&
+              b.start_elapsed <= run.start &&
+              run.start < b.end_elapsed,
+          )?.end_elapsed ?? run.end,
+      ),
+    );
+    // Half a second back so the run's first basket, at run.start, counts.
+    const p = points(side, run.start - 0.5, stintEnd, model.steps);
     return {
       side,
       onSince: Number.isFinite(onSince) ? onSince : run.start,
@@ -195,6 +218,12 @@ export function runLineups(model: RibbonModel, run: Run): RunLineups {
       wentOut: known ? label(before, nowKeys) : [],
       changesDuring: changes,
       stayedOn: changes === 0,
+      stint: {
+        secs: stintEnd - run.start,
+        pf: p.pf ?? 0,
+        pa: p.pa ?? 0,
+        whole: stintEnd >= run.end,
+      },
     };
   });
 }
@@ -298,13 +327,51 @@ const rate = (x: { made: number; att: number }) => x.made / x.att;
  * cause; user 2026-11-12). The strongest standout that is not from three
  * leads; a three-point standout is named as hot or cold shooting, after it
  * ("with ... on top") or alone; then the lineup changes that came within
- * CHANGE_WINDOW of the run's first point -- one team's is said to line up,
- * both teams' credit neither. A timing match, never proof.
+ * CHANGE_WINDOW of the run's first point, each with what its five did in
+ * the run (`changeClause`). A timing match, never proof.
  */
+type Change = { team: string; at: string; who: string; did: string };
+/** The lineup-change clause both cause lines share: each change that came
+ *  just before the run, with what the players who came in did in it (user
+ *  2026-11-23: one team's newcomer can win the run while the other's loses
+ *  it, so both changes are reported, neither dismissed). */
+function changeClause(changes: Change[]) {
+  const one = (c: Change) => `${c.team} brought in ${c.who} at ${c.at}, who ${c.did}`;
+  return changes.length === 2
+    ? `both teams changed lineups just before: ${one(changes[0])}, and ${one(changes[1])}`
+    : `${changes[0].team} brought in ${changes[0].who} just before (${changes[0].at}), who ${changes[0].did}`;
+}
+/** The whole run needs no score (it is the run's); a part of it does. */
+function stintDid(s: RunLineup["stint"]) {
+  if (s.whole) return "played the whole run";
+  const hi = Math.max(s.pf, s.pa),
+    lo = Math.min(s.pf, s.pa),
+    verb = s.pf > s.pa ? "won" : s.pf < s.pa ? "lost" : "drew";
+  return `played ${clock(s.secs)} of the run and ${verb} that stretch ${hi}-${lo}`;
+}
+/** "Daniel Theis" -> "Theis"; "LAST, FIRST" (EuroLeague) -> "Last"; a
+ *  Jr./II/III suffix is dropped. */
+const SUFFIX = new Set(["jr", "sr", "ii", "iii", "iv"]);
+export function surnameOf(label: string) {
+  const words = (label.includes(",") ? label.split(",")[0] : label)
+    .split(/\s+/)
+    .filter((w) => w && !SUFFIX.has(w.toLowerCase().replace(/\.$/, "")));
+  const last = (label.includes(",") ? words.join(" ") : words.at(-1)) ?? label;
+  return last
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+const andList = (xs: string[]) =>
+  xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
+
 function causeLine(
   standouts: Standout[],
-  changes: { team: string; at: string }[],
+  changes: Change[],
   names: Record<Side, string>,
+  /** A change came just before but was left out (under MIN_CHANGE_STINT):
+   *  "neither team changed lineups" would be false, so say nothing. */
+  dropped = false,
 ) {
   const lead = standouts.find((s) => !s.variance),
     three = standouts.find((s) => s.variance);
@@ -318,15 +385,25 @@ function causeLine(
       ? threes(three)
       : null;
   const minutes = `${CHANGE_WINDOW / 60} minutes`;
+  if (dropped && !changes.length)
+    return `Estimated cause: ${results ?? "no result stood out against the rest of the game"}.`;
   if (!results && !changes.length)
     return `Estimated cause: neither team changed lineups in the ${minutes} before the run, and no result stood out against the rest of the game.`;
   if (!changes.length)
     return `Estimated cause: ${results}${three && !lead ? `; neither team changed lineups in the ${minutes} before the run` : ""}.`;
-  const change =
-    changes.length === 2
-      ? `both teams ${results ? "also " : ""}changed lineups just before (${changes.map((c) => `${c.team} at ${c.at}`).join(", ")}), so no lineup is credited`
-      : `${changes[0].team}'s lineup change at ${changes[0].at} ${results ? "also " : ""}lines up with the run`;
+  const change = changeClause(changes);
   return `Estimated cause: ${results ? `${results}; ${change}` : change}. A timing match, not proof.`;
+}
+/**
+ * The Israeli "Estimated cause" (shared_definitions.md, Gameflow run cause,
+ * since 2026-11-22): what happened at both ends against what the players on
+ * the floor usually do (`factorsSentence`, rules/gameflowRunCause.ts), then
+ * the same lineup-change wording as `causeLine`.
+ */
+function priorCauseLine(results: string | null, changes: Change[]) {
+  const what = results ?? "no single result stood out against what these players usually do";
+  if (!changes.length) return `Estimated cause: ${what}.`;
+  return `Estimated cause: ${what}; ${changeClause(changes)}. A timing match, not proof.`;
 }
 const swing = (m: number) => (m > 0 ? `up ${m}` : m < 0 ? `down ${-m}` : "level");
 const pct = (made: number, att: number) => `${rRound((100 * made) / att, 0)}%`;
@@ -361,7 +438,11 @@ export function runExplanation(
   names: Record<Side, string>,
   standouts: Standout[] = runStandouts(model.events, run),
   lineups: RunLineups = runLineups(model, run),
+  /** Israeli league: the factors sentence (null = nothing stood out). When
+   *  given, it replaces the standouts and their lines (D43). */
+  results?: string | null,
 ): string[] {
+  const byPriors = results !== undefined;
   const at = (t: number) => periodClock(t, model.bounds),
     since = (t: number) => periodClock(t, model.bounds, true),
     sign = run.side === "own" ? 1 : -1;
@@ -380,19 +461,28 @@ export function runExplanation(
           : `this five had been on since ${since(l.onSince)}${change}`;
       return `${names[l.side]}: ${five}${during}`;
     }),
-    ...standouts.map((s) => standoutLine(names[s.side], s)),
+    ...(byPriors ? [] : standouts.map((s) => standoutLine(names[s.side], s))),
   ];
   // A change "lines up" only when it came shortly before the run's first
   // point; when both teams changed, neither is credited (spec anti-goal).
   const close = lineups.filter(
     (l) => l.cameIn.length && run.start - l.onSince <= CHANGE_WINDOW,
   );
+  // A newcomer who played under a minute of the run (e.g. on for the last
+  // seconds of a quarter) says nothing about it (user 2026-11-23).
+  const named = close.filter(
+    (l) => l.stint.whole || l.stint.secs >= MIN_CHANGE_STINT,
+  );
+  const changes = named.map((l) => ({
+    team: names[l.side],
+    at: since(l.onSince),
+    who: andList(l.cameIn.map(surnameOf)),
+    did: stintDid(l.stint),
+  }));
   lines.push(
-    causeLine(
-      standouts,
-      close.map((l) => ({ team: names[l.side], at: since(l.onSince) })),
-      names,
-    ),
+    byPriors
+      ? priorCauseLine(results ?? null, changes)
+      : causeLine(standouts, changes, names, close.length > named.length),
   );
   return lines;
 }
