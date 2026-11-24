@@ -56,7 +56,10 @@ DECLARE
     'get_team_minutes_dynamic',
     'get_player_traditional_dynamic',
     'get_player_traditional_from_games',
-    'get_player_traditional_custom_clutch'
+    'get_player_traditional_custom_clutch',
+    -- 2026-11-24 win probability (sql/migrations/2026-11-24_win_probability.sql)
+    'win_prob_states',
+    'game_win_probability'
   ];
   -- EuroLeague app API. The refresh_* functions are publication machinery and
   -- are deliberately absent: they mutate the schema and must never be callable
