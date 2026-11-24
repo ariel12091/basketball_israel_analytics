@@ -50,26 +50,38 @@ export function winChanceAt(series: WinPoint[], t: number): WinPoint | null {
 }
 
 /**
- * The rows a run reads: the state just before its first point and just after
- * its last: the last possession that began before the first point, and the
- * last that began by the last point. Pinned against the run's own margins on
- * every run of the three fixtures (gameflowWinProb.test.ts).
+ * The rows a run reads (WPA contract row): the possession before its first
+ * point and the possession after its last. Possessions start at whole-second
+ * times, so a score and the next possession often share a second, and a
+ * free-throw trip or an offensive rebound can put the next possession start
+ * after the run's last point. So among the possessions around each end, the
+ * one at the run's own margin is taken (every row carries the score), else
+ * the nearest by time. Pinned on every run candidate of the three fixtures.
  */
 export function swingPoints(
   series: WinPoint[],
-  run: { start: number; end: number },
+  run: { start: number; end: number; fromMargin?: number; toMargin?: number },
 ): { from: WinPoint; to: WinPoint } | null {
   if (!series.length) return null;
-  const before = series.filter((p) => p.elapsed < run.start),
-    from = before.at(-1) ?? series[0],
-    to = winChanceAt(series, run.end)!;
+  const margin = (p: WinPoint) => p.ownScore - p.oppScore;
+  // Start: from the last possession that began before the first point up to
+  // that point's second; the latest one at the margin before the run.
+  const prev = series.filter((p) => p.elapsed < run.start).at(-1),
+    near = series.filter((p) => p.elapsed >= (prev?.elapsed ?? 0) && p.elapsed <= run.start),
+    from = [...near].reverse().find((p) => margin(p) === run.fromMargin) ?? prev ?? series[0];
+  // End: from the last possession that began by the last point up to the
+  // first that began after it; the first one at the margin after the run.
+  const last = winChanceAt(series, run.end)!,
+    next = series.find((p) => p.elapsed > run.end),
+    tail = series.filter((p) => p.elapsed >= last.elapsed && p.elapsed <= (next?.elapsed ?? Infinity)),
+    to = tail.find((p) => margin(p) === run.toMargin) ?? last;
   return { from, to };
 }
 
 /** A run's swing from the run team's side; null with no series. */
 export function runSwing(
   series: WinPoint[],
-  run: { side: Side; start: number; end: number },
+  run: { side: Side; start: number; end: number; fromMargin?: number; toMargin?: number },
 ): { from: number; to: number } | null {
   const pts = swingPoints(series, run);
   if (!pts) return null;

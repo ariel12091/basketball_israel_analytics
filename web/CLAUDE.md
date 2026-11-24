@@ -39,12 +39,15 @@ credits a free throw to the lineup that drew the foul too since migration 062
   `rules/gameflowSummary.ts` runs once on the server; the API returns
   `runs` / `players`, which the page and the Ask `gameflow` tool read.
 - Win probability (2026-11-24, contract rows Win probability / WPA):
-  `gameflowRepo.ts` reads `basketball_test.game_win_probability('il'|'euro',
-  game)` in a SAVEPOINT (a failure costs only the chances) into
+  `server/winProbRepo.ts` reads `basketball_test.game_win_probability(
+  'il'|'euro', game)` in a SAVEPOINT under a 3 s `statement_timeout`, always
+  rolled back to it (an error or a slow read costs only the chances) into
   `raw.win_prob`; `ribbonModel()` turns it into `winProb` (page side,
   ribbon clock; `rules/gameflowWinProb.ts`). Runs are ranked and the
   defining stretch chosen by swing (`detectRuns(steps, series)`; no series =
-  the old rules). The score readout shows "Win N%" per team. Fixtures carry
+  the old rules). A run's ends read the possession at its own margin near
+  each end (`swingPoints`), else across a same-second free-throw trip; the
+  live spec fails if any league's answer lacks the series. The score readout shows "Win N%" per team. Fixtures carry
   `win_prob` (`scripts/save_gameflow_fixture.R`); fixture 1147 is page team
   9 (away). Not on players or lineups: the player WPA winner is backlog.
 - Every moment/window reads "Q3 2:25 – Q4 2:31" (`windowLabel`); durations

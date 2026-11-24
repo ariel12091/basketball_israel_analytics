@@ -451,9 +451,10 @@ test("Gameflow run edges are drawn over the bars", async ({ page }, info) => {
   await expect(page.locator(".gf-run-band").first()).toBeAttached();
   const bands = await page.locator("svg.ibpl-ribbon .gf-run-band").count(),
     edges = await page.locator(".gf-run-edge").count();
-  // Phones draw one quarter (Q1 holds the 16-6 run, both its ends).
+  // Phones draw one quarter: Q1 holds only the start of Hapoel's 13-4 (its
+  // end is in Q2; runs ranked by win-probability swing since 2026-11-24).
   if (info.project.name === "desktop") expect(edges).toBe(2 * bands);
-  else expect(edges).toBe(2);
+  else expect(edges).toBe(1);
 });
 test("Together comes first and every card fits without scrolling", async ({
   page,

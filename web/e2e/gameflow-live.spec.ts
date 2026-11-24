@@ -52,9 +52,14 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
 // Runs and stint ratings (shared_definitions.md, Gameflow stint rating and
 // Gameflow run) on live data: both readers return credited events and
 // possession ends, and game 673 shows its defining run and a rated card.
+// Win probability (shared_definitions.md): every league's answer carries the
+// series, ending on the result, and every run its swing, so a lost grant, an
+// inactive fit or a league the model's states miss fails here instead of
+// quietly falling back to runs ranked by net (rule 9).
 for (const [league, game, team] of [
   ["il", 673, 2],
   ["euroleague", 781, 8],
+  ["eurocup", 671, 966],
 ] as const)
   test(`Gameflow events and ratings live ${league}`, async ({ page }) => {
     // Fetched from the page so a protected Preview's bypass header applies.
@@ -68,6 +73,9 @@ for (const [league, game, team] of [
         ratings: j.ratings != null,
         runs: Array.isArray(j.runs) && j.runs.every((x: { lines?: string[] }) => x.lines?.length),
         rated: (j.players ?? []).some((x: { net: number | null }) => x.net != null),
+        winProb: j.winProb?.length ?? 0,
+        endsOnResult: j.winProb?.at(-1)?.final === true && [0, 1].includes(j.winProb.at(-1).own),
+        swings: (j.runs ?? []).every((x: { wpFrom: unknown; wpTo: unknown }) => typeof x.wpFrom === "number" && typeof x.wpTo === "number"),
       };
     }, `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`);
     expect(body).toEqual({
@@ -76,8 +84,12 @@ for (const [league, game, team] of [
       ratings: true,
       runs: true,
       rated: true,
+      winProb: expect.any(Number),
+      endsOnResult: true,
+      swings: true,
     });
     expect(body.events).toBeGreaterThan(0);
+    expect(body.winProb).toBeGreaterThan(50);
   });
 test("Gameflow lineups list players shortest to tallest live", async ({ page }) => {
   // basket.co.il heights (user 2026-11-12): DiBartolomeo 1.83 m always

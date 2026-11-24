@@ -90,7 +90,8 @@ function scoringEvents(steps: Score[]): Scoring[] {
 
 /** Runs ranked by win-probability swing when the game has a series (user
  *  2026-11-24), else by net. Ties: net, then shorter, then earlier. */
-export function detectRuns(steps: Score[], series: WinPoint[] = []): Run[] {
+/** Every stretch that meets the run rule, overlapping, unranked. */
+export function runCandidates(steps: Score[]): Omit<Run, "defining">[] {
   const ev = scoringEvents(steps),
     cand: Omit<Run, "defining">[] = [];
   for (let i = 0; i < ev.length; i++) {
@@ -115,6 +116,11 @@ export function detectRuns(steps: Score[], series: WinPoint[] = []): Run[] {
         });
     }
   }
+  return cand;
+}
+
+export function detectRuns(steps: Score[], series: WinPoint[] = []): Run[] {
+  const cand = runCandidates(steps);
   for (const c of cand) {
     const sw = runSwing(series, c);
     if (sw) {
