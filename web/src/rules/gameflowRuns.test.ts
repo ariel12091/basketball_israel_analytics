@@ -321,3 +321,50 @@ describe("runLineupGroups", () => {
     }
   });
 });
+
+// Runs ranked by win-probability swing (shared_definitions.md, Gameflow run;
+// user 2026-11-24): four runs by one team, the biggest by net the smallest swing.
+describe("detectRuns with win probability", () => {
+  const b = (t: number): [number, number, number] => [t, 2, 0],
+    o = (t: number, p: number): [number, number, number] => [t, 0, p];
+  const s = steps([
+    ...[10, 20, 30, 40, 45, 50].map(b), // 12-0
+    o(60, 2), o(70, 2), o(80, 3),
+    ...[100, 110, 120, 130].map(b), // 8-0
+    o(140, 2), o(150, 2), o(160, 3),
+    ...[200, 210, 220, 230].map(b), // 8-0
+    o(240, 2), o(250, 2), o(260, 3),
+    ...[300, 310, 320, 330].map(b), // 8-0
+  ]);
+  const wp = (elapsed: number, own: number) => ({ elapsed, own, ownScore: 0, oppScore: 0, final: false });
+  const series = [
+    wp(0, 0.5), wp(50, 0.52), wp(90, 0.5), wp(130, 0.7),
+    wp(190, 0.6), wp(230, 0.9), wp(290, 0.85), wp(330, 0.95),
+  ];
+  it("keeps the three biggest swings, not the biggest nets", () => {
+    const runs = detectRuns(s, series);
+    expect(runs.map((r) => r.start)).toEqual([100, 200, 300]);
+    expect(runs.map((r) => [r.wpFrom, r.wpTo])).toEqual([[0.5, 0.7], [0.6, 0.9], [0.85, 0.95]]);
+  });
+  it("makes the winner's biggest swing the defining stretch", () => {
+    expect(detectRuns(s, series).filter((r) => r.defining).map((r) => r.start)).toEqual([200]);
+  });
+  it("keeps today's ranking and defining rule without a series", () => {
+    const runs = detectRuns(s);
+    expect(runs.map((r) => r.start)).toEqual([10, 100, 200]);
+    expect(runs.find((r) => r.defining)?.start).toBe(10);
+    expect(runs.every((r) => r.wpFrom === null && r.wpTo === null)).toBe(true);
+  });
+  it("leaves the fixtures' runs as they were without a series", () => {
+    const pick = (m: typeof model673) =>
+      detectRuns(m.steps).map((r) => [r.side, r.start, r.end, r.defining]);
+    expect(pick(model673)).toEqual([["own", 375, 552, false], ["opp", 1030, 1542, false], ["own", 1655, 2249, true]]);
+    expect(pick(model440)).toEqual([["opp", 184, 290, true], ["opp", 1124, 1271, false], ["opp", 1520, 1631, false]]);
+  });
+  it("says the swing on the run's first line", () => {
+    const run = { ...detectRuns(model673.steps, model673.winProb)[0], wpFrom: 0.41, wpTo: 0.78 };
+    expect(runExplanation(model673, run, { own: "A", opp: "B" })[0]).toMatch(/ · win chance 41% → 78%$/);
+    const bare = { ...run, wpFrom: null, wpTo: null };
+    expect(runExplanation(model673, bare, { own: "A", opp: "B" })[0]).not.toContain("win chance");
+  });
+});

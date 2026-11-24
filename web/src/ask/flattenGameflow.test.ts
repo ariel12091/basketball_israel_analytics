@@ -8,8 +8,10 @@ describe("flatten gameflow", () => {
   it("gives the chat one row per run, the defining one marked", () => {
     const runs = rows.filter((r) => r.section === "run");
     expect(runs.map((r) => `${r.team} ${r.run_score} ${r.window} ${r.defining}`)).toEqual([
-      "Maccabi Tel-Aviv 16-6 Q1 3:45 – Q1 0:48 no",
-      "Hapoel Tel-Aviv 30-4 Q2 2:50 – Q3 4:18 no",
+      // Ranked by win-probability swing since 2026-11-24 (was Maccabi
+      // 16-6 and Hapoel 30-4 by net).
+      "Hapoel Tel-Aviv 13-4 Q1 0:35 – Q2 5:39 no",
+      "Hapoel Tel-Aviv 32-6 Q2 4:17 – Q3 4:18 no",
       "Maccabi Tel-Aviv 37-5 Q3 2:25 – Q4 2:31 yes",
     ]);
     expect(String(runs[2].explanation)).toMatch(/Estimated cause: Hapoel Tel-Aviv's two-point shooting .* so no lineup is credited/);

@@ -29,7 +29,7 @@ export function gameflowSummary(
   model: RibbonModel,
   names: Record<Side, string>,
 ): { runs: ExplainedRun[]; players: PlayerRating[] } {
-  const runs = detectRuns(model.steps).map((r) => ({
+  const runs = detectRuns(model.steps, model.winProb).map((r) => ({
     ...r,
     lines: runExplanation(model, r, names),
   }));

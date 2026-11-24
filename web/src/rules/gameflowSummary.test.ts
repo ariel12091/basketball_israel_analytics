@@ -12,7 +12,7 @@ const s = gameflowSummary(model, names);
 
 describe("gameflowSummary", () => {
   it("carries the runs with their explanation, from the same rules", () => {
-    const runs = detectRuns(model.steps);
+    const runs = detectRuns(model.steps, model.winProb);
     expect(s.runs).toHaveLength(runs.length);
     s.runs.forEach((r, i) => {
       expect(r).toMatchObject(runs[i]);
