@@ -14,6 +14,9 @@ describe("flatten gameflow", () => {
       "Hapoel Tel-Aviv 32-6 Q2 4:17 – Q3 4:18 no",
       "Maccabi Tel-Aviv 37-5 Q3 2:25 – Q4 2:31 yes",
     ]);
+    // Each run's win-probability swing, from the run team's side.
+    expect(runs.every((r) => /^(<1|\d+)% → (>99|\d+)%$/.test(String(r.win_chance)))).toBe(true);
+    expect(String(runs[2].win_chance)).toMatch(/→ (>99|\d+)%$/);
     expect(String(runs[2].explanation)).toMatch(/Estimated cause: Hapoel Tel-Aviv's two-point shooting .* so no lineup is credited/);
   });
   it("and one row per player with the card's ratings", () => {

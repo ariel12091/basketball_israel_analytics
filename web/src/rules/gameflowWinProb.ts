@@ -87,3 +87,9 @@ export function pctLabel(chance: number, final = false): string {
   if (!final && v >= 100) return ">99%";
   return `${v}%`;
 }
+
+/** Both teams' chance at a moment, as the score readouts show it. */
+export function winLabels(series: WinPoint[], t: number): { own: string; opp: string } | null {
+  const p = winChanceAt(series, t);
+  return p ? { own: winPct(p, "own"), opp: winPct(p, "opp") } : null;
+}

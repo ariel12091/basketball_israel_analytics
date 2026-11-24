@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ribbonModel, type RawRibbon, type RawWinProb } from "./gameflow";
 import { detectRuns } from "./gameflowRuns";
-import { runSwing, winChanceAt, winPct, winSeries, swingPoints } from "./gameflowWinProb";
+import { runSwing, winChanceAt, winLabels, winPct, winSeries, swingPoints } from "./gameflowWinProb";
 import fixture673 from "./__fixtures__/gameflow-673.json";
 import fixture440 from "./__fixtures__/gameflow-440.json";
 import fixture1147 from "./__fixtures__/gameflow-1147.json";
@@ -111,5 +111,17 @@ describe("winPct", () => {
     expect(winPct(p(0.996))).toBe(">99%");
     expect(winPct(p(1, true))).toBe("100%");
     expect(winPct(p(0, true))).toBe("0%");
+  });
+});
+
+describe("winLabels", () => {
+  const s = winSeries(raw(fixture673).win_prob, 2);
+  it("gives both teams' chance at a moment, adding up to 100", () => {
+    const w = winLabels(s, 1200)!;
+    expect(Number(w.own.replace("%", "")) + Number(w.opp.replace("%", ""))).toBe(100);
+    expect(winLabels(s, 1e9)).toEqual({ own: "100%", opp: "0%" });
+  });
+  it("is null with no series", () => {
+    expect(winLabels([], 10)).toBeNull();
   });
 });

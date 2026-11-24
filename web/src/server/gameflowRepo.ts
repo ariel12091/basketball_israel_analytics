@@ -7,6 +7,8 @@ import { Deadline, withSnapshot } from "./db";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
+import { logEvent } from "../lib/logEvent";
+import type { RawWinProb } from "../rules/gameflow";
 import { ownerName, readPlayerNames } from "./playerNames";
 import { readTeamIdentity } from "./teamIdentity";
 import { applyTeamNamesHe, readTeamNamesHe, teamNameHe } from "./teamNames";
@@ -36,6 +38,19 @@ async function read(league: League, game: number, team: number) {
     const raw = (
       await q<RawRibbon>(euro ? sql.euro : sql.il, [game, team])
     )[0] ?? { lanes: [], margin: [], n_periods: 4 };
+    // Win probability after every possession (shared_definitions.md, Win
+    // probability): the one owner, both leagues ('euro' covers EuroCup). A
+    // failure here costs only the win chances, so it runs in a savepoint.
+    await q("SAVEPOINT win_prob", []);
+    try {
+      raw.win_prob = await q<RawWinProb>(
+        "SELECT possession_no, is_final, period, seconds_left, home_team_id, away_team_id, home_score, away_score, home_win_probability FROM basketball_test.game_win_probability($1::text, $2::int4)",
+        [euro ? "euro" : "il", game],
+      );
+    } catch (e) {
+      await q("ROLLBACK TO SAVEPOINT win_prob", []);
+      logEvent("win_prob_unavailable", { league, code: (e as { code?: string }).code }, "warn");
+    }
     // Names follow the display-name owner (D27); where it has none (a reused
     // provider id) the lane keeps this game's roster spelling. Twin:
     // fetch_stint_ribbon() in global.R.
