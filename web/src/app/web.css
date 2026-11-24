@@ -235,7 +235,7 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 }
 /* Ask chat panel (docs/superpowers/specs/2026-10-24-home-ask-box-design.md):
    phone first, a bottom sheet; a side drawer from 1200px. The page stays usable. */
-.ibpl-ask-fab { position: fixed; right: 16px; bottom: calc(16px + var(--ibpl-tabbar-h, 0px)); z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+.ibpl-ask-fab { position: fixed; right: 16px; bottom: calc(16px + var(--ibpl-tabbar-offset, 0px)); transition: bottom 200ms ease; z-index: 10040; background: var(--ibpl-accent, #e8a435); color: #14100C; font-weight: 600; border-radius: 999px; padding: 8px 16px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
 /* Above the navbar's fixed right cluster (9999) and its menus (10001-10002). */
 .ibpl-ask-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10050; display: flex; flex-direction: column; max-height: 75vh; max-height: 75dvh; background: var(--ibpl-surface); color: var(--ibpl-text-body); border-top: 1px solid var(--ibpl-border); box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5); }
 .ibpl-ask-head { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--ibpl-border); }
@@ -393,7 +393,7 @@ body.ibpl-collapsed-nav .onoff-usage-col { min-width: 0 !important; width: 52px;
 body:has(.filter-drawer[data-state="open"]) .ibpl-ask-fab { display: none; }
 /* Gameflow on phones: the Ask button sits above the bottom panel's bar, and
    hides while the panel is open. */
-body:has(.gf-m-panel) .ibpl-ask-fab { bottom: calc(var(--ibpl-tabbar-h, 0px) + var(--gf-m-bar-h, 60px) + 12px); }
+body:has(.gf-m-panel) .ibpl-ask-fab { bottom: calc(var(--ibpl-tabbar-offset, 0px) + var(--gf-m-bar-h, 60px) + 12px); }
 body:has(.gf-m-panel.is-open) .ibpl-ask-fab { display: none; }
 /* MoreInfo headers: a 24px strip over the sort arrows is the touch sort target. */
 th.sub-head:has(.th-sort-target) { position: relative; }
@@ -679,7 +679,7 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m-menu { border: 1px solid var(--ibpl-border); border-radius: 10px; padding: 10px;
   display: flex; flex-direction: column; gap: 8px; background: var(--ibpl-surface); }
 .gf-m-menu .ibpl-ribbon-inline-hint { margin: 0; }
-.gf-m-panel { position: fixed; left: 0; right: 0; bottom: var(--ibpl-tabbar-h, 0px); z-index: 1040;
+.gf-m-panel { position: fixed; left: 0; right: 0; bottom: var(--ibpl-tabbar-offset, 0px); transition: bottom 200ms ease; z-index: 1040;
   background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-accent);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column;
   max-height: 62vh; }
@@ -2216,14 +2216,20 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
    the page does not draw under the system bars (no viewport-fit=cover), yet
    Android Chrome reports a 47 px inset while its address bar shows, which
    became an empty band under the tab bar (measured on a phone 2026-11-16). */
-.ibpl-topbar { position: sticky; top: 0; z-index: 9998; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); transition: transform 200ms ease; }
+.ibpl-topbar { position: sticky; top: 0; z-index: 9998; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); transition: top 200ms ease; }
 /* The bar slides away while the page scrolls down and comes back on any
-   scroll up (useAutoHideTopbar in Navbar.tsx, user 2026-11-24).
-   --ibpl-topbar-offset is what it covers at the top of the window, for the
-   page's own sticky heads and the focus scroll padding. */
-:root { --ibpl-topbar-offset: 57px; }
-html[data-topbar-hidden] { --ibpl-topbar-offset: 0px; }
-html[data-topbar-hidden] .ibpl-topbar { transform: translateY(-100%); }
+   scroll up (useAutoHideNav in Navbar.tsx, user 2026-11-24); on narrow
+   screens the bottom tab bar goes with it, and the Filters tab, the Ask
+   button and the Gameflow phone panel drop to the bottom edge.
+   --ibpl-topbar-offset / --ibpl-tabbar-offset are what the bars cover at
+   the top and bottom of the window right now; --ibpl-tabbar-h stays the tab
+   bar's own height (the page's bottom padding keeps it, so nothing jumps). */
+:root { --ibpl-topbar-offset: 57px; --ibpl-tabbar-offset: var(--ibpl-tabbar-h); }
+html[data-nav-hidden] { --ibpl-topbar-offset: 0px; --ibpl-tabbar-offset: 0px; }
+/* By its sticky top, never a transform: a transform would make the bar the
+   containing block of the fixed tab bar inside it (narrow screens), which
+   then left the window with it. */
+html[data-nav-hidden] .ibpl-topbar { top: -57px; }
 .ibpl-topbar-row { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 14px; }
 .ibpl-brand { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ibpl-accent); font-family: var(--ibpl-font-display); font-size: 1.05rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .ibpl-brand:hover { color: var(--ibpl-accent-hover); }
@@ -2258,7 +2264,8 @@ html[data-topbar-hidden] .ibpl-topbar { transform: translateY(-100%); }
 .ibpl-menu-list .active:hover { background: rgba(var(--ibpl-accent-rgb), 0.22); color: var(--ibpl-accent); }
 
 /* The bottom tab bar. */
-.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 0 4px; box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); }
+.ibpl-pages { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1035; height: var(--ibpl-tabbar-h); padding: 0 4px; box-sizing: border-box; background: var(--ibpl-surface); border-top: 1px solid var(--ibpl-border); transition: transform 200ms ease; }
+@media (max-width: 1023.98px) { html[data-nav-hidden] .ibpl-pages { transform: translateY(100%); } }
 .ibpl-pages ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 720px; height: 100%; margin: 0 auto; padding: 0; list-style: none; }
 .ibpl-page { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%; border-radius: 12px; color: var(--ibpl-text-muted); font-size: 0.66rem; font-weight: 600; text-decoration: none; white-space: nowrap; -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none; transition: color 140ms ease; }
 .ibpl-page .bi { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 26px; border-radius: 999px; font-size: 1.1rem; transition: background-color 160ms ease, transform 120ms ease; }
@@ -2344,7 +2351,8 @@ html[data-topbar-hidden] .ibpl-topbar { transform: translateY(-100%); }
    bar, so it is always one tap away and the row above the table is gone. */
 @media (max-width: 1023.98px) {
   .ibpl-drawer-layout .chips-row .chips-drawer-toggle {
-    position: fixed; left: 50%; bottom: calc(var(--ibpl-tabbar-h) - 1px); z-index: 1036;
+    position: fixed; left: 50%; bottom: max(0px, calc(var(--ibpl-tabbar-offset) - 1px)); z-index: 1036;
+    transition: bottom 200ms ease;
     transform: translateX(-50%);
     display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px;
     border: 1px solid var(--ibpl-border); border-bottom: 0; border-radius: 12px 12px 0 0;
@@ -2395,7 +2403,7 @@ html[data-topbar-hidden] .ibpl-topbar { transform: translateY(-100%); }
    Fixed bars never cover the focused element (WCAG 2.4.11): the browser
    scrolls focus clear of the sticky top bar (desktop) and of the bottom
    tab bar plus its Filters tab (narrow screens). */
-html { scroll-padding-top: calc(var(--ibpl-topbar-offset) + 7px); scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0px) + 40px); }
+html { scroll-padding-top: calc(var(--ibpl-topbar-offset) + 7px); scroll-padding-bottom: calc(var(--ibpl-tabbar-offset, 0px) + 40px); }
 @media (min-width: 1024px) {
   html { scroll-padding-bottom: 0; }
 }
@@ -2484,4 +2492,4 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
    overlay bar was invisible on the dark sheet). */
 .filter-drawer { scrollbar-width: auto; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.7) transparent; scrollbar-gutter: stable; }
 /* After the sticky heads it switches off (the same specificity, later wins). */
-@media (prefers-reduced-motion: reduce) { .ibpl-topbar, .cmp-heads, .gf-m-head { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ibpl-topbar, .ibpl-pages, .cmp-heads, .gf-m-head, .gf-m-panel, .ibpl-ask-fab, .ibpl-drawer-layout .chips-row .chips-drawer-toggle { transition: none; } }

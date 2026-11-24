@@ -133,20 +133,22 @@ function rememberLeague(league: League) {
   } catch {}
 }
 
-/** Scroll down past the bar and it slides away; any scroll up brings it
- * back (user 2026-11-24). It stays while a menu is open or focus is in it,
- * so keyboard users never tab into a hidden bar. The state is an attribute
- * on <html>, which web.css also reads for the offset of the page's own
- * sticky heads. */
+/** Scroll down past the bar and it slides away, with the bottom tab bar on
+ * narrow screens; any scroll up brings them back (user 2026-11-24). They
+ * stay while a menu is open or focus is in either, so keyboard users never
+ * tab into a hidden bar. The state is an attribute on <html>, which web.css
+ * also reads to move the page's sticky heads and the bottom-pinned pieces
+ * (Filters tab, Ask, Gameflow panel). */
 const AUTOHIDE_FROM = 80; // px scrolled before the bar may go
 const AUTOHIDE_STEP = 8; // px of travel that counts as a direction
-function useAutoHideTopbar() {
+function useAutoHideNav() {
   useEffect(() => {
     const root = document.documentElement;
     const bar = document.querySelector<HTMLElement>(".ibpl-topbar");
+    const tabs = document.querySelector<HTMLElement>(".ibpl-pages");
     let last = window.scrollY;
     let frame = 0;
-    const show = () => root.removeAttribute("data-topbar-hidden");
+    const show = () => root.removeAttribute("data-nav-hidden");
     const update = () => {
       frame = 0;
       const y = Math.max(0, window.scrollY);
@@ -159,8 +161,9 @@ function useAutoHideTopbar() {
       last = y;
       const busy =
         bar?.matches(":focus-within") ||
+        tabs?.matches(":focus-within") ||
         bar?.querySelector('[aria-expanded="true"]') != null;
-      if (dy > 0 && !busy) root.setAttribute("data-topbar-hidden", "");
+      if (dy > 0 && !busy) root.setAttribute("data-nav-hidden", "");
       else show();
     };
     const onScroll = () => {
@@ -168,9 +171,11 @@ function useAutoHideTopbar() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     bar?.addEventListener("focusin", show);
+    tabs?.addEventListener("focusin", show);
     return () => {
       window.removeEventListener("scroll", onScroll);
       bar?.removeEventListener("focusin", show);
+      tabs?.removeEventListener("focusin", show);
       cancelAnimationFrame(frame);
       show();
     };
@@ -199,7 +204,7 @@ export default function Navbar({
   page?: PagePath;
   children: React.ReactNode;
 }) {
-  useAutoHideTopbar();
+  useAutoHideNav();
   const euro = league !== "il";
   const currentTab = TABS.find((t) => t.value === tab);
   // app.js applyValue(): a league-only page falls back to Home when switching
