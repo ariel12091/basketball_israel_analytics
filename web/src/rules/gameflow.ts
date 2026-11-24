@@ -1,6 +1,7 @@
 // app/R/helpers.R ribbon_* / merge_adjacent_stints and app.js overlap rules.
 // Raw scoring events drive as-of values; completed margin is drawing-only.
 import { rRound } from "./round";
+import { winSeries } from "./gameflowWinProb";
 import { compareBySize, type PlayerSize } from "./playerSize";
 import geometry from "../data/gameflowLayout.json";
 export type Side = "own" | "opp";
@@ -582,6 +583,7 @@ export function ribbonModel(
       ? { game: ratingSeries(raw.poss, steps), window: windowSeries(raw.poss) }
       : null,
     events: normalizeEvents(raw.events, team),
+    winProb: winSeries(raw.win_prob, team),
   };
 }
 export type RibbonModel = ReturnType<typeof ribbonModel>;
