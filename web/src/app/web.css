@@ -305,7 +305,12 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .view-tabs-tab[data-state="active"] { border-color: var(--ibpl-accent); background: var(--ibpl-accent); color: var(--ibpl-bg); }
 .view-tabs-tab:focus-visible { outline: 2px solid var(--ibpl-accent); outline-offset: 2px; }
 @media (max-width: 767.98px) {
-  .view-tabs-tab { height: 36px; padding: 0 14px; font-size: .9rem; }
+  /* Four views (Team Ratings) must fit a phone without scrolling: Traditional
+     sat past the edge at 390 px. Tabs shrink and wrap their label onto two
+     lines only when the row is short of room, and the type follows the
+     width down to 360 px. */
+  .view-tabs-list { gap: 3px; }
+  .view-tabs-tab { flex: 0 1 auto; min-width: 0; height: 36px; padding: 0 8px; font-size: min(.85rem, 3.4vw); line-height: 1.1; white-space: normal; text-wrap: balance; }
 }
 /* When the views overflow (Player Stats on a phone), each edge with more
    views beyond it fades (modern-web-guidance "tabs", fading the edges): a
