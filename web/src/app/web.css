@@ -657,7 +657,7 @@ a.ibpl-gameflow-back { text-decoration: none; }
 .gf-m { padding-bottom: 72px; }
 /* Horizontal moves on the quarter are swipes; vertical ones still scroll. */
 .gf-m .ibpl-ribbon-quarters { touch-action: pan-y; }
-.gf-m-head { position: sticky; top: 0; z-index: 20; background: var(--ibpl-bg);
+.gf-m-head { position: sticky; top: var(--ibpl-topbar-offset); transition: top 200ms ease; z-index: 20; background: var(--ibpl-bg);
   padding: 4px 0 8px; display: flex; flex-direction: column; gap: 6px; }
 .gf-m-head .ibpl-ribbon-mobile-overview { margin: 0; position: relative; }
 .gf-m-head .gf-run-band { pointer-events: none; }
@@ -759,7 +759,7 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
    Its own box, a child of .cmp-layout, so it sticks for the whole comparison
    and not only while the filter grid is in view. Same columns and padding as
    the grid, so each header still sits over its side's controls. */
-.cmp-heads { position: sticky; top: 0; z-index: 20; padding-bottom: 10px; }
+.cmp-heads { position: sticky; top: var(--ibpl-topbar-offset); z-index: 20; padding-bottom: 10px; transition: top 200ms ease; }
 .cmp-grid-corner { display: none; }
 .cmp-grid-row { display: contents; }
 .cmp-grid-head, .cmp-grid-cell { --cmp-side: var(--ibpl-side-a); min-width: 0; }
@@ -849,10 +849,6 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   .cmp-grid, .cmp-heads { grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); }
   .cmp-grid-corner { display: block; }
   .cmp-grid-label { grid-column: auto; margin-top: 0; }
-}
-@media (min-width: 1024px) {
-  /* Below the sticky top bar (.ibpl-topbar-row, 56px + its border). */
-  .cmp-heads { top: 57px; }
 }
 @media (min-width: 1200px) {
   /* Headers and filters on the left, the results beside both. The 1fr row
@@ -2220,7 +2216,14 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
    the page does not draw under the system bars (no viewport-fit=cover), yet
    Android Chrome reports a 47 px inset while its address bar shows, which
    became an empty band under the tab bar (measured on a phone 2026-11-16). */
-.ibpl-topbar { background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
+.ibpl-topbar { position: sticky; top: 0; z-index: 9998; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); transition: transform 200ms ease; }
+/* The bar slides away while the page scrolls down and comes back on any
+   scroll up (useAutoHideTopbar in Navbar.tsx, user 2026-11-24).
+   --ibpl-topbar-offset is what it covers at the top of the window, for the
+   page's own sticky heads and the focus scroll padding. */
+:root { --ibpl-topbar-offset: 57px; }
+html[data-topbar-hidden] { --ibpl-topbar-offset: 0px; }
+html[data-topbar-hidden] .ibpl-topbar { transform: translateY(-100%); }
 .ibpl-topbar-row { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 14px; }
 .ibpl-brand { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--ibpl-accent); font-family: var(--ibpl-font-display); font-size: 1.05rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .ibpl-brand:hover { color: var(--ibpl-accent-hover); }
@@ -2298,7 +2301,6 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
 
 @media (min-width: 1024px) {
   :root { --ibpl-tabbar-h: 0px; }
-  .ibpl-topbar { position: sticky; top: 0; z-index: 9998; }
   .ibpl-topbar-row { gap: 20px; padding: 0 20px; }
   .ibpl-pages { position: static; height: auto; padding: 0; background: none; border: 0; }
   .ibpl-pages ul { display: flex; gap: 2px; max-width: none; }
@@ -2393,9 +2395,9 @@ div.dt-buttons { display: inline-flex; flex-wrap: wrap; align-items: center; gap
    Fixed bars never cover the focused element (WCAG 2.4.11): the browser
    scrolls focus clear of the sticky top bar (desktop) and of the bottom
    tab bar plus its Filters tab (narrow screens). */
-html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0px) + 40px); }
+html { scroll-padding-top: calc(var(--ibpl-topbar-offset) + 7px); scroll-padding-bottom: calc(var(--ibpl-tabbar-h, 0px) + 40px); }
 @media (min-width: 1024px) {
-  html { scroll-padding-top: 64px; scroll-padding-bottom: 0; }
+  html { scroll-padding-bottom: 0; }
 }
 /* Touch screens: the small round "?" and CSV buttons, Columns and the row
    tags keep their look but get a 44 px hit area from a pseudo-element; the
@@ -2481,3 +2483,5 @@ html[data-theme="light"] .ibpl-heat.ibpl-heat-soft {
 /* The filters panel's own scrollbar, always drawn (user 2026-11-22: Chrome's
    overlay bar was invisible on the dark sheet). */
 .filter-drawer { scrollbar-width: auto; scrollbar-color: rgba(var(--ibpl-accent-rgb), 0.7) transparent; scrollbar-gutter: stable; }
+/* After the sticky heads it switches off (the same specificity, later wins). */
+@media (prefers-reduced-motion: reduce) { .ibpl-topbar, .cmp-heads, .gf-m-head { transition: none; } }

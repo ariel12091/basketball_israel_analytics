@@ -9,7 +9,7 @@
 //   and theme; the page pills become a tab bar fixed to the bottom.
 // The views of each page are tabs on the page itself (ViewTabs), so the bar
 // has no view menus.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import Link, { useLinkStatus } from "next/link";
 import type { League } from "@/rules/gameLogs";
@@ -133,6 +133,50 @@ function rememberLeague(league: League) {
   } catch {}
 }
 
+/** Scroll down past the bar and it slides away; any scroll up brings it
+ * back (user 2026-11-24). It stays while a menu is open or focus is in it,
+ * so keyboard users never tab into a hidden bar. The state is an attribute
+ * on <html>, which web.css also reads for the offset of the page's own
+ * sticky heads. */
+const AUTOHIDE_FROM = 80; // px scrolled before the bar may go
+const AUTOHIDE_STEP = 8; // px of travel that counts as a direction
+function useAutoHideTopbar() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const bar = document.querySelector<HTMLElement>(".ibpl-topbar");
+    let last = window.scrollY;
+    let frame = 0;
+    const show = () => root.removeAttribute("data-topbar-hidden");
+    const update = () => {
+      frame = 0;
+      const y = Math.max(0, window.scrollY);
+      if (y <= AUTOHIDE_FROM) {
+        last = y;
+        return show();
+      }
+      const dy = y - last;
+      if (Math.abs(dy) < AUTOHIDE_STEP) return;
+      last = y;
+      const busy =
+        bar?.matches(":focus-within") ||
+        bar?.querySelector('[aria-expanded="true"]') != null;
+      if (dy > 0 && !busy) root.setAttribute("data-topbar-hidden", "");
+      else show();
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    bar?.addEventListener("focusin", show);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      bar?.removeEventListener("focusin", show);
+      cancelAnimationFrame(frame);
+      show();
+    };
+  }, []);
+}
+
 export default function Navbar({
   league,
   tab,
@@ -155,6 +199,7 @@ export default function Navbar({
   page?: PagePath;
   children: React.ReactNode;
 }) {
+  useAutoHideTopbar();
   const euro = league !== "il";
   const currentTab = TABS.find((t) => t.value === tab);
   // app.js applyValue(): a league-only page falls back to Home when switching
