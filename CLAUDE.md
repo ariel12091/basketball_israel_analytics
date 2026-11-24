@@ -86,6 +86,18 @@ git branch -d shiny/fix-filter-reset
 
 Tags (`backup/...`) are used for snapshots instead of long-lived backup branches.
 
+**One branch per task (user, 2026-11-24).** When a new task is unrelated to
+the work on the current branch, start a new branch off `origin/main` for it
+before the first edit; never add it to a branch that holds work in progress.
+Before merging to `main`, compare `git log origin/main..HEAD` with what the
+user asked to ship: "Deploy" means the change under discussion, not the
+whole branch. If the branch holds more, list it and ask. Why: PR #125
+shipped the unfinished Gameflow run-cause work on `react/runwhy` along with
+two small buttons; PR #126 reverted the merge and cherry-picked the buttons.
+Shipping a subset that way leaves a revert on `main`: before the rest of
+that branch merges, revert the revert (`abbd471` for `react/runwhy`), or
+git treats those commits as already merged and leaves them out.
+
 **One-time setup** (required after cloning):
 ```bash
 git config core.hooksPath scripts/hooks
