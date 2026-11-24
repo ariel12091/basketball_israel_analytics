@@ -1591,7 +1591,6 @@ html[data-theme="light"] .ibpl-react-gameflow, html[data-theme="light"] .ibpl-re
 .gf-details .gf-run-why { flex: 0 0 380px; width: 380px; align-self: flex-start;
   max-height: inherit; overflow-y: auto; padding: 10px 12px; border-radius: 10px;
   font-family: var(--ibpl-font-body); }
-.gf-run-why .gf-run-step { margin-top: 10px; }
 .gf-run-why > .ibpl-ribbon-detail-head { margin: 0 0 8px; color: var(--ibpl-text);
   font-size: 0.8125rem; font-weight: 700; }
 .gf-m-panel-body .gf-run-tip-line.is-cause,

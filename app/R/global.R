@@ -373,16 +373,13 @@ events AS (
   -- Gameflow stint ratings and run results (docs/shared_definitions.md,
   -- Gameflow stint rating): both teams' perspectives, each row carrying the
   -- five of its CREDITED lineup (R6: events follow credit), as On/Off counts.
-  SELECT team_id, elapsed, order_key, off, players, pts, kind, made, poss_end, actor
+  SELECT team_id, elapsed, order_key, off, players, pts, kind, made, poss_end
   FROM (
     SELECT d.team_id,
            d.event_elapsed_seconds AS elapsed,
            d.id AS order_key,
            (d.type_lineup = 'offense') AS off,
            lp.player_ids AS players,
-           -- Who shot, turned it over or rebounded (0 = the team), for the
-           -- run explanation (docs/shared_definitions.md, Gameflow run cause).
-           d.player_id AS actor,
            COALESCE(d.team_score, 0)::int AS pts,
            CASE
              WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 'fg2'

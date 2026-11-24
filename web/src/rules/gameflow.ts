@@ -246,9 +246,6 @@ export type RawEvent = {
   kind: EventKind | null;
   made: boolean | null;
   poss_end: boolean;
-  /** The shooter, the player who turned it over or the rebounder (0 = the
-   *  team). Israeli reader only; EuroLeague's view has no such column. */
-  actor?: number | null;
 };
 /**
  * A counted event from one team's point of view (shared_definitions.md,
@@ -265,8 +262,6 @@ export type GameflowEvent = {
   kind: EventKind | null;
   made: boolean | null;
   poss_end: boolean;
-  /** Who acted, as a lane key; null for the team or when not read. */
-  actor?: string | null;
 };
 export function normalizeEvents(
   raw: RawRibbon["events"],
@@ -283,7 +278,6 @@ export function normalizeEvents(
       kind: e.kind ?? null,
       made: e.made ?? null,
       poss_end: e.poss_end === true,
-      actor: e.actor ? String(e.actor) : null,
     }))
     .sort(byEvent);
 }
