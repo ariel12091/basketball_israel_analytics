@@ -41,7 +41,9 @@ israeli_app_routines(routine_name) AS (
     ('get_team_minutes_dynamic'),
     ('get_player_traditional_dynamic'),
     ('get_player_traditional_from_games'),
-    ('get_player_traditional_custom_clutch')
+    ('get_player_traditional_custom_clutch'),
+    ('win_prob_states'),
+    ('game_win_probability')
 ),
 -- The EuroLeague refresh_* publication functions are excluded on purpose:
 -- they mutate the schema and must not be executable by the app role.
