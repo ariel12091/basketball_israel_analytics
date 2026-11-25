@@ -7,6 +7,7 @@
 # about x% of the time. v2 (2026-11-24): Israeli and EuroLeague/EuroCup each
 # have a home advantage, and the rating term counts only once both teams have
 # played RATING_MIN_GAMES regular-season games (win_prob_states reports them).
+# The rating's shrinkage K is fixed at RATING_SHRINK_POSS, not fitted (2026-11-25).
 #
 # Usage (from the repo root):
 #   Rscript scripts/fit_win_probability.R           read-only, prints the fit
@@ -18,6 +19,10 @@
 suppressMessages({library(DBI); library(RPostgres); library(data.table)})
 write_fit <- "--write" %in% commandArgs(trailingOnly = TRUE)
 RATING_MIN_GAMES <- 3L # out of sample, strength hurt in teams' first two games (2026-11-24)
+# Fitted, K came out near 90 possessions, which took a team's first 4 games almost at
+# face value (game 446: 74% before tip-off on +18 against -18, lost by 36). Fixed at
+# 300 it scored better out of sample on teams 3-5 games in and no worse overall.
+RATING_SHRINK_POSS <- 300
 from_dump <- Sys.getenv("WIN_PROB_STATES", "")
 if (nzchar(from_dump) && write_fit) stop("--write fits the live states only")
 readRenviron(if (write_fit) "etl/.Renviron" else "app/.Renviron")
@@ -46,12 +51,13 @@ wp <- function(p, d) {
   pmin(pmax(pnorm(z), 1e-6), 1 - 1e-6)
 }
 fit <- function(d) {
-  start <- c(sigma = 16, c = 30, h = 2, k = 1, K = 500, b = 0.5, he = 3)
-  f <- function(par) { q <- wp(par, d); -sum(ifelse(d$home_won, log(q), log(1 - q))) }
-  o <- optim(start, f, method = "L-BFGS-B", lower = c(5, 1, -10, 0, 10, -3, -10), upper = c(40, 600, 10, 5, 5000, 3, 10),
-             control = list(parscale = c(10, 30, 2, 1, 500, 0.5, 2)))
+  start <- c(sigma = 16, c = 30, h = 2, k = 1, b = 0.5, he = 3)
+  full <- function(par) c(par, K = RATING_SHRINK_POSS)
+  f <- function(par) { q <- wp(full(par), d); -sum(ifelse(d$home_won, log(q), log(1 - q))) }
+  o <- optim(start, f, method = "L-BFGS-B", lower = c(5, 1, -10, 0, -3, -10), upper = c(40, 600, 10, 5, 3, 10),
+             control = list(parscale = c(10, 30, 2, 1, 0.5, 2)))
   if (o$convergence != 0) stop("fit did not converge: ", o$message)
-  o$par
+  full(o$par)
 }
 ll <- function(q, y) -mean(y * log(q) + (1 - y) * log(1 - q))
 
