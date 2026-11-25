@@ -403,9 +403,8 @@ test("Phone: the runs are listed in the panel and explained there", async ({
   // The strip shades all three runs, unsplit; each quarter names its runs.
   await expect(page.locator(".gf-m-head .gf-run-band")).toHaveCount(3);
   await expect(page.locator(".gf-run-chip")).toHaveCount(1);
-  // Ranked by win-probability swing: Hapoel's 13-4 from Q1 0:35, not
-  // Maccabi's 16-6 (2026-11-24).
-  await expect(page.locator(".gf-run-chip")).toHaveText("13-4 ›");
+  // Ranked by win-probability swing (since 2026-11-24): Maccabi's 16-6.
+  await expect(page.locator(".gf-run-chip")).toHaveText("16-6 ›");
   // Q4 carries the 37-5 run over from Q3 with a "‹" chip; a tap explains it.
   await showQuarter(page, 4);
   const cont = page.locator(".gf-run-chip.is-cont");
@@ -451,10 +450,9 @@ test("Gameflow run edges are drawn over the bars", async ({ page }, info) => {
   await expect(page.locator(".gf-run-band").first()).toBeAttached();
   const bands = await page.locator("svg.ibpl-ribbon .gf-run-band").count(),
     edges = await page.locator(".gf-run-edge").count();
-  // Phones draw one quarter: Q1 holds only the start of Hapoel's 13-4 (its
-  // end is in Q2; runs ranked by win-probability swing since 2026-11-24).
+  // Phones draw one quarter (Q1 holds the 16-6 run, both its ends).
   if (info.project.name === "desktop") expect(edges).toBe(2 * bands);
-  else expect(edges).toBe(1);
+  else expect(edges).toBe(2);
 });
 test("Together comes first and every card fits without scrolling", async ({
   page,
