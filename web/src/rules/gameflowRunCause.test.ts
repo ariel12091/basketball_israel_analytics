@@ -20,7 +20,6 @@ import fixture673 from "./__fixtures__/gameflow-673.json";
 const LEAGUE = {
   fg2: 0.53,
   fg3: 0.35,
-  fg3Share: 0.41,
   ft: 0.73,
   tovPlayer: 0.038,
   tovTeam: 0.19,
@@ -126,12 +125,11 @@ describe("runFactors", () => {
     const g = good.find((f) => f.kind === "fg2" && f.end === "run")!,
       n = none.find((f) => f.kind === "fg2" && f.end === "run")!;
     // (450 + 55 * 0.53) / (500 + 55) per shot, against the league's 0.53;
-    // the four teammates, with no record, count as shooters (SPACING).
-    const spaced = (p: number) => 1 / (1 + Math.exp(-(Math.log(p / (1 - p)) + 0.04 * (4 - 2.2))));
-    expect(g.expected).toBeCloseTo(4 * spaced((450 + 55 * 0.53) / 555), 10);
-    expect(n.expected).toBeCloseTo(4 * spaced(0.53), 10);
+    // the teammates around him do not move it.
+    expect(g.expected).toBeCloseTo((4 * (450 + 55 * 0.53)) / 555, 10);
+    expect(n.expected).toBeCloseTo(4 * 0.53, 10);
     expect(g.pts).toBeLessThan(n.pts);
-    expect(n.pts).toBeCloseTo(2 * (4 - 4 * spaced(0.53)), 10);
+    expect(n.pts).toBeCloseTo(2 * (4 - 4 * 0.53), 10);
   });
   it("counts the other team's misses and turnovers toward the run team", () => {
     const events = [
@@ -364,11 +362,8 @@ describe("factor reasons (Gameflow lineup profile)", () => {
     priorsOf(Object.fromEntries(five.map((p) => [`${side}:${p}`, pr])));
   // A run of 100 s: a five on for all of it, or for part of it.
   const on = (profile: ReturnType<typeof lineupProfile>, secs = 100) => [{ profile, secs }];
-  // Three shooters and two who seldom shoot threes: an ordinary five.
-  const paintPrior = prior({ fg2: [200, 400], fg3: [5, 20] });
-  const avg = lineupProfile("own", OWN, priorsOf({ "own:4": paintPrior, "own:5": paintPrior }), new Map());
+  const avg = lineupProfile("own", OWN, priorsOf({}), new Map());
   it("says nothing of an average five", () => {
-    expect(avg.shooters).toBe(3);
     for (const k of ["fg2", "fg3", "ft", "tov", "oreb"] as const)
       expect(factorReason(k, on(avg), on(avg), 100)).toBeNull();
   });
@@ -393,17 +388,10 @@ describe("factor reasons (Gameflow lineup profile)", () => {
     expect(factorReason("oreb", [{ profile: small, secs: 70 }, { profile: tall, secs: 130 }], on(avg), 200)).toBe("a five no taller than 2.00 m");
     expect(factorReason("oreb", [{ profile: small, secs: 60 }, { profile: tall, secs: 140 }], on(avg), 200)).toBeNull();
   });
-  it("names turnovers, threes and the shooters around a two each on its own factor", () => {
+  it("names turnovers, and gives shots no lineup reason", () => {
     const sloppy = lineupProfile("own", OWN, all("own", OWN, prior({ tov: [60, 1000], fg3: [45, 100], fg2: [100, 200] })), new Map());
     expect(factorReason("tov", on(sloppy), on(avg), 100)).toBe("a turnover-prone five");
-    expect(factorReason("fg3", on(sloppy), on(avg), 100)).toBe("a shooting five");
-    // Players who take few threes: no accurate shooter.
-    const paint = lineupProfile("own", OWN, all("own", OWN, prior({ fg2: [200, 400], fg3: [5, 20] })), new Map());
-    expect(paint.shooters).toBe(0);
-    expect(factorReason("fg2", on(paint), on(avg), 100)).toBe("a five with no three-point shooter");
-    expect(factorReason("fg3", on(paint), on(avg), 100)).toBe("a five with no three-point shooter");
-    const five = lineupProfile("own", OWN, priorsOf({}), new Map()); // no record = league-average, a shooter
-    expect(factorReason("fg2", on(five), on(avg), 100)).toBe("a shooting five");
+    for (const k of ["fg2", "fg3", "ft"] as const) expect(factorReason(k, on(sloppy), on(avg), 100)).toBeNull();
     const careful = lineupProfile("own", OWN, all("own", OWN, prior({ tov: [20, 1000] })), new Map());
     expect(factorReason("tov", on(careful), on(avg), 100)).toBe("a low-turnover five");
   });
@@ -421,21 +409,5 @@ describe("factor reasons (Gameflow lineup profile)", () => {
     expect(factorsSentence([f], { own: "A", opp: "B" })).toBe(
       "B rebounded none of 7 misses (expected 2, a five no taller than 2.01 m)",
     );
-  });
-});
-
-describe("spacing on twos", () => {
-  it("expects more twos made with more accurate shooters around the shooter", () => {
-    const shots = [1, 2, 3, 4].flatMap((i) => ev("own", 110 + i, "fg2", true, "1"));
-    const shooter = prior({ fg2: [100, 200], fg3: [80, 200] }),
-      paint = prior({ fg2: [200, 400], fg3: [2, 10] });
-    const four = priorsOf(Object.fromEntries(OWN.map((p) => [`own:${p}`, shooter]))),
-      none = priorsOf({ "own:1": shooter, ...Object.fromEntries(OWN.slice(1).map((p) => [`own:${p}`, paint])) });
-    const exp = (pr: RunPriors) =>
-      runFactors(shots, run, pr, new Map(), surname).find((f) => f.kind === "fg2" && f.side === "own")!.expected;
-    const base = (100 + 55 * LEAGUE.fg2) / 255,
-      at = (n: number) => 4 / (1 + Math.exp(-(Math.log(base / (1 - base)) + 0.04 * (n - 2.2))));
-    expect(exp(four)).toBeCloseTo(at(4), 6);
-    expect(exp(none)).toBeCloseTo(at(0), 6);
   });
 });

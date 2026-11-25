@@ -19,8 +19,6 @@ export type PlayerPrior = Record<
 export type LeagueRates = {
   fg2: number;
   fg3: number;
-  /** Threes per field-goal attempt. */
-  fg3Share: number;
   ft: number;
   /** Turnovers per player per floor possession, and per team possession. */
   tovPlayer: number;
@@ -49,30 +47,6 @@ export const SHRINK = { fg2: 55, fg3: 89, ft: 25, tov: 300, reb: 400 } as const;
  *  less, so a five differs less than its players' average. Fitted on every
  *  possession of 2025-26 held out game by game (user 2026-11-23). */
 export const TOV_FIVE_WEIGHT = 0.6;
-/** Spacing (user 2026-11-23): a two goes in more often with more accurate
- *  shooters among the shooter's four teammates -- log-odds per shooter around
- *  the league's usual 2.2. A shooter takes PROFILE-style 30%+ of his shots
- *  from three (share pulled to the league's with 30 pseudo-shots) at 33%+
- *  (his shrunk three-point percentage). Fitted on 2025-26's 17,534 twos;
- *  held out on 2026-27 it still helps; threes show no such effect. */
-export const SPACING = {
-  perShooter: 0.04,
-  centre: 2.2,
-  share: 0.3,
-  shareShrink: 30,
-  fg3: 0.33,
-} as const;
-
-/** Whether a player is an accurate three-point shooter (SPACING). */
-export function isShooter(prior: Pick<PlayerPrior, "fg2" | "fg3"> | undefined, L: LeagueRates) {
-  // No record: a league-average player, as in the fit.
-  const pr = prior ?? { fg2: [0, 0], fg3: [0, 0] };
-  const share =
-    (pr.fg3[1] + SPACING.shareShrink * L.fg3Share) /
-    (pr.fg2[1] + pr.fg3[1] + SPACING.shareShrink);
-  return share >= SPACING.share && shrunk(pr.fg3, SHRINK.fg3, L.fg3) >= SPACING.fg3;
-}
-
 export const OREB_WEIGHTS = {
   offense: 0.95,
   defense: -0.22,
@@ -185,15 +159,11 @@ export function runFactors(
       const trials = mine
         .filter((e) => e.kind === kind)
         .map((e): [number, boolean] => {
-          const pr = prior(side, e.actor ?? null),
-            base = pr ? shrunk(pr[kind], SHRINK[kind], L[kind]) : L[kind];
-          if (kind !== "fg2" || e.players.length !== 5) return [base, e.made === true];
-          // Spacing: accurate shooters among the four teammates.
-          const around = e.players.filter(
-            (p) => p !== e.actor && isShooter(prior(side, p), L),
-          ).length;
-          const x = logit(base) + SPACING.perShooter * (around - SPACING.centre);
-          return [1 / (1 + Math.exp(-x)), e.made === true];
+          // Each shot on its shooter's own record (user 2026-11-25: no
+          // spacing term -- it rested on a thin shooter label and moved the
+          // expected count by a tenth of a make or two).
+          const pr = prior(side, e.actor ?? null);
+          return [pr ? shrunk(pr[kind], SHRINK[kind], L[kind]) : L[kind], e.made === true];
         });
       push(kind, trials, VALUE[kind]);
     }
@@ -353,13 +323,13 @@ export type LineupProfile = {
   tov: number;
   oreb: number;
   dreb: number;
-  /** Accurate three-point shooters (SPACING). */
-  shooters: number;
 };
 /** The bars sit near the 5th and 95th percentiles of 2026-27's fives,
- *  weighted by floor time (75 games, 6,029 minutes; user 2026-11-23), except
- *  manyShooters: 4+ accurate shooters is 28% of floor time (user 2026-11-23:
- *  the reason is context for the count, not a prediction). */
+ *  weighted by floor time (75 games, 6,029 minutes; user 2026-11-23). Each
+ *  trait is a fact about who was on the floor, context for the count, not a
+ *  prediction (user 2026-11-25). No shooter trait: with this league's samples
+ *  a "shooter" or "non-shooter" label mostly reflected how few threes a
+ *  player had taken (user 2026-11-25). */
 export const PROFILE = {
   small: 2.01,
   big: 2.0,
@@ -368,8 +338,6 @@ export const PROFILE = {
   tov: [0.892, 1.09],
   oreb: [0.81, 1.25],
   dreb: [0.89, 1.14],
-  fewShooters: 1,
-  manyShooters: 4,
   /** The fives described must have played this share of the run, and a minute. */
   /** ... a third of the run (user 2026-11-23: half was too much). */
   minShare: 1 / 3,
@@ -402,7 +370,6 @@ export function lineupProfile(
     tov: 1 + TOV_FIVE_WEIGHT * (mean(five.map((p) => rate(p, "tov"))) / L.tovPlayer - 1),
     oreb: mean(five.map((p) => rate(p, "oreb"))) / L.orebPlayer,
     dreb: mean(five.map((p) => rate(p, "dreb"))) / L.drebPlayer,
-    shooters: five.filter((p) => isShooter(priors.players.get(`${side}:${p}`), L)).length,
   };
 }
 
@@ -460,8 +427,7 @@ const five = (one: boolean, what: string) => (one ? `a ${what} five` : `${what} 
 /** Why a named factor's expected count is high or low (user 2026-11-23), from
  *  the fives of the team on offense and of the one defending: "a turnover-prone
  *  five", "a five no taller than 2.01 m", "against a weak defensive-rebounding
- *  five", "a shooting five"... At most two; none for free
- *  throws. */
+ *  five"... At most two; none for shots. */
 export function factorReason(
   kind: FactorKind,
   offense: Profiled[],
@@ -483,15 +449,6 @@ export function factorReason(
   if (kind === "tov") {
     out.push(t(offense, (p) => p.tov >= P.tov[1], (one) => five(one, "turnover-prone")));
     out.push(t(offense, (p) => p.tov <= P.tov[0], (one) => five(one, "low-turnover")));
-  }
-  if (kind === "fg2" || kind === "fg3") {
-    // A five to be guarded at the line, for twos (spacing) and threes alike
-    // (user 2026-11-23: both read as "shooters").
-    out.push(t(offense, (p) => p.shooters >= P.manyShooters, (one) => five(one, "shooting")));
-    out.push(t(offense, (p) => p.shooters <= P.fewShooters, (one, w) => {
-      const n = Math.max(...w.map((p) => p.shooters));
-      return `${one ? "a five" : "fives"} with ${n ? "only one" : "no"} three-point shooter`;
-    }));
   }
   if (kind === "oreb") {
     out.push(t(offense, (p) => p.oreb >= P.oreb[1], (one) => five(one, "strong offensive-rebounding")));
