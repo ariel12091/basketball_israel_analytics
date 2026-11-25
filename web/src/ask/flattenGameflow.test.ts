@@ -8,10 +8,15 @@ describe("flatten gameflow", () => {
   it("gives the chat one row per run, the defining one marked", () => {
     const runs = rows.filter((r) => r.section === "run");
     expect(runs.map((r) => `${r.team} ${r.run_score} ${r.window} ${r.defining}`)).toEqual([
+      // Ranked by win-probability swing since 2026-11-24; with fit_id 6
+      // (game opens at 53%) it picks the same runs as net did.
       "Maccabi Tel-Aviv 16-6 Q1 3:45 – Q1 0:48 no",
       "Hapoel Tel-Aviv 30-4 Q2 2:50 – Q3 4:18 no",
       "Maccabi Tel-Aviv 37-5 Q3 2:25 – Q4 2:31 yes",
     ]);
+    // Each run's win-probability swing, from the run team's side.
+    expect(runs.every((r) => /^(<1|\d+)% → (>99|\d+)%$/.test(String(r.win_chance)))).toBe(true);
+    expect(String(runs[2].win_chance)).toMatch(/→ (>99|\d+)%$/);
     expect(String(runs[2].explanation)).toMatch(/Estimated cause: Hapoel Tel-Aviv's two-point shooting .* so no lineup is credited/);
   });
   it("and one row per player with the card's ratings", () => {

@@ -3,7 +3,7 @@
 import { homeDashboard, type HomeFrames } from "@/rules/home";
 import type { League } from "@/rules/gameLogs";
 import type { ExplainedRun, PlayerRating } from "@/rules/gameflowSummary";
-import { periodClock } from "@/rules/gameflowRuns";
+import { periodClock, runWinChance } from "@/rules/gameflowRuns";
 import type { ToolName } from "./registry";
 
 type Cells = Record<string, unknown>;
@@ -58,6 +58,8 @@ function gameflowRows(payload: unknown): Cells[] {
     run_score: `${r.pts}-${r.oppPts}`,
     window: `${periodClock(r.start, bounds)} – ${periodClock(r.end, bounds)}`,
     defining: r.defining ? "yes" : "no",
+    // The run team's win chance before and after (Win probability, WPA).
+    ...(runWinChance(r, "") ? { win_chance: runWinChance(r, "") } : {}),
     explanation: r.lines.join(" | "),
   }));
   const players = [...(p.players ?? [])]

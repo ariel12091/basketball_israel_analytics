@@ -28,6 +28,7 @@ import {
   type Window,
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
+import { winLabels } from "@/rules/gameflowWinProb";
 import type { BarWindow } from "@/rules/gameflowSelection";
 import type { Run } from "@/rules/gameflowRuns";
 
@@ -771,8 +772,11 @@ export default function GameflowChart({
               r =
                 ratingMode !== "off" && data.ratings
                   ? ratingAt(data.ratings[ratingMode], scoreTip.elapsed)
-                  : null;
-            if (!r)
+                  : null,
+              // Each team's chance of winning at this moment (shared
+              // definitions, Win probability), whatever the ORtg mode.
+              w = winLabels(data.winProb ?? [], scoreTip.elapsed);
+            if (!r && !w)
               return withTeams(
                 `${when}\n${data.meta.ownTeam} ${own} – ${opp} ${data.meta.oppTeam}`,
                 data.meta,
@@ -781,7 +785,8 @@ export default function GameflowChart({
             return (
               <>
                 {when}
-                {ratingMode === "window" &&
+                {r &&
+                  ratingMode === "window" &&
                   ` · ORtg over the last ${RATING_WINDOW} possessions`}
                 <span className="ibpl-gameflow-score-grid">
                   <span>
@@ -793,9 +798,20 @@ export default function GameflowChart({
                     {opp}{" "}
                     <span className="gf-team is-opp">{data.meta.oppTeam}</span>
                   </span>
-                  <span className="is-rtg">ORtg {ratingLabel(r.own)}</span>
-                  <span />
-                  <span className="is-rtg">ORtg {ratingLabel(r.opp)}</span>
+                  {r && (
+                    <>
+                      <span className="is-rtg">ORtg {ratingLabel(r.own)}</span>
+                      <span />
+                      <span className="is-rtg">ORtg {ratingLabel(r.opp)}</span>
+                    </>
+                  )}
+                  {w && (
+                    <>
+                      <span className="is-rtg is-win">Win {w.own}</span>
+                      <span />
+                      <span className="is-rtg is-win">Win {w.opp}</span>
+                    </>
+                  )}
                 </span>
               </>
             );

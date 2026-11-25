@@ -327,6 +327,18 @@ test("EuroLeague Gameflow card shows ratings", async ({ page }, info) => {
   await expect(page.getByRole("region", { name: `${p.player_label} game detail` })).toContainText(/ORtg[\d.]+DRtg/);
 });
 
+// Win probability (shared_definitions.md): the score readout gives each
+// team's chance at the moment under the pointer, with ORtg on or off.
+test("Gameflow's score readout shows each team's win chance", async ({ page }, info) => {
+  test.skip(isPhone(info), "hover is pointer-only");
+  await routeFixture(page, 673);
+  const band = page.getByLabel("Hover or tap to see the score").first();
+  const box = (await band.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const tip = page.locator(".ibpl-ribbon-score-tooltip");
+  await expect(tip.locator(".is-win")).toHaveText([/^Win (<1|>99|\d+)%$/, /^Win (<1|>99|\d+)%$/]);
+});
+
 // Runs (shared_definitions.md, Gameflow run): a band per run over the chart
 // and the rows, a chip naming it, and a tooltip that explains it.
 test("Gameflow marks game 673's runs and explains the defining one", async ({
@@ -352,6 +364,8 @@ test("Gameflow marks game 673's runs and explains the defining one", async ({
   await expect(tip).toBeVisible();
   const lines = await tip.locator(".gf-run-tip-line").allTextContents();
   expect(lines[0]).toContain("Maccabi Tel-Aviv 37-5 · Q3 2:25 – Q4 2:31");
+  // Its win-probability swing (runs are ranked by it since 2026-11-24).
+  expect(lines[0]).toMatch(/ · win chance \d+% → (>99|\d+)%$/);
   expect(lines[1]).toContain("since Q3 3:54");
   expect(lines[1]).toContain("DIBARTOLOMEO");
   const three = lines.findIndex((l) => l.includes("from three"));
@@ -389,6 +403,7 @@ test("Phone: the runs are listed in the panel and explained there", async ({
   // The strip shades all three runs, unsplit; each quarter names its runs.
   await expect(page.locator(".gf-m-head .gf-run-band")).toHaveCount(3);
   await expect(page.locator(".gf-run-chip")).toHaveCount(1);
+  // Ranked by win-probability swing (since 2026-11-24): Maccabi's 16-6.
   await expect(page.locator(".gf-run-chip")).toHaveText("16-6 ›");
   // Q4 carries the 37-5 run over from Q3 with a "‹" chip; a tap explains it.
   await showQuarter(page, 4);
@@ -403,6 +418,7 @@ test("Phone: the runs are listed in the panel and explained there", async ({
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(2)).toContainText("Maccabi Tel-Aviv 37-5 · defining");
   await expect(rows.nth(2)).toContainText("Q3 2:25 – Q4 2:31");
+  await expect(rows.nth(2)).toContainText(/ · \d+% → (>99|\d+)%/);
   await rows.nth(2).click();
   // The run's quarter is shown and the panel explains it.
   await expect(page.getByRole("tab", { name: "Q3", exact: true })).toHaveAttribute("aria-selected", "true");

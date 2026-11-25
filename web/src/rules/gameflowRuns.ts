@@ -12,6 +12,7 @@ import type {
 } from "./gameflow";
 import { rRound } from "./round";
 import { aggregateSegments, points, type Segment } from "./gameflow";
+import { pctLabel, runSwing, type WinPoint } from "./gameflowWinProb";
 
 /** Run rule: net >= RUN_MIN_NET while the other team scores <= RUN_MAX_OPP
  *  (8, not 10, since 2026-11-17: the user counts an 11-2 as a run). */
@@ -30,9 +31,14 @@ export type Run = {
   pts: number;
   oppPts: number;
   net: number;
-  /** The winner's run during which it went ahead for good, else the
-   *  winner's biggest run; never the losing team's (user 2026-11-17). */
+  /** The winner's run with the biggest win-probability swing (user
+   *  2026-11-24); with no probabilities, the winner's run during which it
+   *  went ahead for good, else its biggest run. Never the losing team's. */
   defining: boolean;
+  /** The run team's chance of winning just before the run and at its end;
+   *  null when the game has no win probabilities. */
+  wpFrom: number | null;
+  wpTo: number | null;
   /** Own team's margin just before the run and at its end. */
   fromMargin: number;
   toMargin: number;
@@ -82,7 +88,10 @@ function scoringEvents(steps: Score[]): Scoring[] {
   return out;
 }
 
-export function detectRuns(steps: Score[]): Run[] {
+/** Runs ranked by win-probability swing when the game has a series (user
+ *  2026-11-24), else by net. Ties: net, then shorter, then earlier. */
+/** Every stretch that meets the run rule, overlapping, unranked. */
+export function runCandidates(steps: Score[]): Omit<Run, "defining">[] {
   const ev = scoringEvents(steps),
     cand: Omit<Run, "defining">[] = [];
   for (let i = 0; i < ev.length; i++) {
@@ -102,11 +111,30 @@ export function detectRuns(steps: Score[]): Run[] {
           net: a - b,
           fromMargin: ev[i].before,
           toMargin: ev[j].after,
+          wpFrom: null,
+          wpTo: null,
         });
     }
   }
-  cand.sort((x, y) => y.net - x.net || x.end - x.start - (y.end - y.start) || x.start - y.start);
-  const best = definingRun(steps, cand),
+  return cand;
+}
+
+export function detectRuns(steps: Score[], series: WinPoint[] = []): Run[] {
+  const cand = runCandidates(steps);
+  for (const c of cand) {
+    const sw = runSwing(series, c);
+    if (sw) {
+      c.wpFrom = sw.from;
+      c.wpTo = sw.to;
+    }
+  }
+  const gain = (c: Omit<Run, "defining">) =>
+    c.wpFrom == null || c.wpTo == null ? 0 : c.wpTo - c.wpFrom;
+  cand.sort(
+    (x, y) =>
+      gain(y) - gain(x) || y.net - x.net || x.end - x.start - (y.end - y.start) || x.start - y.start,
+  );
+  const best = series.length ? biggestSwing(steps, cand) : definingRun(steps, cand),
     taken: Run[] = best ? [{ ...best, defining: true }] : [];
   for (const c of cand) {
     if (taken.length === RUN_MAX) break;
@@ -114,6 +142,14 @@ export function detectRuns(steps: Score[]): Run[] {
     taken.push({ ...c, defining: false });
   }
   return taken.sort((x, y) => x.start - y.start);
+}
+
+/** The defining stretch with win probabilities: the winner's run with the
+ *  biggest swing (`cand` is in swing order). None with no winner yet. */
+function biggestSwing(steps: Score[], cand: Omit<Run, "defining">[]) {
+  const final = Number(steps.filter((s) => s.own != null).at(-1)?.margin ?? 0);
+  if (!final) return null;
+  return cand.find((c) => c.side === (final > 0 ? "own" : "opp")) ?? null;
 }
 
 /** The defining stretch: the winner's run during which it went ahead for good
@@ -350,6 +386,10 @@ function standoutLine(team: string, s: Standout) {
   }
 }
 
+/** " · win chance 41% → 78%" (with the given lead), or "" with no series. */
+export const runWinChance = (run: Run, lead: string) =>
+  run.wpFrom == null || run.wpTo == null ? "" : `${lead}${pctLabel(run.wpFrom)} → ${pctLabel(run.wpTo)}`;
+
 /**
  * The run's tooltip, line by line (spec: window and swing, then both teams'
  * lineups with the run team first, then the standouts, then an "Estimated
@@ -366,7 +406,7 @@ export function runExplanation(
     since = (t: number) => periodClock(t, model.bounds, true),
     sign = run.side === "own" ? 1 : -1;
   const lines = [
-    `${names[run.side]} ${run.pts}-${run.oppPts} · ${at(run.start)} – ${at(run.end)} · from ${swing(sign * run.fromMargin)} to ${swing(sign * run.toMargin)}`,
+    `${names[run.side]} ${run.pts}-${run.oppPts} · ${at(run.start)} – ${at(run.end)} · from ${swing(sign * run.fromMargin)} to ${swing(sign * run.toMargin)}${runWinChance(run, " · win chance ")}`,
     ...lineups.map((l) => {
       const change = l.cameIn.length
         ? ` (${l.cameIn.join(", ")} in for ${l.wentOut.join(", ")})`

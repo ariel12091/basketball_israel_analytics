@@ -37,6 +37,14 @@ out <- list(
   excluded_segments = as.numeric(row$excluded_segments[1]),
   false_straddle_segments = as.numeric(row$false_straddle_segments[1]),
   false_straddle_seconds = as.numeric(row$false_straddle_seconds[1]))
+# The game's win probability after every possession (shared_definitions.md,
+# "Win probability"), home side, as gameflowRepo.ts reads it.
+wp <- DBI::dbGetQuery(con, "
+  SELECT possession_no, is_final, period, seconds_left, home_team_id, away_team_id,
+         home_score, away_score, home_win_probability
+    FROM basketball_test.game_win_probability($1, $2)",
+  params = list(if (league == "israel") "il" else "euro", game_id))
+out$win_prob <- lapply(seq_len(nrow(wp)), function(i) as.list(wp[i, ]))
 path <- file.path("web", "src", "rules", "__fixtures__",
                   sprintf("gameflow-%d.json", game_id))
 dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)

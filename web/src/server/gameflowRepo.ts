@@ -7,6 +7,7 @@ import { Deadline, withSnapshot } from "./db";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
+import { readWinProb } from "./winProbRepo";
 import { ownerName, readPlayerNames } from "./playerNames";
 import { readTeamIdentity } from "./teamIdentity";
 import { applyTeamNamesHe, readTeamNamesHe, teamNameHe } from "./teamNames";
@@ -36,6 +37,9 @@ async function read(league: League, game: number, team: number) {
     const raw = (
       await q<RawRibbon>(euro ? sql.euro : sql.il, [game, team])
     )[0] ?? { lanes: [], margin: [], n_periods: 4 };
+    // Win probability after every possession (winProbRepo.ts): a slow or
+    // failing read costs only the win chances.
+    raw.win_prob = await readWinProb(q, euro ? "euro" : "il", game);
     // Names follow the display-name owner (D27); where it has none (a reused
     // provider id) the lane keeps this game's roster spelling. Twin:
     // fetch_stint_ribbon() in global.R.

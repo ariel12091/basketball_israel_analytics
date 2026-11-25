@@ -54,6 +54,7 @@ import GameflowChart, { type RunTrigger, withTeams } from "./GameflowChart";
 import {
   periodClock,
   runLineupGroups,
+  runWinChance,
   windowLabel,
   type Run,
 } from "@/rules/gameflowRuns";
@@ -67,6 +68,7 @@ import {
   type SelectionAction,
 } from "@/rules/gameflowSelection";
 import { text as labels } from "@/data/gameflowLayout.json";
+import { winLabels } from "@/rules/gameflowWinProb";
 function subscribeNarrow(notify: () => void) {
   const q = matchMedia(NARROW);
   q.addEventListener("change", notify);
@@ -592,9 +594,10 @@ export function GameflowView({
                   const rtg =
                     ratingMode !== "off" && data.ratings
                       ? ratingAt(data.ratings[ratingMode], elapsed)
-                      : null;
+                      : null,
+                    win = winLabels(data.winProb ?? [], elapsed);
                   setScore(
-                    `${periodClock(elapsed, data.bounds)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg${ratingMode === "window" ? ` (last ${RATING_WINDOW})` : ""} ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}`,
+                    `${periodClock(elapsed, data.bounds)} · ${data.meta.ownTeam} ${scoreAt(data.steps, elapsed, "own")} – ${scoreAt(data.steps, elapsed, "own") - scoreAt(data.steps, elapsed)} ${data.meta.oppTeam}${rtg ? ` · ORtg${ratingMode === "window" ? ` (last ${RATING_WINDOW})` : ""} ${ratingLabel(rtg.own)} – ${ratingLabel(rtg.opp)}` : ""}${win ? ` · Win ${win.own} – ${win.opp}` : ""}`,
                   );
                 }}
                 onPointerLeave={() => setScore("")}
@@ -926,7 +929,10 @@ function PhonePanel({
           {team(r)} {r.pts}-{r.oppPts}
           {r.defining ? " · defining" : ""}
         </b>
-        <span className="gf-m-when">{window(r)}</span>
+        <span className="gf-m-when">
+          {window(r)}
+          {runWinChance(r, " · ")}
+        </span>
       </button>
     ));
   } else if (run) {

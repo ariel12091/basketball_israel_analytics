@@ -1,6 +1,7 @@
 // app/R/helpers.R ribbon_* / merge_adjacent_stints and app.js overlap rules.
 // Raw scoring events drive as-of values; completed margin is drawing-only.
 import { rRound } from "./round";
+import { winSeries } from "./gameflowWinProb";
 import { compareBySize, type PlayerSize } from "./playerSize";
 import geometry from "../data/gameflowLayout.json";
 export type Side = "own" | "opp";
@@ -27,6 +28,17 @@ export type Bar = Lane & {
   lane_index: number;
 };
 export type Dictionary = { side: Side; lineup_key: string; members: string }[];
+export type RawWinProb = {
+  possession_no: number;
+  is_final: boolean;
+  period: number;
+  seconds_left: number;
+  home_team_id: number;
+  away_team_id: number;
+  home_score: number;
+  away_score: number;
+  home_win_probability: number;
+};
 export type RawRibbon = {
   lanes:
     | {
@@ -50,6 +62,9 @@ export type RawRibbon = {
   excluded_segments?: number;
   false_straddle_segments?: number;
   false_straddle_seconds?: number;
+  /** basketball_test.game_win_probability(): home side, one row per
+   * possession plus the final row (shared_definitions.md, Win probability). */
+  win_prob?: RawWinProb[] | null;
 };
 const n = (v: unknown) => (v == null ? NaN : Number(v));
 const finite = (v: number) => (Number.isFinite(v) ? v : null);
@@ -568,6 +583,7 @@ export function ribbonModel(
       ? { game: ratingSeries(raw.poss, steps), window: windowSeries(raw.poss) }
       : null,
     events: normalizeEvents(raw.events, team),
+    winProb: winSeries(raw.win_prob, team),
   };
 }
 export type RibbonModel = ReturnType<typeof ribbonModel>;
